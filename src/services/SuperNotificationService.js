@@ -43,6 +43,7 @@ class SuperNotificationService {
     this.isReactNativeEnvironment = checkReactNativeAvailability();
     this.hasPermission = false;
     this.databaseService = null; // Import dinamico per evitare loop
+    this.isReprogramming = false; // Protezione contro chiamate multiple
     
     // Import del DatabaseService
     try {
@@ -91,6 +92,9 @@ class SuperNotificationService {
         // Verifica permessi
         this.hasPermission = await this.hasPermissions();
         
+        // ✅ LISTENER PER RIPROGRAMMAZIONE AUTOMATICA QUANDO APP TORNA IN FOREGROUND
+        this.setupAppStateListener();
+        
         console.log('✅ SuperNotificationService inizializzato correttamente');
       }
       
@@ -99,6 +103,82 @@ class SuperNotificationService {
     } catch (error) {
       console.error('❌ Errore inizializzazione SuperNotificationService:', error);
       return false;
+    }
+  }
+
+  // 🔄 SETUP LISTENER APPSTATE PER RIPROGRAMMAZIONE AUTOMATICA
+  setupAppStateListener() {
+    if (!this.isReactNativeEnvironment) return;
+    
+    this.lastAppState = AppState.currentState;
+    this.lastNotificationCheck = Date.now();
+    
+    this.appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      console.log('🔄 AppState changed:', this.lastAppState, '→', nextAppState);
+      
+      // Quando l'app torna in foreground da background
+      if (this.lastAppState === 'background' && nextAppState === 'active') {
+        const timeSinceLastCheck = Date.now() - this.lastNotificationCheck;
+        
+        // Se è passata più di 2 ore (aumentato da 1 ora), verifica e riprogramma notifiche
+        if (timeSinceLastCheck > 2 * 60 * 60 * 1000) { // 2 ore
+          console.log('🔄 App tornata in foreground dopo 2+ ore, verifico notifiche...');
+          
+          // Aggiungi ulteriore delay per evitare conflitti con altre inizializzazioni
+          setTimeout(async () => {
+            await this.checkAndReprogramNotifications();
+            this.lastNotificationCheck = Date.now();
+          }, 2000); // 2 secondi di delay
+        } else {
+          console.log(`⏭️ App tornata in foreground ma controllo recente (${Math.round(timeSinceLastCheck/1000/60)} min fa)`);
+        }
+      }
+      
+      this.lastAppState = nextAppState;
+    });
+    
+    console.log('👁️ AppState listener configurato per riprogrammazione automatica');
+  }
+
+  // 🔄 CONTROLLO E RIPROGRAMMAZIONE INTELLIGENTE
+  async checkAndReprogramNotifications() {
+    try {
+      console.log('🔍 Controllo necessità riprogrammazione notifiche...');
+      
+      // Aggiungi protezione contro chiamate multiple
+      if (this.isReprogramming) {
+        console.log('⏳ Riprogrammazione già in corso, skip...');
+        return { action: 'skipped', reason: 'already_in_progress' };
+      }
+      
+      this.isReprogramming = true;
+      
+      const scheduled = await this.getScheduledNotifications();
+      console.log(`📅 Notifiche attualmente programmate: ${scheduled.length}`);
+      
+      // Se ci sono meno di 5 notifiche programmate, riprogramma
+      if (scheduled.length < 5) {
+        console.log('⚠️ Poche notifiche programmate, riprogrammo automaticamente...');
+        
+        const settings = await this.getSettings();
+        if (settings && (settings.enabled || settings.workEnabled || settings.timeEnabled || settings.standbyReminder?.enabled || settings.standbyReminders?.enabled)) {
+          const result = await this.scheduleNotifications(settings, true);
+          console.log(`✅ Riprogrammate ${result.totalScheduled} notifiche automaticamente (cancellate: ${result.cancelled})`);
+          
+          this.isReprogramming = false;
+          return { ...result, action: 'reprogrammed' };
+        }
+      } else {
+        console.log('✅ Numero adeguato di notifiche programmate, nessuna azione necessaria');
+      }
+      
+      this.isReprogramming = false;
+      return { totalScheduled: scheduled.length, action: 'none' };
+      
+    } catch (error) {
+      this.isReprogramming = false;
+      console.error('❌ Errore controllo riprogrammazione notifiche:', error);
+      return { error: error.message };
     }
   }
 
@@ -184,15 +264,17 @@ class SuperNotificationService {
     try {
       if (!settings.enabled || !this.hasPermission) {
         console.log('⏹️ Notifiche disabilitate o permessi mancanti');
-        return 0;
+        return { totalScheduled: 0, cancelled: 0 };
       }
 
+      let cancelledCount = 0;
       if (forceReschedule) {
         console.log('🗑️ CANCELLAZIONE ROBUSTA - Rimuovo TUTTE le notifiche');
         
         try {
           const existingNotifications = await Notifications.getAllScheduledNotificationsAsync();
           console.log(`🔍 DEBUG: Trovate ${existingNotifications.length} notifiche programmate da cancellare`);
+          cancelledCount = existingNotifications.length;
         } catch (debugError) {
           console.warn('⚠️ Errore debug notifiche esistenti:', debugError.message);
         }
@@ -200,7 +282,10 @@ class SuperNotificationService {
         await Notifications.cancelAllScheduledNotificationsAsync();
         await Notifications.dismissAllNotificationsAsync();
         
-        console.log('🧹 Notifiche esistenti cancellate');
+        // Aggiungi un piccolo delay per assicurarsi che la cancellazione sia completa
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        console.log(`🧹 ${cancelledCount} notifiche esistenti cancellate`);
       }
 
       let totalScheduled = 0;
@@ -232,18 +317,30 @@ class SuperNotificationService {
         console.log(`📞 Programmati ${count} promemoria reperibilità`);
       }
 
-      console.log(`✅ Totale notifiche programmate: ${totalScheduled}`);
+      console.log(`✅ Totale notifiche programmate: ${totalScheduled} (cancellate: ${cancelledCount})`);
       await AsyncStorage.setItem('last_notification_schedule', new Date().toISOString());
       
-      return totalScheduled;
+      // Verifica finale per debug
+      try {
+        const finalCheck = await Notifications.getAllScheduledNotificationsAsync();
+        console.log(`🔍 VERIFICA FINALE: ${finalCheck.length} notifiche effettivamente programmate nel sistema`);
+        
+        if (finalCheck.length !== totalScheduled) {
+          console.warn(`⚠️ MISMATCH: Programmato ${totalScheduled}, trovato ${finalCheck.length}`);
+        }
+      } catch (verifyError) {
+        console.warn('⚠️ Errore verifica finale:', verifyError.message);
+      }
+      
+      return { totalScheduled, cancelled: cancelledCount };
 
     } catch (error) {
       console.error('❌ Errore programmazione notifiche:', error);
-      return 0;
+      return { error: error.message, totalScheduled: 0, cancelled: 0 };
     }
   }
 
-  // 📅 PROMEMORIA INIZIO LAVORO (3 giorni per evitare spam)
+  // 📅 PROMEMORIA INIZIO LAVORO (7 giorni per continuità automatica)
   async scheduleMorningReminders(settings) {
     if (!settings.morningTime) {
       console.error('❌ Orario promemoria mattutino non configurato');
@@ -255,8 +352,8 @@ class SuperNotificationService {
       const daysToSchedule = settings.weekendsEnabled ? [0,1,2,3,4,5,6] : [1,2,3,4,5];
       let scheduledCount = 0;
       
-      // 🎯 PROGRAMMA PER 3 GIORNI (evita spam di notifiche)
-      for (let day = 0; day <= 3; day++) {
+      // 🎯 PROGRAMMA PER 7 GIORNI (una settimana completa per continuità)
+      for (let day = 0; day <= 7; day++) {
         const targetDate = new Date();
         targetDate.setDate(targetDate.getDate() + day);
         
@@ -303,7 +400,7 @@ class SuperNotificationService {
     }
   }
 
-  // ⏰ PROMEMORIA INSERIMENTO ORARI (3 giorni per evitare spam)
+  // ⏰ PROMEMORIA INSERIMENTO ORARI (7 giorni per continuità automatica)
   async scheduleTimeEntryReminders(settings) {
     if (!settings.time && !settings.eveningTime) {
       console.error('❌ Orario promemoria inserimento orari non configurato');
@@ -316,8 +413,8 @@ class SuperNotificationService {
       const daysToSchedule = settings.weekendsEnabled ? [0,1,2,3,4,5,6] : [1,2,3,4,5];
       let scheduledCount = 0;
       
-      // 🎯 PROGRAMMA PER 3 GIORNI (evita spam di notifiche)
-      for (let day = 0; day <= 3; day++) {
+      // 🎯 PROGRAMMA PER 7 GIORNI (una settimana completa per continuità)
+      for (let day = 0; day <= 7; day++) {
         const targetDate = new Date();
         targetDate.setDate(targetDate.getDate() + day);
         
@@ -416,7 +513,7 @@ class SuperNotificationService {
     }
   }
 
-  // 📞 PROMEMORIA REPERIBILITÀ 
+  // 📞 PROMEMORIA REPERIBILITÀ (14 giorni per continuità automatica) 
   async scheduleStandbyReminders(settings) {
     console.log('📞 [DEBUG] scheduleStandbyReminders chiamato con settings:', JSON.stringify(settings, null, 2));
     
@@ -487,12 +584,12 @@ class SuperNotificationService {
           notificationDate.setDate(standbyDate.getDate() - (notification.daysInAdvance || 0));
           notificationDate.setHours(hours, minutes, 0, 0);
 
-          // Solo notifiche future e nei prossimi 30 giorni
+          // Solo notifiche future e nei prossimi 14 giorni (esteso per continuità)
           if (notificationDate <= now) {
             console.log(`📞 [DEBUG] Notifica nel passato saltata: ${notificationDate.toLocaleString('it-IT')} <= ${now.toLocaleString('it-IT')}`);
             continue;
           }
-          if (notificationDate.getTime() - now.getTime() > 30 * 24 * 60 * 60 * 1000) {
+          if (notificationDate.getTime() - now.getTime() > 14 * 24 * 60 * 60 * 1000) {
             console.log(`📞 [DEBUG] Notifica troppo lontana saltata: ${notificationDate.toLocaleString('it-IT')}`);
             continue;
           }
@@ -663,6 +760,14 @@ class SuperNotificationService {
     } catch (error) {
       console.error('❌ Errore verifica notifiche perse:', error);
       return { error: error.message };
+    }
+  }
+
+  // 🧹 CLEANUP LISTENER APPSTATE
+  cleanup() {
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+      console.log('🧹 AppState listener rimosso');
     }
   }
 }

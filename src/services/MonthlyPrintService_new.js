@@ -73,9 +73,16 @@ class MonthlyPrintService {
         const workHours = this.calculateWorkHours(entry);
         const travel = this.calculateTravelHours(entry);
         
-        // 🔧 Se total_earnings è 0, usa calcolo base
-        let entryEarnings = parseFloat(entry.total_earnings || 0);
+  // 🔧 Punto di partenza: valore DB
+  let entryEarnings = parseFloat(entry.total_earnings || 0);
         
+        // Preferenza: se giorno speciale senza ore e toggle OFF, forza a 0
+        const isSpecialDayType = ['ferie','malattia','permesso','riposo','festivo'].includes(String(entry.day_type || '').toLowerCase());
+        const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
+        if (isSpecialDayType && (workHours + travel) === 0 && !showEffective) {
+          entryEarnings = 0;
+        }
+
         if (entryEarnings === 0 && (workHours > 0 || travel > 0)) {
           console.log(`🔧 CALCOLO BASE per ${entry.date} - earnings erano 0`);
           
@@ -112,7 +119,7 @@ class MonthlyPrintService {
         const date = new Date(entry.date);
         const dayName = date.toLocaleDateString('it-IT', { weekday: 'long' });
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-        const isHoliday = entry.day_type === 'festivo';
+  const isHoliday = String(entry.day_type || '').toLowerCase() === 'festivo';
         
         console.log(`📊 DEBUG ENTRY ${entry.date} (${dayName}):`, {
           workHours: workHours.toFixed(1),

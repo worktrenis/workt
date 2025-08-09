@@ -4,9 +4,10 @@ import DatabaseService from '../services/DatabaseService';
 import DatabaseHealthService from '../services/DatabaseHealthService';
 import { useCalculationService } from './useCalculationService';
 import { useVacationAutoCompile } from './useVacationAutoCompile';
+import { useWelcome } from './useWelcome';
 import { DEFAULT_SETTINGS } from '../constants';
 
-export { useCalculationService, useVacationAutoCompile };
+export { useCalculationService, useVacationAutoCompile, useWelcome };
 
 export const useDatabase = () => {
   const [isInitialized, setIsInitialized] = useState(false);
@@ -55,6 +56,12 @@ export const useDatabase = () => {
             ...existingSettings.netCalculation,
             useActualAmount: false
           };
+          needsUpdate = true;
+        }
+
+        // Migrazione: aggiungi preferenza visualizzazione giorni speciali se mancante
+        if (updatedSettings.showEffectiveEarningsOnSpecialNoWorkDays === undefined) {
+          updatedSettings.showEffectiveEarningsOnSpecialNoWorkDays = DEFAULT_SETTINGS.showEffectiveEarningsOnSpecialNoWorkDays;
           needsUpdate = true;
         }
         

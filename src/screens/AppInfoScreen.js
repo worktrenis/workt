@@ -22,6 +22,82 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+        "version": "1.5.0",
+        "date": "9 agosto 2025",
+        "changes": [
+            "Coerenza riepilogo giornaliero vs TimeEntry",
+            "Preferenza guadagni giorni speciali + PDF",
+            "Allineamento netto/retribuzione su feriali",
+            "UI Compensi Aggiuntivi + overflow"
+        ]
+    },
+    {
+      version: '1.4.1',
+      date: '7 Agosto 2025',
+      changes: [
+        'RISOLTO CRITICO: Esclusione giorni fissi (ferie, malattia, permessi) dal conteggio lavorativo',
+        'RISOLTO: Errore ReferenceError dailyHours che impediva funzionamento dashboard',
+        'RISOLTO: Conteggio preciso "Giorni effettivamente lavorati" vs giorni CCNL',
+        'RISOLTO: Duplicazione informazione "ore totali" nella retribuzione mensile',
+        'NUOVO: Dual Display Lordo/Netto con calcoli matematicamente accurati',
+        'NUOVO: Predizioni corrette (26 giorni CCNL + extra vs giorni effettivi + extra)',
+        'NUOVO: Integrazione cash pasti in tutti i calcoli netto per trasparenza',
+        'NUOVO: Dashboard educativo CCNL con breakdown dettagliato calcoli',
+        'MIGLIORAMENTO: Sistema calcolo CCNL preciso senza proiezioni future',
+        'MIGLIORAMENTO: Gestione robusta vacation days e validazione dati',
+        'UX: Etichette precise e note esplicative per comprensione calcoli',
+        'TECNICO: Runtime version aggiornato per coerenza versioning'
+      ]
+    },
+    {
+      version: '1.4.0',
+      date: '5 Agosto 2025',
+      changes: [
+        'NUOVO: Sistema notifiche persistenti per gestione messaggi di sistema',
+        'NUOVO: Menu "Notifiche di Sistema" con badge contatore non lette',
+        'NUOVO: Filtri avanzati per tipo, priorità e stato delle notifiche',
+        'NUOVO: Statistiche dettagliate e cronologia notifiche completa',
+        'NUOVO: Export/Import notifiche per backup e ripristino',
+        'NUOVO: Pulizia automatica notifiche vecchie configurabile',
+        'NUOVO: Context provider globale per gestione notifiche real-time',
+        'NUOVO: Hook useSystemNotifications per integrazione componenti',
+        'NUOVO: Badge compatti con aggiornamento automatico',
+        'RIMOSSO: Pulsanti test popup da interfaccia utente (cleanup UI)',
+        'MIGLIORAMENTO: Interfaccia Impostazioni più pulita e professionale',
+        'TECNICO: Sistema modulare con servizi, hook, context e componenti'
+      ]
+    },
+    {
+      version: '1.3.1',
+      date: '4 Agosto 2025',
+      changes: [
+        'OTTIMIZZAZIONE: Statistiche backup sempre accurate con sistema fallback automatico',
+        'RISOLTO: TimeEntry eliminato refresh doppio e schermata bianca momentanea',
+        'RIVOLUZIONARIO: Notifiche continue per settimane/mesi con AppState listener',
+        'INTELLIGENTE: Pulizia automatica backup in eccesso ogni 30 secondi',
+        'PERFORMANCE: Sistema debounce avanzato per aggiornamenti fluidi',
+        'ESTESO: Promemoria lavoro 7 giorni, reperibilità 14 giorni (vs 3 precedenti)',
+        'AUTOMATICO: Riprogrammazione notifiche ogni apertura app (soglia 1+ ora)',
+        'UI/UX: Picker ottimizzati, rimosso bottone refresh duplicato',
+        'MEMORIA: Gestione corretta listener AppState per prevenire memory leak'
+      ]
+    },
+    {
+      version: '1.3.0',
+      date: '4 Agosto 2025',
+      changes: [
+        'CRITICO: Backup completo con tutte le impostazioni di sistema incluse',
+        'NUOVO: Sistema backup multi-formato (automatico/manuale/array) universale',
+        'NUOVO: Ripristino intelligente con compatibilità backup legacy',
+        'PERFETTO: Stampa PDF identica ai calcoli del form (bug critico risolto)',
+        'CORRETTO: Campo reperibilità mapping form.reperibilita vs form.standby',
+        'CORRETTO: Visualizzazione "ATTIVA"/"NON ATTIVA" per reperibilità automatica',
+        'MIGLIORATO: Metadati backup arricchiti con dettaglio dati inclusi',
+        'MIGLIORATO: DatabaseService.restoreFromBackup() multi-formato avanzato',
+        'TECNICO: AutoBackupService.performAutoBackup() include settings/standby/workEntries'
+      ]
+    },
+    {
       version: '1.2.2',
       date: '3 Agosto 2025',
       changes: [
@@ -186,27 +262,6 @@ const AppInfoScreen = ({ navigation }) => {
               </View>
             </View>
           ))}
-        </FadeInCard>
-
-        {/* TEST: Pulsante per testare popup aggiornamento */}
-        <FadeInCard delay={150} style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
-            Test Aggiornamento (Debug)
-          </Text>
-          <TouchableOpacity 
-            style={[styles.testButton, { backgroundColor: theme.colors.primary }]}
-            onPress={async () => {
-              try {
-                const result = await global.forceUpdatePopup();
-                console.log('✅ Test popup completato:', result);
-              } catch (error) {
-                console.error('❌ Errore test popup:', error);
-              }
-            }}
-          >
-            <MaterialCommunityIcons name="rocket-launch" size={20} color="white" />
-            <Text style={styles.testButtonText}>Testa Popup v1.2.2</Text>
-          </TouchableOpacity>
         </FadeInCard>
 
         {/* Cronologia Aggiornamenti */}
@@ -442,20 +497,6 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 14,
     lineHeight: 20,
-  },
-  testButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 12,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  testButtonText: {
-    color: 'white',
-    fontWeight: '600',
-    marginLeft: 8,
-    fontSize: 16,
   },
   legalText: {
     fontSize: 14,

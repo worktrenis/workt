@@ -5,4 +5,11 @@ const config = getDefaultConfig(__dirname, {
   isCSSEnabled: true,
 });
 
+// Esclude file di diagnostica dal bundling
+config.resolver.blacklistRE = /#current-cloud-backend\/.*/;
+config.resolver.platforms = ['ios', 'android', 'native', 'web'];
+
+// Esclude file di test e diagnostica
+config.resolver.resolverMainFields = ['react-native', 'browser', 'main'];
+
 module.exports = config;

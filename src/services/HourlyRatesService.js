@@ -15,6 +15,32 @@ class HourlyRatesService {
     this.cacheTimeout = 5 * 60 * 1000; // 5 minuti
   }
 
+  // 🔧 CALCOLO PRECISO: Evita errori floating-point calcolando in centesimi
+  preciseCalculate(operation, value1, value2) {
+    const cents1 = Math.round(value1 * 100);
+    const cents2 = Math.round(value2 * 100);
+    
+    let resultCents;
+    switch (operation) {
+      case 'multiply':
+        resultCents = Math.round(cents1 * cents2 / 100);
+        break;
+      case 'add':
+        resultCents = cents1 + cents2;
+        break;
+      case 'subtract':
+        resultCents = cents1 - cents2;
+        break;
+      case 'divide':
+        resultCents = Math.round(cents1 / cents2 * 100);
+        break;
+      default:
+        throw new Error(`Operazione non supportata: ${operation}`);
+    }
+    
+    return Math.round(resultCents) / 100;
+  }
+
   // ✅ CARICA IMPOSTAZIONI (con cache)
   async getSettings() {
     const now = Date.now();
@@ -265,8 +291,8 @@ class HourlyRatesService {
         // ⭐ CUMULO ADDITIVO CCNL: dayMultiplier + timeSlotMultiplier - 1.0 
         // Esempio: Sabato (+25%) + Notturno (+35%) = 1.25 + 1.35 - 1.0 = 1.60 (+60%)
         const combinedMultiplier = dayMultiplier + slot.rate - 1.0;
-        const finalHourlyRate = baseHourlyRate * combinedMultiplier;
-        const slotEarnings = hoursInSlot * finalHourlyRate;
+        const finalHourlyRate = this.preciseCalculate('multiply', baseHourlyRate, combinedMultiplier);
+        const slotEarnings = this.preciseCalculate('multiply', hoursInSlot, finalHourlyRate);
 
         console.log(`[HourlyRatesService] ${slot.name}: ${hoursInSlot.toFixed(2)}h × €${baseHourlyRate} × ${combinedMultiplier.toFixed(2)} = €${slotEarnings.toFixed(2)}`);
         console.log(`[HourlyRatesService]   ↳ Breakdown: ${dayType} +${Math.round((dayMultiplier-1)*100)}% + ${slot.name} +${Math.round((slot.rate-1)*100)}% = +${Math.round((combinedMultiplier-1)*100)}%`);
@@ -304,7 +330,7 @@ class HourlyRatesService {
           totalBonus: Math.round((combinedMultiplier-1)*100)
         });
 
-        result.totalEarnings += slotEarnings;
+        result.totalEarnings = this.preciseCalculate('add', result.totalEarnings, slotEarnings);
 
         // Categorizza le ore
         if (slot.rate === 1.0) {
@@ -373,18 +399,18 @@ class HourlyRatesService {
 
       if (overlapMinutes > 0) {
         const hoursInSlot = overlapMinutes / 60;
-        const slotEarnings = hoursInSlot * baseHourlyRate * slot.rate;
+        const slotEarnings = this.preciseCalculate('multiply', hoursInSlot, this.preciseCalculate('multiply', baseHourlyRate, slot.rate));
 
         result.breakdown.push({
           name: slot.name,
           hours: hoursInSlot,
           rate: slot.rate,
-          hourlyRate: baseHourlyRate * slot.rate,
+          hourlyRate: this.preciseCalculate('multiply', baseHourlyRate, slot.rate),
           earnings: slotEarnings,
           color: slot.color
         });
 
-        result.totalEarnings += slotEarnings;
+        result.totalEarnings = this.preciseCalculate('add', result.totalEarnings, slotEarnings);
 
         // Categorizza le ore
         if (slot.rate === 1.0) {
@@ -414,8 +440,8 @@ class HourlyRatesService {
     const normalHours = Math.min(totalHours, 8);
     const overtimeHours = Math.max(totalHours - 8, 0);
 
-    const normalEarnings = normalHours * baseHourlyRate;
-    const overtimeEarnings = overtimeHours * baseHourlyRate * 1.2; // 20% maggiorazione
+    const normalEarnings = this.preciseCalculate('multiply', normalHours, baseHourlyRate);
+    const overtimeEarnings = this.preciseCalculate('multiply', overtimeHours, this.preciseCalculate('multiply', baseHourlyRate, 1.2));
 
     return {
       totalHours,
@@ -435,12 +461,12 @@ class HourlyRatesService {
           name: 'Straordinario',
           hours: overtimeHours,
           rate: 1.2,
-          hourlyRate: baseHourlyRate * 1.2,
+          hourlyRate: this.preciseCalculate('multiply', baseHourlyRate, 1.2),
           earnings: overtimeEarnings,
           color: '#FF9800'
         }] : [])
       ],
-      totalEarnings: normalEarnings + overtimeEarnings
+      totalEarnings: this.preciseCalculate('add', normalEarnings, overtimeEarnings)
     };
   }
 
@@ -521,10 +547,10 @@ class HourlyRatesService {
         
         // Calcola retribuzione proporzionale
         const totalEarnings = calculation.totalEarnings;
-        const earningsPerHour = totalEarnings / calculation.totalHours;
+        const earningsPerHour = this.preciseCalculate('divide', totalEarnings, calculation.totalHours);
         
-        regularPay = regularHours * earningsPerHour;
-        overtimePay = overtimeHours * earningsPerHour * settings.overtimeSettings.overtimeRate;
+        regularPay = this.preciseCalculate('multiply', regularHours, earningsPerHour);
+        overtimePay = this.preciseCalculate('multiply', this.preciseCalculate('multiply', overtimeHours, earningsPerHour), settings.overtimeSettings.overtimeRate);
         
         console.log(`[HourlyRatesService] Applicato straordinario: ${regularHours}h normali + ${overtimeHours}h straordinario`);
       } else {
@@ -536,11 +562,11 @@ class HourlyRatesService {
       }
       
       const result = {
-        regularPay,
+        regularPay: Math.round(regularPay * 100) / 100,
         regularHours,
-        overtimePay,
+        overtimePay: Math.round(overtimePay * 100) / 100,
         overtimeHours,
-        totalEarnings: regularPay + overtimePay,
+        totalEarnings: Math.round(this.preciseCalculate('add', regularPay, overtimePay) * 100) / 100,
         totalHours: calculation.totalHours,
         breakdown: calculation.breakdown,
         method: 'hourly_rates_service_ccnl_compliant',

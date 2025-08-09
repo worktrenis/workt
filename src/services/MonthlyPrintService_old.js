@@ -29,7 +29,7 @@ class MonthlyPrintService {
       console.log(`📊 PRINT SERVICE - Trovati ${standbyData.length} giorni standby`);
       
       // 4. Calcoli aggregati mensili - usa calculateMonthlyStats
-      const monthlyCalculations = this.calculateMonthlyStats(workEntries);
+  const monthlyCalculations = this.calculateMonthlyStats(workEntries, currentSettings);
       console.log(`📊 PRINT SERVICE - Calcoli mensili completati`);
       
       return {
@@ -48,7 +48,7 @@ class MonthlyPrintService {
   }
   
   // 📊 CALCOLA TOTALI MENSILI REALI - INTEGRAZIONE CALCULATIONSERVICE
-  static calculateMonthlyStats(workEntries) {
+  static calculateMonthlyStats(workEntries, settings) {
     console.log(`📊 PRINT SERVICE - Calcolo totali reali per ${workEntries.length} inserimenti`);
     
     let totalHours = 0;
@@ -75,8 +75,19 @@ class MonthlyPrintService {
         const workHours = this.calculateWorkHours(entry);
         const travel = this.calculateTravelHours(entry);
         
-        // � SE total_earnings è 0, prova a ricalcolare
+        // Punto di partenza: valore DB
         let entryEarnings = parseFloat(entry.total_earnings || 0);
+
+        // Preferenza: se giorno speciale senza ore e toggle OFF, forza a 0
+        try {
+          const isSpecialDayType = ['ferie','malattia','permesso','riposo','festivo'].includes(String(entry.day_type || '').toLowerCase());
+          const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
+          if (isSpecialDayType && (workHours + travel) === 0 && !showEffective) {
+            entryEarnings = 0;
+          }
+        } catch (prefErr) {
+          console.warn('MonthlyPrintService_old preferenza non disponibile, continuo con fallback:', prefErr?.message);
+        }
         
         if (entryEarnings === 0 && (workHours > 0 || travel > 0)) {
           console.log(`🔧 RICALCOLO necessario per ${entry.date} - earnings erano 0`);
@@ -104,7 +115,7 @@ class MonthlyPrintService {
         const date = new Date(entry.date);
         const dayName = date.toLocaleDateString('it-IT', { weekday: 'long' });
         const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-        const isHoliday = entry.day_type === 'festivo';
+  const isHoliday = String(entry.day_type || '').toLowerCase() === 'festivo';
         
         console.log(`📊 DEBUG ENTRY ${entry.date} (${dayName}):`, {
           workHours: workHours.toFixed(1),
@@ -266,6 +277,7 @@ class MonthlyPrintService {
         ${this.generateHeader(monthNames[month - 1], year)}
         ${this.generateContractInfo(settings)}
         ${this.generateMonthlySummary(monthlyCalculations)}
+        ${this.generateExtraEarningsSection(workEntries, settings, monthlyCalculations)}
         ${this.generateDailyEntries(workEntries, settings)}
         ${this.generateStandbyCalendar(standbyData)}
         ${this.generateDetailedBreakdown(monthlyCalculations)}
@@ -273,6 +285,69 @@ class MonthlyPrintService {
       </body>
       </html>
     `;
+  }
+
+  // 📅 Calcola giorni feriali lavorati (lun-ven, esclusi festivi)
+  static computeWeekdaysWorked(workEntries) {
+    if (!Array.isArray(workEntries)) return 0;
+    let count = 0;
+    for (const entry of workEntries) {
+      try {
+        const dateObj = new Date(entry.date);
+        const dow = dateObj.getDay(); // 0=dom, 6=sab
+        const isWeekend = dow === 0 || dow === 6;
+        const isHoliday = String(entry.day_type || '').toLowerCase() === 'festivo';
+        if (isWeekend || isHoliday) continue;
+        const workHours = this.calculateWorkHours(entry) || 0;
+        const travel = this.calculateTravelHours(entry) || 0;
+        if ((workHours + travel) > 0) count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  // 💶 Sezione Compensi Aggiuntivi (base CCNL esclusa solo su giorni feriali)
+  static generateExtraEarningsSection(workEntries, settings, monthlyCalculations) {
+    try {
+      const totalEarnings = monthlyCalculations?.totalEarnings || 0;
+      const daysWorked = monthlyCalculations?.workingDays || 0;
+      if (totalEarnings <= 0 || daysWorked <= 0) return '';
+
+      const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+      const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+      const dailyRate = baseSalary / workingDaysInMonth;
+      const weekdaysWorked = this.computeWeekdaysWorked(workEntries);
+      const baseEarningsForWeekdays = dailyRate * weekdaysWorked;
+      const totalExtraEarnings = Math.max(0, totalEarnings - baseEarningsForWeekdays);
+
+      if (totalExtraEarnings <= 0) return '';
+
+      return `
+        <div class="section">
+          <div class="section-header">💶 Compensi Aggiuntivi</div>
+          <div class="section-content">
+            <div class="summary-grid">
+              <div class="summary-card earnings">
+                <div class="value">${formatCurrency(totalExtraEarnings)}</div>
+                <div class="label">Totale Extra (feriali: ${weekdaysWorked} gg)</div>
+              </div>
+              <div class="summary-card">
+                <div class="value">${formatCurrency(baseEarningsForWeekdays)}</div>
+                <div class="label">Base CCNL esclusa (lun-ven)</div>
+              </div>
+              <div class="summary-card">
+                <div class="value">${formatCurrency(dailyRate)}</div>
+                <div class="label">Tariffa giornaliera</div>
+              </div>
+            </div>
+            <p style="font-size:8px;color:#666;margin:6px 0 0 0;">↳ La base CCNL viene sottratta solo per i giorni feriali lavorati (lun-ven, esclusi festivi)</p>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      console.warn('Errore sezione Compensi Aggiuntivi:', e?.message);
+      return '';
+    }
   }
   
   // 🎨 STILI CSS PER STAMPA
@@ -945,6 +1020,19 @@ class MonthlyPrintService {
       console.log(`   Ore Straordinarie: ${this.formatHours(monthlyCalculations.overtimeHours || 0)}`);
       console.log(`   Giorni Lavorati: ${monthlyCalculations.workingDays || 0}`);
       console.log(`   Compenso Totale: ${formatCurrency(monthlyCalculations.totalEarnings || 0)}`);
+      try {
+        const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+        const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+        const dailyRate = baseSalary / workingDaysInMonth;
+        const weekdaysWorked = this.computeWeekdaysWorked(workEntries);
+        const baseEarningsForWeekdays = dailyRate * weekdaysWorked;
+        const totalExtraEarnings = Math.max(0, (monthlyCalculations.totalEarnings || 0) - baseEarningsForWeekdays);
+        console.log(`   Giorni feriali lavorati (lun-ven): ${weekdaysWorked}`);
+        console.log(`   Base CCNL esclusa (feriali): ${formatCurrency(baseEarningsForWeekdays)}`);
+        console.log(`   Compensi Extra (totale-base): ${formatCurrency(totalExtraEarnings)}`);
+      } catch (e) {
+        console.log('   (Nota extra non disponibile)');
+      }
     }
     
     // Log settings

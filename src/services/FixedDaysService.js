@@ -9,9 +9,10 @@ class FixedDaysService {
    * Ottieni un riepilogo dei giorni fissi per un periodo
    * @param {Date} startDate - Data inizio periodo  
    * @param {Date} endDate - Data fine periodo
+   * @param {Object} settings - Impostazioni contratto per calcolo retribuzione
    * @returns {Object} Riepilogo formattato per la Dashboard
    */
-  static async getFixedDaysSummary(startDate, endDate) {
+  static async getFixedDaysSummary(startDate, endDate, settings = null) {
     try {
       const startDateStr = startDate.toISOString().split('T')[0];
       const endDateStr = endDate.toISOString().split('T')[0];
@@ -42,14 +43,27 @@ class FixedDaysService {
       };
       
       // Elabora ogni entry
+      const showEffective = settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false;
+      const dailyRate = settings?.contract?.dailyRate || (settings?.contract?.monthlySalary && settings?.contract?.workingDaysPerMonth ? (settings.contract.monthlySalary / settings.contract.workingDaysPerMonth) : undefined) || 107.69;
+
       fixedDayEntries.forEach(entry => {
         const dayType = entry.day_type || entry.dayType || 'ferie';
-        // Per giorni fissi, usa total_earnings se disponibile, altrimenti calcola il giornaliero standard
+        // Per giorni fissi, usa total_earnings se disponibile e consentito, altrimenti calcola il giornaliero standard
         let earnings = parseFloat(entry.total_earnings || 0);
-        
-        // Se total_earnings è 0 ma è un giorno fisso, usa la retribuzione giornaliera standard
-        if (earnings === 0 && (entry.is_fixed_day === 1 || entry.isFixedDay === 1 || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType))) {
-          earnings = 107.69; // Retribuzione giornaliera standard dal CCNL
+
+        // Se l'utente NON vuole vedere il guadagno dei giorni speciali, forza 0 e usa placeholder in UI (la UI gestisce stringhe)
+        const isFixedType = (entry.is_fixed_day === 1 || entry.isFixedDay === 1 || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType));
+        if (!showEffective && isFixedType) {
+          earnings = 0; // La card mostrerà "—" grazie al controllo tipo stringa nella UI
+        } else {
+          // Se total_earnings è 0 ma è un giorno fisso, usa la retribuzione giornaliera configurata
+          if (earnings === 0 && isFixedType) {
+            earnings = dailyRate;
+          }
+          // Correzione festivo: se il tipo è festivo e c'è una retribuzione base salvata errata, sovrascrivi con dailyRate
+          if (dayType === 'festivo' && (!Number.isFinite(earnings) || earnings <= 0)) {
+            earnings = dailyRate;
+          }
         }
         
         summary.totalDays++;
@@ -80,6 +94,21 @@ class FixedDaysService {
       });
       
       console.log('📊 FixedDaysService: Summary calcolato:', summary);
+      // Se non si mostra l'effettivo, la UI deve visualizzare vuoto; per coerenza, convertiamo a stringa vuota i campi earnings dei fissi
+      if (!showEffective) {
+        const placeholder = '';
+        const convert = (v) => ({ days: v.days, earnings: placeholder });
+        return {
+          totalDays: summary.totalDays,
+          totalEarnings: 0,
+          vacation: convert(summary.vacation),
+          sick: convert(summary.sick),
+          permit: convert(summary.permit),
+          compensatory: convert(summary.compensatory),
+          holiday: convert(summary.holiday)
+        };
+      }
+
       return summary;
       
     } catch (error) {

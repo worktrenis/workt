@@ -347,6 +347,7 @@ class MonthlyPrintService {
         ${this.generateHeader(monthNames[month - 1], year)}
         ${this.generateContractInfo(settings)}
         ${this.generateMonthlySummary(monthlyCalculations)}
+  ${this.generateExtraEarningsSection(monthlyCalculations, settings, workEntries)}
         ${await this.generateDailyEntries(workEntries, settings, standbyData)}
         ${this.generateStandbyCalendar(standbyData)}
         ${this.generateDetailedBreakdown(monthlyCalculations)}
@@ -687,6 +688,94 @@ class MonthlyPrintService {
         }
       </style>
     `;
+  }
+
+  // 🗓️ Calcola i giorni feriali effettivamente lavorati (lun–ven, esclusi festivi)
+  static computeWeekdaysWorked(workEntries) {
+    try {
+      const seen = new Set();
+      let count = 0;
+      for (const entry of workEntries || []) {
+        if (!entry?.date) continue;
+        const d = new Date(entry.date);
+        const dow = d.getDay(); // 0=dom, 6=sab
+        const isWeekday = dow >= 1 && dow <= 5;
+        const isHoliday = entry.day_type === 'festivo';
+        if (!isWeekday || isHoliday) continue;
+
+        // Considera lavorato se ci sono ore lavoro o viaggio (>0)
+        const workH = this.calculateWorkHours(entry);
+        const travelH = this.calculateTravelHours(entry);
+        const worked = (workH + travelH) > 0;
+
+        if (worked) {
+          const key = entry.date;
+          if (!seen.has(key)) {
+            seen.add(key);
+            count += 1;
+          }
+        }
+      }
+      console.log(`📅 PDF: Giorni feriali lavorati (lun–ven, esclusi festivi) = ${count}`);
+      return count;
+    } catch (e) {
+      console.warn('⚠️ computeWeekdaysWorked errore:', e);
+      return 0;
+    }
+  }
+
+  // ➕ Sezione “Compensi Aggiuntivi” (totale meno base CCNL solo feriali lavorati)
+  static generateExtraEarningsSection(calculations, settings, workEntries) {
+    try {
+      if (!calculations || !settings) return '';
+      const contract = settings.contract || {};
+      const monthlySalary = parseFloat(contract.monthlySalary) || 2800;
+      const dailyRate = parseFloat(contract.dailyRate) || (monthlySalary / 26);
+      const totalEarnings = parseFloat(calculations.totalEarnings || 0);
+      const weekdaysWorked = this.computeWeekdaysWorked(workEntries);
+      const baseEarnings = weekdaysWorked * dailyRate;
+      const extra = totalEarnings - baseEarnings;
+
+      console.log('📄 PDF Extra (nuovo):', {
+        weekdaysWorked,
+        dailyRate,
+        baseEarnings,
+        totalEarnings,
+        extra
+      });
+
+      return `
+        <div class="section">
+          <div class="section-header">💶 Compensi Aggiuntivi (Base CCNL esclusa solo feriali)</div>
+          <div class="section-content">
+            <div class="summary-grid" style="grid-template-columns: repeat(4, 1fr);">
+              <div class="summary-card">
+                <div class="value">${weekdaysWorked}</div>
+                <div class="label">Gg feriali lavorati</div>
+              </div>
+              <div class="summary-card">
+                <div class="value">${formatCurrency(dailyRate)}</div>
+                <div class="label">Tariffa giornaliera</div>
+              </div>
+              <div class="summary-card">
+                <div class="value">${formatCurrency(baseEarnings)}</div>
+                <div class="label">Base CCNL esclusa</div>
+              </div>
+              <div class="summary-card earnings">
+                <div class="value">${formatCurrency(extra)}</div>
+                <div class="label">Totale Extra</div>
+              </div>
+            </div>
+            <div style="font-size:8px;color:#666;margin-top:6px;">
+              Nota: la base CCNL è sottratta solo per i giorni lavorativi feriali (lun–ven) con ore di lavoro/viaggio, esclusi i festivi.
+            </div>
+          </div>
+        </div>
+      `;
+    } catch (e) {
+      console.warn('⚠️ generateExtraEarningsSection errore:', e);
+      return '';
+    }
   }
   
   // 📋 HEADER DEL DOCUMENTO

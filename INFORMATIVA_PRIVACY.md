@@ -27,7 +27,137 @@ Questa informativa può essere aggiornata per riflettere modifiche normative o f
 Questa applicazione rispetta la privacy degli utenti e tratta i dati personali secondo il GDPR e la normativa italiana.
 
 ## Tipologia di dati trattati
-- **Dati inseriti manualmente**: orari di lavoro, viaggi, reperibilità, rimborsi, ferie, ecc.
+- # 🔒 Informativa Privacy - WorkT v1.3.0
+
+**Tracker Ore Lavoro con Calcoli CCNL Automatici**
+
+Questa applicazione rispetta la privacy degli utenti e tratta i dati personali secondo il GDPR e la normativa italiana sulla protezione dei dati.
+
+## 📱 Titolare del Trattamento
+**Sviluppatore Indipendente** - Applicazione per uso personale
+- App distribuita tramite store ufficiali
+- Supporto attraverso canali store app
+
+## 📊 Tipologia di Dati Trattati
+
+### Dati Principali
+- **Ore lavorate**: orari inizio/fine, pause, straordinari
+- **Reperibilità**: giorni, orari, interventi
+- **Viaggi**: trasferte, rimborsi chilometrici
+- **Configurazioni CCNL**: livello contrattuale, retribuzioni personalizzabili
+- **Impostazioni app**: preferenze notifiche, backup, tema
+
+### Dati Tecnici
+- **Database locale**: SQLite memorizzato sul dispositivo
+- **Backup automatici**: file JSON configurabili dall'utente
+- **Notifiche temporizzate**: promemoria e alert di sistema
+- **Log applicazione**: per debugging e miglioramenti (solo locali)
+
+## 🎯 Finalità del Trattamento
+- **Calcolo automatico stipendio** secondo CCNL Metalmeccanico PMI
+- **Tracking ore lavoro** con gestione straordinari e reperibilità
+- **Generazione PDF** per reportistica reperibilità
+- **Backup dati** per sicurezza e portabilità
+- **Notifiche intelligenti** per promemoria personalizzati
+
+## ⚖️ Base Giuridica
+**Consenso dell'utente** (Art. 6.1.a GDPR) per applicazione di produttività personale
+
+## 🛡️ Sicurezza e Conservazione
+
+### Archiviazione Locale
+- **Tutti i dati memorizzati esclusivamente sul dispositivo**
+- **Nessun trasferimento automatico a server esterni**
+- **Database SQLite protetto dalle sandbox app**
+- **Backup configurabili**: memoria app, percorso personalizzato, cloud (manuale)
+
+### Controllo Utente Completo
+- **Visualizzazione**: accesso a tutti i dati tramite interfaccia app
+- **Modifica**: editing completo di qualsiasi informazione
+- **Eliminazione**: cancellazione selettiva o totale dati
+- **Esportazione**: backup JSON completo per portabilità
+
+## 🔄 Funzionalità Avanzate v1.3.0
+
+### Sistema Backup Ibrido
+- **Backup nativi**: funzionano anche con app chiusa (build native)
+- **Backup JavaScript**: fallback per compatibilità Expo
+- **Destinazioni multiple**: memoria app, percorso personalizzato, cloud manuale
+- **Notifiche configurabili**: informano sui backup completati
+
+### Aggiornamenti OTA
+- **Over-The-Air updates**: aggiornamenti automatici codice app
+- **Distingue aggiornamenti**: build native vs OTA
+- **Popup informativi**: notificano novità e miglioramenti
+- **Privacy-first**: nessuna telemetria o tracking utente
+
+### Sistema Notifiche Intelligenti
+- **Notifiche locali**: generate e gestite completamente sul dispositivo
+- **Configurazione granulare**: personalizzazione completa timing e contenuti
+- **Promemoria multipli**: reperibilità, backup, inserimento dati
+- **Nessun server esterno**: zero comunicazione con servizi terzi
+
+## 📱 Modalità Multiutente (Futura)
+L'app è attualmente mono-utente. In caso di implementazione multiutente:
+- **Separazione dati**: ogni utente avrà database isolato
+- **Privacy individuale**: nessuna condivisione dati tra utenti
+- **Aggiornamento informativa**: questa sezione verrà espansa
+
+## ✅ Diritti GDPR dell'Utente
+
+### Accesso (Art. 15)
+- **Visualizzazione completa**: tutti i dati accessibili tramite interfaccia app
+- **Export JSON**: backup completo in formato standard leggibile
+
+### Rettifica (Art. 16)
+- **Modifica libera**: editing di qualsiasi dato inserito
+- **Correzione immediata**: modifiche applicate in tempo reale
+
+### Cancellazione (Art. 17)
+- **Eliminazione selettiva**: cancellazione singoli elementi
+- **Reset completo**: pulizia totale database dalle impostazioni
+- **Rimozione backup**: controllo completo file di backup
+
+### Portabilità (Art. 20)
+- **Export standard**: backup JSON strutturato e leggibile
+- **Import universale**: ripristino dati su nuove installazioni
+- **Condivisione libera**: export tramite sistema condivisione OS
+
+### Opposizione (Art. 21)
+- **Disattivazione funzionalità**: controllo granulare su notifiche, backup automatici
+- **Configurazione flessibile**: adattamento app alle preferenze privacy
+
+## 🔧 Gestione Consenso
+- **Utilizzo app = consenso**: l'uso dell'applicazione costituisce consenso
+- **Revoca libera**: disinstallazione app = revoca completa consenso
+- **Controllo granulare**: disattivazione selettiva funzionalità
+
+## 📞 Supporto e Contatti
+- **Support store**: assistenza attraverso canali ufficiali store app
+- **Documentazione**: guide complete integrate nell'app
+- **Community**: forum e discussioni attraverso piattaforme store
+
+## 📅 Aggiornamenti Informativa
+Questa informativa viene aggiornata per riflettere:
+- **Nuove funzionalità** aggiunte all'app
+- **Modifiche normative** GDPR e privacy
+- **Miglioramenti sicurezza** e protezione dati
+
+**Versione corrente**: 1.3.0  
+**Ultimo aggiornamento**: Agosto 2025  
+**Prossima revisione**: In base agli aggiornamenti app
+
+---
+
+## 🎯 Riassunto Privacy
+✅ **Dati solo locali** - mai inviati a server esterni  
+✅ **Controllo completo utente** - accesso, modifica, cancellazione  
+✅ **Backup configurabili** - destinazioni scelte dall'utente  
+✅ **Notifiche locali** - zero tracking, massima privacy  
+✅ **Aggiornamenti trasparenti** - popup informativi su novità  
+✅ **GDPR compliant** - tutti i diritti rispettati nativamente  
+
+**WorkT rispetta la tua privacy: il tuo lavoro, i tuoi dati, il tuo controllo.**
 - **Preferenze utente**: impostazioni di contratto, notifiche, backup, ecc.
 - **Backup locali**: i dati vengono salvati solo sul dispositivo dell’utente, in formato locale (SQLite e file JSON).
 

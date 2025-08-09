@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -18,12 +18,12 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatDate, formatCurrency } from '../utils';
 import { useSettings, useCalculationService } from '../hooks';
 import { useTheme } from '../contexts/ThemeContext';
+import RealPayslipCalculator from '../services/RealPayslipCalculator';
 import DatabaseService from '../services/DatabaseService';
 import DataUpdateService from '../services/DataUpdateService';
 import FixedDaysService from '../services/FixedDaysService';
 import MonthlyPrintService from '../services/MonthlyPrintService';
 import { createWorkEntryFromData } from '../utils/earningsHelper';
-import { RealPayslipCalculator } from '../services/RealPayslipCalculator';
 import { isItalianHoliday } from '../constants/holidays';
 
 const { width } = Dimensions.get('window');
@@ -105,9 +105,54 @@ const DashboardScreen = ({ navigation, route }) => {
         return baseStyles;
     }
   };
+
+  // 🔧 FUNZIONE HELPER PER OTTENERE TARIFFE REALI INDENNITÀ REPERIBILITÀ
+  const getStandbyRatesFromSettings = (settings) => {
+    // Valori CCNL di default (stessi del CalculationService)
+    const IND_16H_FERIALE = 4.22;
+    const IND_24H_FERIALE = 7.03;
+    const IND_24H_FESTIVO = 10.63;
+    
+    if (!settings?.standbySettings?.enabled) {
+      return {
+        feriale: IND_24H_FERIALE,
+        sabato: IND_24H_FERIALE,
+        festivo: IND_24H_FESTIVO
+      };
+    }
+    
+    // Usa impostazioni personalizzate se disponibili
+    const customFeriale16 = settings.standbySettings.customFeriale16;
+    const customFeriale24 = settings.standbySettings.customFeriale24;
+    const customFestivo = settings.standbySettings.customFestivo;
+    const allowanceType = settings.standbySettings.allowanceType || '24h';
+    const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+    
+    // Calcola tariffa feriale
+    let ferialeRate;
+    if (allowanceType === '16h') {
+      ferialeRate = customFeriale16 || IND_16H_FERIALE;
+    } else {
+      ferialeRate = customFeriale24 || IND_24H_FERIALE;
+    }
+    
+    // Calcola tariffa festivo
+    const festivoRate = customFestivo || IND_24H_FESTIVO;
+    
+    // Sabato: segue le regole feriali o festive a seconda dell'impostazione
+    const sabatoRate = saturdayAsRest ? festivoRate : ferialeRate;
+    
+    return {
+      feriale: ferialeRate,
+      sabato: sabatoRate,
+      festivo: festivoRate
+    };
+  };
   
   const [currentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date()); // Data per navigazione mesi
+  const lastVisitedRef = useRef(null);
+  const selectedDateRef = useRef(new Date());
   const [workEntries, setWorkEntries] = useState([]);
   const [monthlyAggregated, setMonthlyAggregated] = useState({});
   const [loading, setLoading] = useState(true);
@@ -118,6 +163,7 @@ const DashboardScreen = ({ navigation, route }) => {
   const [completionLoading, setCompletionLoading] = useState(true);
   const [isDailyBreakdownExpanded, setIsDailyBreakdownExpanded] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false); // Flag per evitare calcoli multipli
+  const [standbyRates, setStandbyRates] = useState({ feriale: 7.03, sabato: 7.03, festivo: 10.63 }); // Tariffe reperibilità
 
   // � Debug: monitora cambiamenti selectedDate
   useEffect(() => {
@@ -134,7 +180,8 @@ const DashboardScreen = ({ navigation, route }) => {
       // Forza ricaricamento impostazioni e ricalcolo
       const refreshData = async () => {
         await refreshSettings();
-        await loadData();
+        const target = lastVisitedRef.current ? new Date(lastVisitedRef.current) : selectedDate;
+        await loadData(target);
       };
       
       refreshData();
@@ -162,6 +209,8 @@ const DashboardScreen = ({ navigation, route }) => {
       if (entryYear === currentYear && entryMonth === currentMonth) {
         console.log('🔄 DASHBOARD - Aggiornamento per mese corrente, ricarico dati...');
         loadData();
+      } else {
+        console.log('⏭️ DASHBOARD - Update ricevuto per', entryMonth, '/', entryYear, 'ma la dashboard è su', currentMonth, '/', currentYear, '- nessun refresh');
       }
     };
 
@@ -172,17 +221,37 @@ const DashboardScreen = ({ navigation, route }) => {
     };
   }, [selectedDate]);
 
-  // 🔄 AGGIORNAMENTO AUTOMATICO: Ricarica dati ogni volta che la Dashboard viene aperta/focalizzata
+  // Mantieni in un ref la selectedDate per uso in effetti senza dipendenze
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
+
+  // 🔄 AGGIORNAMENTO AUTOMATICO: Ricarica dati quando la Dashboard torna in focus (una volta per focus)
   useFocusEffect(
     useCallback(() => {
-      console.log('🔄 DASHBOARD - Screen focalizzato, ricarico dati automaticamente...');
-      loadData();
-    }, [selectedDate]) // Dipende da selectedDate per ricaricare quando cambia il mese
+      const currentSelected = selectedDateRef.current;
+      const keepDate = lastVisitedRef.current ? new Date(lastVisitedRef.current) : currentSelected;
+      console.log('🔄 DASHBOARD - Screen focalizzato, ricarico dati per:', formatMonthYear(keepDate));
+      // Se differisce, aggiorna selectedDate (triggererà il loadData nell'useEffect dedicato)
+      if (
+        keepDate.getMonth() !== currentSelected.getMonth() ||
+        keepDate.getFullYear() !== currentSelected.getFullYear()
+      ) {
+        setSelectedDate(keepDate);
+      } else {
+        // Altrimenti ricarica direttamente i dati del mese mantenuto
+        loadData(keepDate);
+      }
+      // Aggiorna anche le impostazioni
+      refreshSettings();
+    }, [])
   );
 
   // 🔄 Ricarica dati quando cambia il mese selezionato
   useEffect(() => {
     console.log('🔄 Dashboard: Ricarico dati per nuovo mese:', formatMonthYear(selectedDate));
+    // Memorizza l'ultimo mese visitato per ripristino al ritorno
+    lastVisitedRef.current = new Date(selectedDate);
     loadData();
   }, [selectedDate]);
 
@@ -202,10 +271,11 @@ const DashboardScreen = ({ navigation, route }) => {
   }, [settingsLoading, settings]);
 
   // Carica dati dal database
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (dateOverride = null) => {
     try {
-      const year = selectedDate.getFullYear();
-      const month = selectedDate.getMonth() + 1;
+      const targetDate = dateOverride instanceof Date ? dateOverride : selectedDate;
+      const year = targetDate.getFullYear();
+      const month = targetDate.getMonth() + 1;
       let entries = await DatabaseService.getWorkEntries(year, month);
       // Ordina sempre per data crescente (dal giorno 1 in basso)
       entries = entries.sort((a, b) => new Date(a.date) - new Date(b.date));
@@ -224,43 +294,12 @@ const DashboardScreen = ({ navigation, route }) => {
   useEffect(() => {
     const doAggregation = async () => {
       if (!settingsLoading && settings) {
-        if (workEntries.length > 0) {
-          await calculateMonthlyAggregation(workEntries);
-        } else {
-          // Reset aggregazione a valori zero quando non ci sono entries
-          console.log('🔄 Dashboard: Nessuna entry trovata, resetto aggregazione a zero');
-          setMonthlyAggregated({
-            daysWorked: 0,
-            totalHours: 0,
-            totalEarnings: 0,
-            ordinary: { 
-              total: 0, 
-              hours: 0, 
-              earnings: 0,
-              breakdown: { day: 0, night: 0, overtime: 0, nightOvertime: 0 }
-            },
-            standby: { 
-              totalEarnings: 0,
-              workHours: {},
-              travelHours: {},
-              allowanceHours: {}
-            },
-            allowances: { 
-              travel: 0, 
-              meal: 0, 
-              standby: 0 
-            },
-            dailyBreakdown: [],
-            workPattern: {
-              totalWorkDays: 0,
-              averageHoursPerDay: 0,
-              mostWorkedDay: null,
-              workDaysDistribution: {}
-            }
-          });
-        }
+        // Chiama sempre calculateMonthlyAggregation, anche con array vuoto
+        // La funzione sa gestire correttamente le indennità di reperibilità anche senza work entries
+        await calculateMonthlyAggregation(workEntries);
       }
     };
+    
     doAggregation();
   }, [settingsLoading, settings, workEntries]);
 
@@ -273,7 +312,8 @@ const DashboardScreen = ({ navigation, route }) => {
       
       // Carica dati giorni fissi usando FixedDaysService
       if (FixedDaysService && typeof FixedDaysService.getFixedDaysSummary === 'function') {
-        const data = await FixedDaysService.getFixedDaysSummary(startDate, endDate);
+        // Passa le impostazioni correnti così da applicare tariffa giornaliera corretta e preferenze di visualizzazione
+        const data = await FixedDaysService.getFixedDaysSummary(startDate, endDate, settings);
         setFixedDaysData(data);
       } else {
         console.warn('FixedDaysService.getFixedDaysSummary non disponibile, uso dati mock');
@@ -302,7 +342,7 @@ const DashboardScreen = ({ navigation, route }) => {
     } finally {
       setFixedDaysLoading(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, settings]);
 
   // Carica dati dei giorni in completamento
   const loadCompletionData = useCallback(async () => {
@@ -406,6 +446,11 @@ const DashboardScreen = ({ navigation, route }) => {
     console.log('🔧 DASHBOARD DEBUG - safeSettings travelHoursSetting:', safeSettings.travelHoursSetting);
     console.log('🔧 DASHBOARD DEBUG - safeSettings pasti:', JSON.stringify(safeSettings.mealAllowances, null, 2));
     console.log('🔧 DASHBOARD DEBUG - safeSettings trasferta:', JSON.stringify(safeSettings.travelAllowance, null, 2));
+
+    // 🔧 CALCOLA TARIFFE REALI INDENNITÀ REPERIBILITÀ
+    const calculatedStandbyRates = getStandbyRatesFromSettings(safeSettings);
+    console.log('🔧 DASHBOARD DEBUG - tariffe reperibilità:', calculatedStandbyRates);
+    setStandbyRates(calculatedStandbyRates);
 
     // 🔄 CALCOLO AUTOMATICO INDENNITÀ DI REPERIBILITÀ DAL CALENDARIO
     const year = selectedDate.getFullYear();
@@ -689,34 +734,42 @@ const DashboardScreen = ({ navigation, route }) => {
           }
         }
 
+        // Calcola le ore totali giornaliere una sola volta, per evitare errori
+        const dailyHours = Object.values(breakdown.ordinary?.hours || {}).reduce((a, b) => a + b, 0) +
+                          Object.values(breakdown.standby?.workHours || {}).reduce((a, b) => a + b, 0) +
+                          Object.values(breakdown.standby?.travelHours || {}).reduce((a, b) => a + b, 0);
+
         // Salva il breakdown giornaliero nella mappa
         aggregated.dailyBreakdowns.set(entry.date, {
           breakdown,
           workEntry,
-          dailyHours: Object.values(breakdown.ordinary?.hours || {}).reduce((a, b) => a + b, 0) +
-                     Object.values(breakdown.standby?.workHours || {}).reduce((a, b) => a + b, 0) +
-                     Object.values(breakdown.standby?.travelHours || {}).reduce((a, b) => a + b, 0),
+          dailyHours,
           totalEarnings: breakdown.totalEarnings || 0
         });
 
         // Aggrega totale
         aggregated.totalEarnings += breakdown.totalEarnings || 0;
-        aggregated.daysWorked += 1;
-
-        // Calcola ore giornaliere per analytics
-        const dailyHours = Object.values(breakdown.ordinary?.hours || {}).reduce((a, b) => a + b, 0) +
-                          Object.values(breakdown.standby?.workHours || {}).reduce((a, b) => a + b, 0) +
-                          Object.values(breakdown.standby?.travelHours || {}).reduce((a, b) => a + b, 0);
         
-        aggregated.analytics.dailyHours.push(dailyHours);
-        aggregated.analytics.dailyEarnings.push(breakdown.totalEarnings || 0);
+        // ✅ CORREZIONE: Non conteggiare i giorni fissi (ferie, malattia, ecc.) come giorni lavorati
+        const isFixedDay = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(workEntry.dayType);
         
-        // Aggiorna min/max ore giornaliere
-        if (dailyHours > aggregated.analytics.maxDailyHours) {
-          aggregated.analytics.maxDailyHours = dailyHours;
-        }
-        if (dailyHours < aggregated.analytics.minDailyHours && dailyHours > 0) {
-          aggregated.analytics.minDailyHours = dailyHours;
+        if (!isFixedDay) {
+          // Solo i giorni realmente lavorativi vengono conteggiati
+          aggregated.daysWorked += 1;
+          
+          // Aggiungi alle analytics solo per giorni lavorativi
+          aggregated.analytics.dailyHours.push(dailyHours);
+          aggregated.analytics.dailyEarnings.push(breakdown.totalEarnings || 0);
+          
+          // Aggiorna min/max ore giornaliere (solo per giorni lavorativi)
+          if (dailyHours > aggregated.analytics.maxDailyHours) {
+            aggregated.analytics.maxDailyHours = dailyHours;
+          }
+          if (dailyHours < aggregated.analytics.minDailyHours && dailyHours > 0) {
+            aggregated.analytics.minDailyHours = dailyHours;
+          }
+        } else {
+          console.log(`📅 Dashboard: Giorno fisso escluso dal conteggio lavorativo: ${entry.date} (${workEntry.dayType})`);
         }
 
         // Analizza tipo di giornata
@@ -1527,6 +1580,34 @@ const DashboardScreen = ({ navigation, route }) => {
     }
     delete aggregated.dailyBreakdowns; // Rimuovi la Map originale
 
+    // 💰 CALCOLO NETTO MENSILE - Aggiungi calcolo netto per completezza dashboard
+    if (aggregated.totalEarnings > 0) {
+      const payslipSettings = {
+        method: settings?.netCalculation?.method || 'irpef',
+        customDeductionRate: settings?.netCalculation?.customDeductionRate || 32
+      };
+      
+      console.log('🔍 Dashboard - Calcolo netto per:', aggregated.totalEarnings, 'con impostazioni:', payslipSettings);
+      
+      const netCalculation = RealPayslipCalculator.calculateNetFromGross(aggregated.totalEarnings, payslipSettings);
+      
+      // Aggiungi i campi del netto al summary
+      aggregated.netTotalEarnings = netCalculation.net;
+      aggregated.totalDeductions = netCalculation.totalDeductions;
+      aggregated.deductionRate = netCalculation.deductionRate;
+      
+      console.log('🔍 Dashboard - Netto calcolato:', {
+        lordo: aggregated.totalEarnings,
+        netto: aggregated.netTotalEarnings,
+        trattenute: aggregated.totalDeductions,
+        percentuale: (aggregated.deductionRate * 100).toFixed(1) + '%'
+      });
+    } else {
+      aggregated.netTotalEarnings = 0;
+      aggregated.totalDeductions = 0;
+      aggregated.deductionRate = 0;
+    }
+
     setMonthlyAggregated(aggregated);
     console.log('🔧 DASHBOARD - FINE calculateMonthlyAggregation');
     console.log('🔧 DASHBOARD - Totale finale calcolato: €' + (aggregated.totalEarnings || 0).toFixed(2));
@@ -1762,11 +1843,18 @@ const DashboardScreen = ({ navigation, route }) => {
                   {formatSafeHours(totalRegularHours)}
                 </Text>
               </View>
-              <Text style={styles.breakdownDetail}>
-                {ordinary.hours?.lavoro_giornaliera > 0 && `• Lavoro: ${formatSafeHours(ordinary.hours.lavoro_giornaliera)}`}
-                {ordinary.hours?.lavoro_giornaliera > 0 && ordinary.hours?.viaggio_giornaliera > 0 && ' '}
-                {ordinary.hours?.viaggio_giornaliera > 0 && `• Viaggio: ${formatSafeHours(ordinary.hours.viaggio_giornaliera)}`}
-              </Text>
+              {(() => {
+                const parts = [];
+                if ((ordinary.hours?.lavoro_giornaliera || 0) > 0) {
+                  parts.push(`• Lavoro: ${formatSafeHours(ordinary.hours.lavoro_giornaliera)}`);
+                }
+                if ((ordinary.hours?.viaggio_giornaliera || 0) > 0) {
+                  parts.push(`• Viaggio: ${formatSafeHours(ordinary.hours.viaggio_giornaliera)}`);
+                }
+                return (
+                  <Text style={styles.breakdownDetail}>{parts.join(' ')}</Text>
+                );
+              })()}
               <Text style={styles.breakdownDetail}>
                 💰 Guadagno: Solo dalla tariffa giornaliera CCNL
               </Text>
@@ -2399,117 +2487,52 @@ const DashboardScreen = ({ navigation, route }) => {
               {/* Feriale */}
               {allowances.standbyByType?.feriale?.amount > 0 && (
                 <Text style={styles.breakdownDetail}>
-                  Feriale (7,03€/giorno): €{allowances.standbyByType.feriale.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.feriale.days} gg)
+                  Feriale ({standbyRates.feriale.toFixed(2).replace('.', ',')}€/giorno): €{allowances.standbyByType.feriale.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.feriale.days} gg)
                 </Text>
               )}
               
               {/* Sabato */}
               {allowances.standbyByType?.sabato?.amount > 0 && (
                 <Text style={styles.breakdownDetail}>
-                  Sabato (7,03€/giorno): €{allowances.standbyByType.sabato.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.sabato.days} gg)
+                  Sabato ({standbyRates.sabato.toFixed(2).replace('.', ',')}€/giorno): €{allowances.standbyByType.sabato.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.sabato.days} gg)
                 </Text>
               )}
               
               {/* Festivo */}
               {allowances.standbyByType?.festivo?.amount > 0 && (
                 <Text style={styles.breakdownDetail}>
-                  Festivo (10,63€/giorno): €{allowances.standbyByType.festivo.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.festivo.days} gg)
+                  Festivo ({standbyRates.festivo.toFixed(2).replace('.', ',')}€/giorno): €{allowances.standbyByType.festivo.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.festivo.days} gg)
                 </Text>
               )}
             </View>
           </View>
         )}
 
-        {/* Rimborso pasti */}
-        {allowances.meal > 0 && (
+        {/* Ore lavoro senza viaggio extra */}
+        {monthlyAggregated?.totalHours && monthlyAggregated?.ordinary?.hours?.viaggio_extra && 
+         ((monthlyAggregated.totalHours - (monthlyAggregated.ordinary.hours.viaggio_extra || 0)) > 0) && (
           <View style={styles.breakdownItem}>
             <View style={styles.breakdownRow}>
-              <Text style={styles.breakdownLabel}>Rimborso pasti</Text>
-              <Text style={styles.breakdownValue}>{formatSafeAmount(allowances.meal)}</Text>
+              <Text style={styles.breakdownLabel}>Ore senza viaggio extra</Text>
+              <Text style={styles.breakdownValue}>
+                {formatSafeHours(
+                  (monthlyAggregated.totalHours || 0) - (monthlyAggregated.ordinary.hours.viaggio_extra || 0)
+                )}
+              </Text>
             </View>
             <Text style={styles.breakdownDetail}>
-              {allowances.mealDays || 0} giorni con rimborsi pasti (voce non tassabile)
+              Tutte le ore di lavoro, viaggio ordinario e reperibilità (esclude solo viaggio extra)
             </Text>
             
-            {/* Suddivisione per pranzo e cena */}
+            {/* Suddivisione semplificata */}
             <View style={styles.mealDetail}>
-              <Text style={styles.breakdownDetail}>Suddivisione per tipologia:</Text>
+              <Text style={styles.breakdownDetail}>Composizione:</Text>
               
-              {/* Pranzo */}
-              {(meals.lunch.voucher > 0 || meals.lunch.cash > 0 || meals.lunch.specific > 0) && (
-                <View style={styles.mealSubSection}>
-                  <Text style={styles.breakdownSubDetail}>- Pranzo:</Text>
-                  {meals.lunch.specific > 0 && (
-                    <Text style={styles.breakdownSubDetail}>
-                      {formatSafeAmount(meals.lunch.specific)} (contanti specifici) - {meals.lunch.specificDays} giorni
-                    </Text>
-                  )}
-                  {meals.lunch.voucher > 0 && (
-                    <Text style={styles.breakdownSubDetail}>
-                      {formatSafeAmount(meals.lunch.voucher)} (buoni {
-                        (() => {
-                          if (monthlyAggregated?.settings?.mealAllowances?.lunch?.voucherAmount && meals.lunch.voucherDays > 0) {
-                            const unitValue = monthlyAggregated.settings.mealAllowances.lunch.voucherAmount;
-                            return `${unitValue.toFixed(2).replace('.', ',')}€/giorno`;
-                          }
-                          return '8,00€/giorno';
-                        })()
-                      }) - {meals.lunch.voucherDays} giorni
-                    </Text>
-                  )}
-                  {meals.lunch.cash > 0 && (
-                    <Text style={styles.breakdownSubDetail}>
-                      {formatSafeAmount(meals.lunch.cash)} (contanti {
-                        (() => {
-                          if (monthlyAggregated?.settings?.mealAllowances?.lunch?.cashAmount && meals.lunch.cashDays > 0) {
-                            const unitValue = monthlyAggregated.settings.mealAllowances.lunch.cashAmount;
-                            return `${unitValue.toFixed(2).replace('.', ',')}€/giorno`;
-                          }
-                          return '4,00€/giorno';
-                        })()
-                      }) - {meals.lunch.cashDays} giorni
-                    </Text>
-                  )}
-                </View>
-              )}
-              
-              {/* Cena */}
-              {(meals.dinner.voucher > 0 || meals.dinner.cash > 0 || meals.dinner.specific > 0) && (
-                <View style={styles.mealSubSection}>
-                  <Text style={styles.breakdownSubDetail}>- Cena:</Text>
-                  {meals.dinner.specific > 0 && (
-                    <Text style={styles.breakdownSubDetail}>
-                      {formatSafeAmount(meals.dinner.specific)} (contanti specifici) - {meals.dinner.specificDays} giorni
-                    </Text>
-                  )}
-                  {meals.dinner.voucher > 0 && (
-                    <Text style={styles.breakdownSubDetail}>
-                      {formatSafeAmount(meals.dinner.voucher)} (buoni {
-                        (() => {
-                          if (monthlyAggregated?.settings?.mealAllowances?.dinner?.voucherAmount && meals.dinner.voucherDays > 0) {
-                            const unitValue = monthlyAggregated.settings.mealAllowances.dinner.voucherAmount;
-                            return `${unitValue.toFixed(2).replace('.', ',')}€/giorno`;
-                          }
-                          return '8,00€/giorno';
-                        })()
-                      }) - {meals.dinner.voucherDays} giorni
-                    </Text>
-                  )}
-                  {meals.dinner.cash > 0 && (
-                    <Text style={styles.breakdownSubDetail}>
-                      {formatSafeAmount(meals.dinner.cash)} (contanti {
-                        (() => {
-                          if (monthlyAggregated?.settings?.mealAllowances?.dinner?.cashAmount && meals.dinner.cashDays > 0) {
-                            const unitValue = monthlyAggregated.settings.mealAllowances.dinner.cashAmount;
-                            return `${unitValue.toFixed(2).replace('.', ',')}€/giorno`;
-                          }
-                          return '4,00€/giorno';
-                        })()
-                      }) - {meals.dinner.cashDays} giorni
-                    </Text>
-                  )}
-                </View>
-              )}
+              <View style={styles.mealSubSection}>
+                <Text style={styles.breakdownSubDetail}>• Ore totali: {formatSafeHours(monthlyAggregated.totalHours || 0)}</Text>
+                <Text style={styles.breakdownSubDetail}>• Viaggio extra escluso: -{formatSafeHours(monthlyAggregated.ordinary.hours.viaggio_extra || 0)}</Text>
+                <Text style={styles.breakdownSubDetail}>• Risultato netto: {formatSafeHours((monthlyAggregated.totalHours || 0) - (monthlyAggregated.ordinary.hours.viaggio_extra || 0))}</Text>
+              </View>
             </View>
           </View>
         )}
@@ -2517,15 +2540,35 @@ const DashboardScreen = ({ navigation, route }) => {
     );
   };
 
-  const renderSummaryStats = () => (
+  const renderSummaryStats = () => {
+    // Escludi i guadagni dei giorni fissi dalla sezione "Retribuzione" per evitare doppio conteggio con lo stipendio CCNL
+    const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
+    const fixedSum = (() => {
+      if (!showEffective) return 0;
+      try {
+        const getNum = (v) => (typeof v === 'number' ? v : (parseFloat(v) || 0));
+        return (
+          getNum(fixedDaysData?.vacation?.earnings) +
+          getNum(fixedDaysData?.sick?.earnings) +
+          getNum(fixedDaysData?.permit?.earnings) +
+          getNum(fixedDaysData?.compensatory?.earnings) +
+          getNum(fixedDaysData?.holiday?.earnings)
+        );
+      } catch {
+        return 0;
+      }
+    })();
+    const adjustedTotalEarnings = Math.max(0, (monthlyAggregated?.totalEarnings || 0) - (fixedSum || 0));
+
+    return (
     <View style={styles.summaryCard}>
       <Text style={styles.summaryTitle}>Riepilogo {selectedDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</Text>
       
       <View style={styles.statsGrid}>
         <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Giorni lavorati</Text>
+          <Text style={styles.statLabel}>Giorni effettivi</Text>
           <Text style={styles.statValue}>{monthlyAggregated?.daysWorked || 0}</Text>
-        </View>
+  </View>
         
         <View style={styles.statItem}>
           <Text style={styles.statLabel}>Ore totali</Text>
@@ -2533,27 +2576,483 @@ const DashboardScreen = ({ navigation, route }) => {
         </View>
         
         <View style={styles.statItem}>
-          <Text style={styles.statLabel}>Rimborsi pasti</Text>
-          <Text style={styles.statValue}>{formatSafeAmount(monthlyAggregated?.allowances?.meal || 0)}</Text>
+          <Text style={styles.statLabel}>Ore senza viaggio extra</Text>
+          <Text style={styles.statValue}>
+            {formatSafeHours(
+              (monthlyAggregated?.totalHours || 0) - (monthlyAggregated?.ordinary?.hours?.viaggio_extra || 0)
+            )}
+          </Text>
         </View>
-        
+
         <View style={styles.statItem}>
           <Text style={styles.statLabel}>Indennità</Text>
           <Text style={styles.statValue}>
             {formatSafeAmount((monthlyAggregated?.allowances?.travel || 0) + (monthlyAggregated?.allowances?.standby || 0))}
           </Text>
         </View>
-      </View>
+
+  </View>
 
       <View style={styles.totalSection}>
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Totale Guadagno Mensile (Lordo)</Text>
-          <Text style={styles.totalAmount}>{formatSafeAmount(monthlyAggregated?.totalEarnings || 0)}</Text>
+        {/* 📋 RETRIBUZIONE MENSILE - Previsto vs Effettivo */}
+        <View style={[styles.educationalBreakdown, { backgroundColor: theme.colors.surface, borderRadius: 12, padding: 16, marginBottom: 16 }]}>
+          <Text style={[styles.sectionTitle, { marginBottom: 16, color: theme.colors.text }]}>Retribuzione</Text>
+          <View style={[styles.salaryRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+            <View style={styles.salaryMainRow}>
+              <Text style={[styles.salaryLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+                Stipendio CCNL ({settings?.contract?.workingDaysPerMonth || 26}gg)
+              </Text>
+              <Text style={[styles.salaryAmount, { color: theme.colors.text, fontSize: 16, fontWeight: 'bold' }]}>
+                {formatSafeAmount(settings?.contract?.monthlySalary || 2866.96)}
+              </Text>
+            </View>
+            <Text style={[styles.salaryNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+              ↳ Include festivi e riposi • Base: {formatSafeAmount((settings?.contract?.monthlySalary || 2866.96) / (settings?.contract?.workingDaysPerMonth || 26))}/giorno
+            </Text>
+          </View>
+
+          {/* Giorni lavorati vs pagati */}
+          <View style={[styles.workDaysRow, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }]}>
+            <Text style={[styles.workDaysLabel, { color: theme.colors.textSecondary, fontSize: 14 }]}>
+              Giorni effettivamente lavorati: {monthlyAggregated?.daysWorked || 0}/{settings?.contract?.workingDaysPerMonth || 26}
+            </Text>
+          </View>
+          
+          <Text style={[styles.workDaysNote, { color: theme.colors.textSecondary, fontSize: 11, fontStyle: 'italic', marginBottom: 12 }]}>
+            ↳ Esclusi giorni fissi: ferie, malattia, permessi, riposi, festivi
+          </Text>
+
+          {/* Compensi aggiuntivi - SOLO TOTALE EXTRA PURI */}
+          {(() => {
+            const totalEarnings = monthlyAggregated?.totalEarnings || 0;
+            const daysWorked = monthlyAggregated?.daysWorked || 0;
+            const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+            const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+            
+            if (totalEarnings <= 0 || daysWorked <= 0) return null;
+            
+            // Calcola la retribuzione base per i giorni feriali lavorati (lun-ven)
+            const dailyRate = baseSalary / workingDaysInMonth;
+            const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+            const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+            const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+            const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+            const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+            
+            // Compensi extra = Totale maturato - Retribuzione base giorni lavorati
+            const totalExtraEarnings = Math.max(0, totalEarnings - baseEarningsForWorkedDays);
+            
+              if (totalExtraEarnings > 0) {
+              return (
+                <View style={styles.extrasSection}>
+                  <Text style={[styles.extrasTitle, { color: theme.colors.text }]}>
+                    ⚡ COMPENSI AGGIUNTIVI MATURATI
+                  </Text>
+                  
+                  <View style={styles.extraRow}>
+                    <Text style={[styles.extraLabel, { color: theme.colors.textSecondary }]}> 
+                      Totale compensi extra ({weekdaysWorked} giorni feriali lavorati)
+                    </Text>
+                    <Text style={[styles.extraAmount, { color: theme.colors.accent || theme.colors.primary }]}>
+                      {formatSafeAmount(totalExtraEarnings)}
+                    </Text>
+                  </View>
+                  
+                  <Text style={[styles.extraNote, { color: theme.colors.textSecondary }]}> 
+                    ↳ Esclusa retribuzione base CCNL (feriali lun-ven): {formatSafeAmount(baseEarningsForWorkedDays)}
+                  </Text>
+                </View>
+              );
+            }
+            return null;
+          })()}
+          {/* Sezione comparativa: Maturato vs Previsto */}
+          <View style={[styles.comparisonSection, { borderTopWidth: 2, borderTopColor: theme.colors.border, paddingTop: 16, marginTop: 16 }]}>
+            {/* Maturato fino ad ora */}
+            <View style={[styles.currentEarningsRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+              <View style={styles.comparisonMainRow}>
+                <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+                  💰 Maturato ad oggi
+                </Text>
+                <Text style={[styles.comparisonAmount, { color: theme.colors.success || theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}>
+                  {formatSafeAmount(adjustedTotalEarnings)}
+                </Text>
+              </View>
+              <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+                ↳ Basato sui giorni effettivamente lavorati
+              </Text>
+            </View>
+
+            {/* Previsione fine mese */}
+            {(() => {
+              const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+              const currentTotal = adjustedTotalEarnings;
+              
+              // Determina se il mese è corrente o passato
+              const currentDate = new Date();
+              const selectedYear = selectedDate.getFullYear();
+              const selectedMonth = selectedDate.getMonth();
+              const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
+              
+              // Se è il mese corrente, calcola una previsione
+              // Se è un mese passato, mostra il totale effettivo come "previsto" (che era quello reale)
+              let projectedTotal;
+              let noteText;
+              
+              if (isCurrentMonth) {
+                // Mese corrente: retribuzione mensile CCNL + extra reali accumulati fino ad oggi
+                const daysWorked = monthlyAggregated?.daysWorked || 0;
+                const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+                const dailyRate = baseSalary / workingDaysInMonth; // Retribuzione giornaliera CCNL
+                
+                if (daysWorked > 0) {
+                  // Retribuzione CCNL per i soli giorni feriali lavorati (lun-ven)
+                  const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+                  const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+                  const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+                  const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+                  const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+                  
+                  // Extra reali = totale guadagnato - retribuzione base dei giorni lavorati
+                  const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+                  
+                  // PREVISTO = Retribuzione mensile completa (26 giorni) + Extra reali accumulati
+                  projectedTotal = baseSalary + realExtraEarnings;
+                  noteText = `↳ Stipendio CCNL (26gg) + extra reali accumulati (${weekdaysWorked}gg feriali)`;
+                } else {
+                  projectedTotal = baseSalary;
+                  noteText = "↳ Stipendio CCNL base (nessun dato disponibile)";
+                }
+              } else {
+                // Mese passato: calcola comunque il "totale teorico del mese"
+                // = Stipendio CCNL completo + extra reali del mese
+                const daysWorked = monthlyAggregated?.daysWorked || 0;
+                const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+                const dailyRate = baseSalary / workingDaysInMonth;
+                
+                if (daysWorked > 0) {
+                  // Retribuzione CCNL per i soli giorni feriali lavorati (lun-ven)
+                  const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+                  const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+                  const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+                  const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+                  const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+                  
+                  // Extra reali = totale guadagnato - retribuzione base dei giorni lavorati  
+                  const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+                  
+                  // TOTALE TEORICO = Retribuzione mensile completa + Extra reali
+                  projectedTotal = baseSalary + realExtraEarnings;
+                  noteText = `↳ Teorico: CCNL (26gg) + extra reali mese (${weekdaysWorked}gg feriali)`;
+                } else {
+                  projectedTotal = baseSalary;
+                  noteText = "↳ Stipendio CCNL teorico (nessun giorno lavorato)";
+                }
+              }
+              
+              return (
+                <View style={[styles.projectedEarningsRow, { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
+                  <View style={styles.comparisonMainRow}>
+                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+                      🎯 {isCurrentMonth ? 'Previsto fine mese' : 'Totale mese'}
+                    </Text>
+                    <Text style={[styles.comparisonAmount, { color: theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}>
+                      {formatSafeAmount(projectedTotal)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+                    {noteText}
+                  </Text>
+                </View>
+              );
+            })()}
+
+            {/* Differenza e percentuale completamento */}
+            {(() => {
+              const current = adjustedTotalEarnings;
+              const currentDate = new Date();
+              const selectedYear = selectedDate.getFullYear();
+              const selectedMonth = selectedDate.getMonth();
+              const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
+              
+              // Solo per il mese corrente mostra il progresso
+              if (!isCurrentMonth) return null;
+              
+              const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+              const daysWorked = monthlyAggregated?.daysWorked || 0;
+              const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+              
+              if (daysWorked === 0) return null;
+              
+              // USA LA STESSA LOGICA CORRETTA del "Previsto fine mese"
+              const dailyRate = baseSalary / workingDaysInMonth;
+              const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+              const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+              const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+              const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+              const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+              const realExtraEarnings = Math.max(0, current - baseEarningsForWorkedDays);
+              const projected = baseSalary + realExtraEarnings;
+              
+              const difference = projected - current;
+              const completionPercentage = projected > 0 ? (current / projected * 100) : 0;
+              
+              if (difference > 0) {
+                return (
+                  <View style={[styles.progressRow, { marginTop: 12, padding: 8, backgroundColor: theme.colors.card, borderRadius: 6 }]}>
+                    <Text style={[styles.progressText, { color: theme.colors.textSecondary, fontSize: 12, textAlign: 'center' }]}>
+                      📈 Completamento: {completionPercentage.toFixed(1)}% • Mancano: {formatSafeAmount(difference)}
+                    </Text>
+                  </View>
+                );
+              }
+              return null;
+            })()}
+          </View>
+
+          {/* Sezione NETTO - Comparativa Maturato vs Previsto */}
+          <View style={[styles.comparisonSection, { borderTopWidth: 2, borderTopColor: theme.colors.warning || theme.colors.accent, paddingTop: 16, marginTop: 16 }]}>
+            <Text style={[styles.sectionTitle, { marginBottom: 12, color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+              💳 NETTO IN BUSTA
+            </Text>
+
+            {/* Netto maturato fino ad ora */}
+            {(() => {
+              const currentNet = monthlyAggregated?.netTotalEarnings || 0;
+              const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
+              const finalNetWithCash = currentNet + cashMealsFromForm;
+              
+              return (
+                <View style={[styles.currentEarningsRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+                  <View style={styles.comparisonMainRow}>
+                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+                      💰 Netto maturato ad oggi
+                    </Text>
+                    <Text style={[styles.comparisonAmount, { color: theme.colors.success || theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}>
+                      {formatSafeAmount(finalNetWithCash)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+                    ↳ Al netto di tasse e contributi sui giorni lavorati
+                  </Text>
+                  {cashMealsFromForm > 0 && (
+                    <Text style={[styles.comparisonNote, { color: theme.colors.accent, fontSize: 11, fontStyle: 'italic', marginTop: 2 }]}>
+                      ↳ Include cash pasti: {formatSafeAmount(cashMealsFromForm)} (netto: {formatSafeAmount(currentNet)})
+                    </Text>
+                  )}
+                </View>
+              );
+            })()}
+
+            {/* Netto previsto fine mese */}
+            {(() => {
+              const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+              const currentTotal = adjustedTotalEarnings;
+              const currentNet = monthlyAggregated?.netTotalEarnings || 0;
+              
+              // Determina se il mese è corrente o passato
+              const currentDate = new Date();
+              const selectedYear = selectedDate.getFullYear();
+              const selectedMonth = selectedDate.getMonth();
+              const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
+              
+              // Usa le impostazioni del calcolo netto dalle impostazioni
+              const payslipSettings = {
+                method: settings?.netCalculation?.method || 'irpef',
+                customDeductionRate: settings?.netCalculation?.customDeductionRate || 32
+              };
+              
+              let projectedNet;
+              let noteText;
+              
+              if (isCurrentMonth) {
+                // Mese corrente: calcola previsione netto
+                const daysWorked = monthlyAggregated?.daysWorked || 0;
+                const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+                
+                if (daysWorked > 0) {
+                  // Retribuzione CCNL per i soli giorni feriali lavorati (lun-ven)
+                  const dailyRate = baseSalary / workingDaysInMonth;
+                  const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+                  const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+                  const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+                  const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+                  const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+                  
+                  // Extra reali = totale guadagnato - retribuzione base dei giorni lavorati
+                  const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+                  
+                  // PREVISTO LORDO = Retribuzione mensile completa + Extra reali accumulati
+                  const projectedGross = baseSalary + realExtraEarnings;
+                  
+                  const projectedNetCalculation = RealPayslipCalculator.calculateNetFromGross(projectedGross, payslipSettings);
+                  projectedNet = projectedNetCalculation.net;
+                  noteText = `↳ Netto su CCNL (26gg) + extra reali (${weekdaysWorked}gg feriali) - ${payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF'}`;
+                } else {
+                  const baseSalaryNetCalculation = RealPayslipCalculator.calculateNetFromGross(baseSalary, payslipSettings);
+                  projectedNet = baseSalaryNetCalculation.net;
+                  noteText = `↳ Stipendio base al netto (${payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF'})`;
+                }
+              } else {
+                // Mese passato: calcola il netto teorico del mese
+                const daysWorked = monthlyAggregated?.daysWorked || 0;
+                const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+                const dailyRate = baseSalary / workingDaysInMonth;
+                
+                if (daysWorked > 0) {
+                  // Retribuzione CCNL per i soli giorni feriali lavorati (lun-ven)
+                  const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+                  const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+                  const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+                  const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+                  const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+                  
+                  // Extra reali = totale guadagnato - retribuzione base dei giorni lavorati
+                  const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+                  
+                  // TOTALE LORDO TEORICO = Retribuzione mensile completa + Extra reali
+                  const projectedGross = baseSalary + realExtraEarnings;
+                  
+                  const projectedNetCalculation = RealPayslipCalculator.calculateNetFromGross(projectedGross, payslipSettings);
+                  projectedNet = projectedNetCalculation.net;
+                  noteText = `↳ Netto teorico: CCNL (26gg) + extra reali - ${payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF'}`;
+                } else {
+                  const baseSalaryNetCalculation = RealPayslipCalculator.calculateNetFromGross(baseSalary, payslipSettings);
+                  projectedNet = baseSalaryNetCalculation.net;
+                  noteText = `↳ Netto teorico CCNL base - ${payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF'}`;
+                }
+              }
+              
+              // Aggiungi i pasti cash inseriti direttamente nel form (non da impostazioni)
+              const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
+              const finalNetWithCash = projectedNet + cashMealsFromForm;
+              
+              return (
+                <View style={[styles.projectedEarningsRow, { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
+                  <View style={styles.comparisonMainRow}>
+                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+                      🎯 {isCurrentMonth ? 'Netto previsto fine mese' : 'Netto mese'}
+                    </Text>
+                    <Text style={[styles.comparisonAmount, { color: theme.colors.warning || theme.colors.accent, fontSize: 16, fontWeight: 'bold' }]}>
+                      {formatSafeAmount(finalNetWithCash)}
+                    </Text>
+                  </View>
+                  <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+                    {noteText}
+                  </Text>
+                  {cashMealsFromForm > 0 && (
+                    <Text style={[styles.comparisonNote, { color: theme.colors.accent, fontSize: 11, fontStyle: 'italic', marginTop: 2 }]}>
+                      ↳ Include cash pasti: {formatSafeAmount(cashMealsFromForm)} (netto: {formatSafeAmount(projectedNet)})
+                    </Text>
+                  )}
+                </View>
+              );
+            })()}
+
+            {/* Differenza netto e percentuale completamento */}
+            {(() => {
+              const currentNet = monthlyAggregated?.netTotalEarnings || 0;
+              const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
+              const currentNetWithCash = currentNet + cashMealsFromForm;
+              
+              const currentDate = new Date();
+              const selectedYear = selectedDate.getFullYear();
+              const selectedMonth = selectedDate.getMonth();
+              const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
+              
+              // Solo per il mese corrente mostra il progresso
+              if (!isCurrentMonth) return null;
+              
+              const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+              const currentTotal = adjustedTotalEarnings;
+              const daysWorked = monthlyAggregated?.daysWorked || 0;
+              const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+              
+              if (daysWorked === 0) return null;
+              
+              // Usa le stesse impostazioni del calcolo netto
+              const payslipSettings = {
+                method: settings?.netCalculation?.method || 'irpef',
+                customDeductionRate: settings?.netCalculation?.customDeductionRate || 32
+              };
+              
+              // USA LA STESSA LOGICA CORRETTA del "Netto previsto fine mese": solo giorni feriali (lun-ven)
+              const dailyRate = baseSalary / workingDaysInMonth;
+              const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+              const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+              const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+              const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+              const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+              const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+              const projectedGross = baseSalary + realExtraEarnings;
+              
+              const projectedNetCalculation = RealPayslipCalculator.calculateNetFromGross(projectedGross, payslipSettings);
+              const projectedNet = projectedNetCalculation.net;
+              
+              // Aggiungi i pasti cash anche al previsto
+              const projectedNetWithCash = projectedNet + cashMealsFromForm;
+              
+              const netDifference = projectedNetWithCash - currentNetWithCash;
+              const netCompletionPercentage = projectedNetWithCash > 0 ? (currentNetWithCash / projectedNetWithCash * 100) : 0;
+              
+              if (netDifference > 0) {
+                return (
+                  <View style={[styles.progressRow, { marginTop: 12, padding: 8, backgroundColor: theme.colors.card, borderRadius: 6 }]}>
+                    <Text style={[styles.progressText, { color: theme.colors.textSecondary, fontSize: 12, textAlign: 'center' }]}>
+                      📈 Completamento netto: {netCompletionPercentage.toFixed(1)}% • Mancano: {formatSafeAmount(netDifference)}
+                    </Text>
+                  </View>
+                );
+              }
+              return null;
+            })()}
+          </View>
         </View>
-        
-        {/* Calcolo netto con trattenute */}
+
+        {/* Calcolo netto con trattenute - USA PREVISTO FINE MESE */}
         {(() => {
-          const grossAmount = monthlyAggregated?.totalEarnings || 0;
+          // Determina se è il mese corrente
+          const currentDate = new Date();
+          const selectedYear = selectedDate.getFullYear();
+          const selectedMonth = selectedDate.getMonth();
+          const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
+          
+          // Calcola il lordo previsto/totale del mese (non maturato ad oggi)
+          const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+          const currentTotal = adjustedTotalEarnings;
+          const daysWorked = monthlyAggregated?.daysWorked || 0;
+          const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+          
+          let grossAmount;
+          
+          if (isCurrentMonth && daysWorked > 0) {
+            // Mese corrente: usa il previsto fine mese (solo feriali lun-ven)
+            const dailyRate = baseSalary / workingDaysInMonth;
+            const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+            const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+            const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+            const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+            const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+            const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+            grossAmount = baseSalary + realExtraEarnings;
+          } else if (!isCurrentMonth && daysWorked > 0) {
+            // Mese passato: calcola il totale teorico del mese (non maturato) usando solo feriali
+            const dailyRate = baseSalary / workingDaysInMonth;
+            const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+            const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+            const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+            const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+            const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+            const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+            grossAmount = baseSalary + realExtraEarnings;
+          } else {
+            // Fallback: usa il totale effettivo se non ci sono dati sufficienti
+            grossAmount = currentTotal;
+          }
+          
+          // Aggiungi i pasti cash al calcolo finale
+          const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
+          
           if (grossAmount > 0) {
             try {
               // 💰 Usa impostazioni salvate dall'utente con default IRPEF
@@ -2600,15 +3099,23 @@ const DashboardScreen = ({ navigation, route }) => {
               
               const netCalculation = RealPayslipCalculator.calculateNetFromGross(calculationBase, payslipSettings);
               
+              // Totale finale = netto + pasti cash
+              const finalNetTotal = netCalculation.net + cashMealsFromForm;
+              
               return (
                 <>
                   <View style={[styles.totalRow, { marginTop: 8 }]}>
                     <Text style={[styles.totalLabel, { color: theme.colors.income }]}>Totale Netto Stimato</Text>
-                    <Text style={[styles.totalAmount, { color: theme.colors.income }]}>{formatSafeAmount(netCalculation.net)}</Text>
+                    <Text style={[styles.totalAmount, { color: theme.colors.income }]}>{formatSafeAmount(finalNetTotal)}</Text>
                   </View>
                   <Text style={[styles.totalSubtext, { fontSize: 12, color: theme.colors.textSecondary }]}>
                     Trattenute: {formatSafeAmount(netCalculation.totalDeductions)} ({(netCalculation.deductionRate * 100).toFixed(1)}% - {payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF + INPS + Addizionali'})
                   </Text>
+                  {cashMealsFromForm > 0 && (
+                    <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.accent, fontStyle: 'italic' }]}>
+                      Include cash pasti: {formatSafeAmount(cashMealsFromForm)} (netto tasse: {formatSafeAmount(netCalculation.net)})
+                    </Text>
+                  )}
                   {isEstimated && (
                     <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.textDisabled, fontStyle: 'italic' }]}>
                       *Calcolo basato su stipendio standard (€{calculationBase.toFixed(2)}/mese)
@@ -2616,7 +3123,7 @@ const DashboardScreen = ({ navigation, route }) => {
                   )}
                   {!isEstimated && calculationBase === grossAmount && (
                     <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.textSecondary }]}>
-                      Calcolato sulla cifra presente (€{grossAmount.toFixed(2)})
+                      Calcolato sul {isCurrentMonth ? 'previsto fine mese' : 'totale mese'} (€{grossAmount.toFixed(2)})
                     </Text>
                   )}
                 </>
@@ -2640,6 +3147,7 @@ const DashboardScreen = ({ navigation, route }) => {
       </View>
     </View>
   );
+  };
 
   const renderAnalyticsSection = () => {
     const analytics = monthlyAggregated?.analytics;
@@ -3119,6 +3627,9 @@ const DashboardScreen = ({ navigation, route }) => {
               {formatSafeAmount(totalSpecialEarnings)}
             </Text>
           </View>
+          <Text style={[styles.breakdownDetail, { marginTop: 6, fontSize: 11, color: '#666', fontStyle: 'italic' }]}>
+            ℹ️ Importo comprensivo di indennità trasferta e reperibilità
+          </Text>
         </View>
       </View>
     );
@@ -3327,44 +3838,45 @@ const DashboardScreen = ({ navigation, route }) => {
             
             const dayOfMonth = dateObj.getDate() || 0;
             
-            // 🔧 CALCOLO MIGLIORATO: usa dati dall'aggregazione se disponibili, altrimenti calcola
+            // 🔧 CALCOLO MIGLIORATO: usa dati affidabili (per data) dell'aggregazione come prima fonte
             let dailyHours = 0;
             let earnings = 0;
-            
-            // Prima prova: usa i dati dall'aggregazione se disponibili per questo index
-            if (monthlyAggregated?.analytics?.dailyHours && monthlyAggregated?.analytics?.dailyEarnings) {
+            let hasSavedBreakdown = false;
+
+            // 1) Fonte preferita: breakdown salvati per data (chiave affidabile)
+            try {
+              if (monthlyAggregated?.dailyBreakdownsObj && monthlyAggregated.dailyBreakdownsObj[entry.date]) {
+                const savedBreakdown = monthlyAggregated.dailyBreakdownsObj[entry.date];
+                earnings = savedBreakdown.totalEarnings;
+                dailyHours = savedBreakdown.dailyHours;
+                hasSavedBreakdown = true;
+                console.log(`🔧 DAILY DEBUG - ${entry.date}: da breakdown salvati (preferito), hours=${(dailyHours || 0).toFixed(2)}, earnings=€${(earnings || 0).toFixed(2)}`);
+              }
+            } catch (error) {
+              console.error('Errore nell\'accesso ai breakdown salvati:', error);
+            }
+
+            // 2) Fallback: array analytics indicizzati (può variare con l'ordine)
+            if (!hasSavedBreakdown && !workEntry.isFixedDay && (earnings === 0 && dailyHours === 0) && monthlyAggregated?.analytics?.dailyHours && monthlyAggregated?.analytics?.dailyEarnings) {
               const entryIndex = workEntries.findIndex(we => we.id === entry.id);
               if (entryIndex >= 0 && entryIndex < monthlyAggregated.analytics.dailyHours.length) {
                 dailyHours = monthlyAggregated.analytics.dailyHours[entryIndex] || 0;
                 earnings = monthlyAggregated.analytics.dailyEarnings[entryIndex] || 0;
-                console.log(`🔧 DAILY DEBUG - ${entry.date}: da analytics, hours=${dailyHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
+                console.log(`🔧 DAILY DEBUG - ${entry.date}: da analytics (fallback), hours=${dailyHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
               }
+            } else if ((hasSavedBreakdown || workEntry.isFixedDay) && (earnings === 0 && dailyHours === 0)) {
+              // Evita override dei giorni fissi o con breakdown salvato (0 è autorevole per ferie/malattia/permesso/riposo)
+              console.log(`🔧 DAILY DEBUG - ${entry.date}: skip analytics fallback (${hasSavedBreakdown ? 'saved' : 'fixed day'})`);
             }
-            
-            // Seconda prova: usa totalEarnings dal database se disponibile e > 0
-            if (earnings === 0 && entry.totalEarnings && entry.totalEarnings > 0) {
+
+            // 3) Fallback: usa totalEarnings dal database se disponibile e > 0
+            if (!hasSavedBreakdown && !workEntry.isFixedDay && earnings === 0 && entry.totalEarnings && entry.totalEarnings > 0) {
               earnings = entry.totalEarnings;
-              console.log(`🔧 DAILY DEBUG - ${entry.date}: da database, earnings=€${earnings.toFixed(2)}`);
+              console.log(`🔧 DAILY DEBUG - ${entry.date}: da database (fallback), earnings=€${earnings.toFixed(2)}`);
             }
             
-            // Terza prova: usa i dati già calcolati nei breakdown giornalieri
-            if (earnings === 0) {
-              try {
-                if (monthlyAggregated?.dailyBreakdownsObj && monthlyAggregated.dailyBreakdownsObj[entry.date]) {
-                  const savedBreakdown = monthlyAggregated.dailyBreakdownsObj[entry.date];
-                  earnings = savedBreakdown.totalEarnings;
-                  dailyHours = savedBreakdown.dailyHours;
-                  console.log(`🔧 DAILY DEBUG - ${entry.date}: da breakdown salvati, hours=${dailyHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
-                } else {
-                  console.log(`🔧 DAILY DEBUG - ${entry.date}: nessun breakdown salvato trovato`);
-                }
-              } catch (error) {
-                console.error('Errore nell\'accesso ai breakdown salvati:', error);
-              }
-            }
-            
-            // Quarta prova: calcolo di fallback manuale
-            if (earnings === 0) {
+            // 4) Ultimo fallback: calcolo manuale
+            if (!hasSavedBreakdown && !workEntry.isFixedDay && earnings === 0) {
               const safeSettings = monthlyAggregated?.settings || {
                 contract: { 
                   dailyRate: 109.19,
@@ -3379,11 +3891,7 @@ const DashboardScreen = ({ navigation, route }) => {
               const hourlyRate = safeSettings.contract.hourlyRate;
               const dailyRate = safeSettings.contract.dailyRate;
               
-              if (workEntry.isFixedDay) {
-                // Giorni fissi usano la tariffa giornaliera
-                earnings = dailyRate;
-                console.log(`🔧 DAILY DEBUG - ${entry.date}: giorno fisso, earnings=€${earnings.toFixed(2)}`);
-              } else if (workEntry.isStandbyDay && !workEntry.workStart1 && !workEntry.workStart2) {
+              if (workEntry.isStandbyDay && !workEntry.workStart1 && !workEntry.workStart2) {
                 // Solo reperibilità senza lavoro
                 earnings = safeSettings.standbySettings.dailyAllowance;
                 console.log(`🔧 DAILY DEBUG - ${entry.date}: solo reperibilità, earnings=€${earnings.toFixed(2)}`);
@@ -3452,19 +3960,50 @@ const DashboardScreen = ({ navigation, route }) => {
           let typeIcon = '⭕';
           
           if (workEntry?.isFixedDay) {
-            // Giorni fissi (ferie, malattia, riposo compensativo, etc.)
-            if (workEntry?.siteName && String(workEntry.siteName).toLowerCase().includes('ferie')) {
-              dayType = 'vacation';
-              typeLabel = 'Ferie';
-              typeIcon = '🏖️';
-            } else if (workEntry?.siteName && String(workEntry.siteName).toLowerCase().includes('riposo')) {
-              dayType = 'compensatory';
-              typeLabel = 'Riposo Compensativo';
-              typeIcon = '🛏️';
-            } else {
-              dayType = 'fixed';
-              typeLabel = 'Giorno Fisso';
-              typeIcon = '📅';
+            // Giorni fissi (ferie, malattia, permesso, riposo, festivo)
+            const rawType = String(workEntry?.dayType || '').toLowerCase();
+            switch (rawType) {
+              case 'ferie':
+                dayType = 'vacation';
+                typeLabel = 'Ferie';
+                typeIcon = '🏖️';
+                break;
+              case 'riposo':
+                dayType = 'compensatory';
+                typeLabel = 'Riposo Compensativo';
+                typeIcon = '🛏️';
+                break;
+              case 'permesso':
+                dayType = 'fixed';
+                typeLabel = 'Permesso';
+                typeIcon = '📅';
+                break;
+              case 'malattia':
+                dayType = 'fixed';
+                typeLabel = 'Malattia';
+                typeIcon = '🏥';
+                break;
+              case 'festivo':
+                dayType = 'fixed';
+                typeLabel = 'Festivo';
+                typeIcon = '🎉';
+                break;
+              default:
+                // Fallback: mantieni compatibilità col vecchio campo siteName
+                if (workEntry?.siteName && String(workEntry.siteName).toLowerCase().includes('ferie')) {
+                  dayType = 'vacation';
+                  typeLabel = 'Ferie';
+                  typeIcon = '🏖️';
+                } else if (workEntry?.siteName && String(workEntry.siteName).toLowerCase().includes('riposo')) {
+                  dayType = 'compensatory';
+                  typeLabel = 'Riposo Compensativo';
+                  typeIcon = '🛏️';
+                } else {
+                  dayType = 'fixed';
+                  typeLabel = 'Giorno Fisso';
+                  typeIcon = '📅';
+                }
+                break;
             }
           } else if (workEntry?.isStandbyDay && !workEntry?.workStart1 && !workEntry?.workStart2) {
             // Solo reperibilità senza lavoro
@@ -3556,56 +4095,59 @@ const DashboardScreen = ({ navigation, route }) => {
             style={styles.collapsibleHeader}
             onPress={() => setIsDailyBreakdownExpanded(!isDailyBreakdownExpanded)}
             activeOpacity={0.7}
-          >
-            <View style={styles.collapsibleHeaderContent}>
-              <MaterialCommunityIcons name="calendar-today" size={20} color={theme.colors.primary} />
-              <Text style={styles.collapsibleTitle}>Riepilogo Giornaliero</Text>
-              <MaterialCommunityIcons 
-                name={isDailyBreakdownExpanded ? "chevron-up" : "chevron-down"} 
-                size={20} 
-                color={theme.colors.textSecondary} 
-              />
-            </View>
-            
-            <View style={styles.miniSummary}>
-              <Text style={styles.miniSummaryText}>
-                {dailyData?.length || 0} giorni totali • {formatSafeHours(dailyData.reduce((total, day) => total + (day?.hours || 0), 0))} ore lavoro
-              </Text>
-              <Text style={styles.miniSummaryText}>
-                {formatSafeAmount(dailyData.reduce((total, day) => total + (day?.earnings || 0), 0))} guadagno totale
-              </Text>
-              {(totalStandbyOnlyDays || 0) > 0 && (
-                <Text style={styles.miniSummaryText}>
-                  🟡 {totalStandbyOnlyDays || 0} giorni solo reperibilità
-                </Text>
-              )}
-              {(workAndStandbyDays || 0) > 0 && (
-                <Text style={styles.miniSummaryText}>
-                  🟠 {workAndStandbyDays || 0} giorni lavoro + reperibilità
-                </Text>
-              )}
-              {(workOnlyDays || 0) > 0 && (
-                <Text style={styles.miniSummaryText}>
-                  🔵 {workOnlyDays || 0} giorni lavoro ordinario
-                </Text>
-              )}
-              {(saturdayWorkDays || 0) > 0 && (
-                <Text style={styles.miniSummaryText}>
-                  📅 {saturdayWorkDays || 0} giorni lavoro sabato
-                </Text>
-              )}
-              {(sundayWorkDays || 0) > 0 && (
-                <Text style={styles.miniSummaryText}>
-                  🌅 {sundayWorkDays || 0} giorni lavoro domenica
-                </Text>
-              )}
-              {(holidayWorkDays || 0) > 0 && (
-                <Text style={styles.miniSummaryText}>
-                  🎉 {holidayWorkDays || 0} giorni lavoro festivi
-                </Text>
-              )}
-            </View>
-          </TouchableOpacity>
+            children={(
+              <View style={{width: '100%'}}>
+                <View style={styles.collapsibleHeaderContent}>
+                  <MaterialCommunityIcons name="calendar-today" size={20} color={theme.colors.primary} />
+                  <Text style={styles.collapsibleTitle}>Riepilogo Giornaliero</Text>
+                  <MaterialCommunityIcons 
+                    name={isDailyBreakdownExpanded ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color={theme.colors.textSecondary} 
+                  />
+                </View>
+                
+                <View style={styles.miniSummary}>
+                  <Text style={styles.miniSummaryText}>
+                    {dailyData?.length || 0} giorni totali • {formatSafeHours(dailyData.reduce((total, day) => total + (day?.hours || 0), 0))} ore lavoro
+                  </Text>
+                  <Text style={styles.miniSummaryText}>
+                    {formatSafeAmount(dailyData.reduce((total, day) => total + (day?.earnings || 0), 0))} guadagno totale
+                  </Text>
+                  {(totalStandbyOnlyDays || 0) > 0 && (
+                    <Text style={styles.miniSummaryText}>
+                      🟡 {totalStandbyOnlyDays || 0} giorni solo reperibilità
+                    </Text>
+                  )}
+                  {(workAndStandbyDays || 0) > 0 && (
+                    <Text style={styles.miniSummaryText}>
+                      🟠 {workAndStandbyDays || 0} giorni lavoro + reperibilità
+                    </Text>
+                  )}
+                  {(workOnlyDays || 0) > 0 && (
+                    <Text style={styles.miniSummaryText}>
+                      🔵 {workOnlyDays || 0} giorni lavoro ordinario
+                    </Text>
+                  )}
+                  {(saturdayWorkDays || 0) > 0 && (
+                    <Text style={styles.miniSummaryText}>
+                      📅 {saturdayWorkDays || 0} giorni lavoro sabato
+                    </Text>
+                  )}
+                  {(sundayWorkDays || 0) > 0 && (
+                    <Text style={styles.miniSummaryText}>
+                      🌅 {sundayWorkDays || 0} giorni lavoro domenica
+                    </Text>
+                  )}
+                  {(holidayWorkDays || 0) > 0 && (
+                    <Text style={styles.miniSummaryText}>
+                      🎉 {holidayWorkDays || 0} giorni lavoro festivi
+                    </Text>
+                  )}
+                </View>
+              </View>
+            )}
+          />
           
           {isDailyBreakdownExpanded && (
             <View style={styles.collapsibleContent}>
@@ -3630,38 +4172,49 @@ const DashboardScreen = ({ navigation, route }) => {
                       } 
                     })}
                     activeOpacity={0.7}
-                  >
-                  <View style={styles.dailyListHeader}>
-                    <View style={styles.dailyListDate}>
-                      <Text style={styles.dailyListDay}>{String(day?.dayOfMonth || 1)}</Text>
-                      <Text style={styles.dailyListDateText}>
-                        {String(day?.dateObj?.toLocaleDateString?.('it-IT', { weekday: 'short' }) || 'N/A')}
-                      </Text>
-                    </View>
-                    <View style={styles.dailyListType}>
-                      <Text style={styles.dailyListTypeIcon}>{String(day?.typeIcon || '⭕')}</Text>
-                      <Text style={styles.dailyListTypeText}>{String(day?.typeLabel || 'N/A')}</Text>
-                    </View>
-                    <View style={styles.dailyListStats}>
-                      <Text style={styles.dailyListHours}>{formatSafeHours(day?.hours || 0)}</Text>
-                      <Text style={styles.dailyListEarnings}>{formatSafeAmount(day?.earnings || 0)}</Text>
-                    </View>
-                  </View>
-                  
-                  <View style={styles.dailyListDetails}>
-                    {/* Solo informazioni essenziali come richiesto */}
-                    {day?.workEntry?.isStandbyDay && (
-                      <Text style={styles.dailyListDetail}>🟡 Reperibilità</Text>
+                    children={(
+                      <View style={{width: '100%'}}>
+                        <View style={styles.dailyListHeader}>
+                          <View style={styles.dailyListDate}>
+                            <Text style={styles.dailyListDay}>{String(day?.dayOfMonth || 1)}</Text>
+                            <Text style={styles.dailyListDateText}>
+                              {String(day?.dateObj?.toLocaleDateString?.('it-IT', { weekday: 'short' }) || 'N/A')}
+                            </Text>
+                          </View>
+                          <View style={styles.dailyListType}>
+                            <Text style={styles.dailyListTypeIcon}>{String(day?.typeIcon || '⭕')}</Text>
+                            <Text style={styles.dailyListTypeText}>{String(day?.typeLabel || 'N/A')}</Text>
+                          </View>
+                          <View style={styles.dailyListStats}>
+                            <Text style={styles.dailyListHours}>{formatSafeHours(day?.hours || 0)}</Text>
+                            {(() => {
+                              const specialTypes = ['vacation','compensatory','fixed'];
+                              const isSpecialDayType = specialTypes.includes(String(day?.dayType || ''));
+                              const noWorkHours = (day?.hours || 0) <= 0;
+                              const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
+                              if (isSpecialDayType && noWorkHours && !showEffective) {
+                                return null;
+                              }
+                              return <Text style={styles.dailyListEarnings}>{formatSafeAmount(day?.earnings || 0)}</Text>;
+                            })()}
+                          </View>
+                        </View>
+                        
+                        <View style={styles.dailyListDetails}>
+                          {day?.workEntry?.isStandbyDay && (
+                            <Text style={styles.dailyListDetail}>🟡 Reperibilità</Text>
+                          )}
+                          {day?.workEntry?.completamentoGiornata && 
+                            String(day.workEntry.completamentoGiornata) !== 'nessuno' && 
+                            String(day.workEntry.completamentoGiornata).trim() !== '' && (
+                            <Text style={styles.dailyListDetail}>
+                              Giornata completata con: {String(day.workEntry.completamentoGiornata || '')}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
                     )}
-                    {day?.workEntry?.completamentoGiornata && 
-                      String(day.workEntry.completamentoGiornata) !== 'nessuno' && 
-                      String(day.workEntry.completamentoGiornata).trim() !== '' && (
-                      <Text style={styles.dailyListDetail}>
-                        Giornata completata con: {String(day.workEntry.completamentoGiornata || '')}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
+                />
                 );
               })}
               
@@ -3739,6 +4292,7 @@ const DashboardScreen = ({ navigation, route }) => {
 
   const renderFixedDaysSection = () => {
     if (fixedDaysLoading || !fixedDaysData || fixedDaysData.totalDays === 0) return null;
+  const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
 
     return (
       <View style={styles.sectionCard}>
@@ -3753,7 +4307,7 @@ const DashboardScreen = ({ navigation, route }) => {
               <MaterialCommunityIcons name="beach" size={20} color={theme.colors.success} />
               <Text style={styles.fixedDayLabel}>Ferie</Text>
               <Text style={styles.fixedDayValue}>{fixedDaysData.vacation.days} giorni</Text>
-              <Text style={styles.fixedDayAmount}>{typeof fixedDaysData.vacation.earnings === 'string' ? fixedDaysData.vacation.earnings : formatSafeAmount(fixedDaysData.vacation.earnings)}</Text>
+              <Text style={styles.fixedDayAmount}>{!showEffective ? '' : (typeof fixedDaysData.vacation.earnings === 'string' ? fixedDaysData.vacation.earnings : formatSafeAmount(fixedDaysData.vacation.earnings))}</Text>
             </View>
           )}
           
@@ -3762,7 +4316,7 @@ const DashboardScreen = ({ navigation, route }) => {
               <MaterialCommunityIcons name="medical-bag" size={20} color={theme.colors.warning} />
               <Text style={styles.fixedDayLabel}>Malattia</Text>
               <Text style={styles.fixedDayValue}>{fixedDaysData.sick.days} giorni</Text>
-              <Text style={styles.fixedDayAmount}>{typeof fixedDaysData.sick.earnings === 'string' ? fixedDaysData.sick.earnings : formatSafeAmount(fixedDaysData.sick.earnings)}</Text>
+              <Text style={styles.fixedDayAmount}>{!showEffective ? '' : (typeof fixedDaysData.sick.earnings === 'string' ? fixedDaysData.sick.earnings : formatSafeAmount(fixedDaysData.sick.earnings))}</Text>
             </View>
           )}
           
@@ -3771,7 +4325,7 @@ const DashboardScreen = ({ navigation, route }) => {
               <MaterialCommunityIcons name="calendar-clock" size={20} color={theme.colors.info} />
               <Text style={styles.fixedDayLabel}>Permesso</Text>
               <Text style={styles.fixedDayValue}>{fixedDaysData.permit.days} giorni</Text>
-              <Text style={styles.fixedDayAmount}>{typeof fixedDaysData.permit.earnings === 'string' ? fixedDaysData.permit.earnings : formatSafeAmount(fixedDaysData.permit.earnings)}</Text>
+              <Text style={styles.fixedDayAmount}>{!showEffective ? '' : (typeof fixedDaysData.permit.earnings === 'string' ? fixedDaysData.permit.earnings : formatSafeAmount(fixedDaysData.permit.earnings))}</Text>
             </View>
           )}
           
@@ -3780,7 +4334,7 @@ const DashboardScreen = ({ navigation, route }) => {
               <MaterialCommunityIcons name="clock-time-eight" size={20} color={theme.colors.overtime} />
               <Text style={styles.fixedDayLabel}>Riposo Comp.</Text>
               <Text style={styles.fixedDayValue}>{fixedDaysData.compensatory.days} giorni</Text>
-              <Text style={styles.fixedDayAmount}>{typeof fixedDaysData.compensatory.earnings === 'string' ? fixedDaysData.compensatory.earnings : formatSafeAmount(fixedDaysData.compensatory.earnings)}</Text>
+              <Text style={styles.fixedDayAmount}>{!showEffective ? '' : (typeof fixedDaysData.compensatory.earnings === 'string' ? fixedDaysData.compensatory.earnings : formatSafeAmount(fixedDaysData.compensatory.earnings))}</Text>
             </View>
           )}
           
@@ -3789,14 +4343,14 @@ const DashboardScreen = ({ navigation, route }) => {
               <MaterialCommunityIcons name="calendar-star" size={20} color={theme.colors.error} />
               <Text style={styles.fixedDayLabel}>Festivi</Text>
               <Text style={styles.fixedDayValue}>{fixedDaysData.holiday.days} giorni</Text>
-              <Text style={styles.fixedDayAmount}>{typeof fixedDaysData.holiday.earnings === 'string' ? fixedDaysData.holiday.earnings : formatSafeAmount(fixedDaysData.holiday.earnings)}</Text>
+              <Text style={styles.fixedDayAmount}>{!showEffective ? '' : (typeof fixedDaysData.holiday.earnings === 'string' ? fixedDaysData.holiday.earnings : formatSafeAmount(fixedDaysData.holiday.earnings))}</Text>
             </View>
           )}
         </View>
         
         <View style={styles.fixedDaysSummary}>
           <Text style={styles.fixedDaysSummaryText}>
-            Totale: {fixedDaysData.totalDays} giorni - {formatSafeAmount(fixedDaysData.totalEarnings)}
+            Totale: {fixedDaysData.totalDays} giorni{showEffective ? ` - ${formatSafeAmount(fixedDaysData.totalEarnings)}` : ''}
           </Text>
         </View>
       </View>
@@ -3869,11 +4423,13 @@ const DashboardScreen = ({ navigation, route }) => {
               onPress={generateMonthlyPDF}
               disabled={loading || refreshing}
             >
-              <MaterialCommunityIcons 
-                name="file-pdf-box" 
-                size={24} 
-                color={loading || refreshing ? theme.colors.textSecondary : theme.colors.primary} 
-              />
+              <View>
+                <MaterialCommunityIcons 
+                  name="file-pdf-box" 
+                  size={24} 
+                  color={loading || refreshing ? theme.colors.textSecondary : theme.colors.primary} 
+                />
+              </View>
             </TouchableOpacity>
           </View>
         </View>
@@ -3883,24 +4439,30 @@ const DashboardScreen = ({ navigation, route }) => {
             style={styles.monthNavButton} 
             onPress={goToPreviousMonth}
           >
-            <MaterialCommunityIcons name="chevron-left" size={24} color={theme.colors.primary} />
+            <View>
+              <MaterialCommunityIcons name="chevron-left" size={24} color={theme.colors.primary} />
+            </View>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.monthTitleContainer} onPress={goToCurrentMonth}>
-            <Text style={styles.monthTitle}>
-              {formatMonthYear(selectedDate)}
-            </Text>
-            {selectedDate.getMonth() !== currentDate.getMonth() || 
-             selectedDate.getFullYear() !== currentDate.getFullYear() ? (
-              <Text style={styles.currentMonthIndicator}>Tocca per tornare al mese corrente</Text>
-            ) : null}
+            <View style={{alignItems: 'center'}}>
+              <Text style={styles.monthTitle}>
+                {formatMonthYear(selectedDate)}
+              </Text>
+              {selectedDate.getMonth() !== currentDate.getMonth() || 
+               selectedDate.getFullYear() !== currentDate.getFullYear() ? (
+                <Text style={styles.currentMonthIndicator}>Tocca per tornare al mese corrente</Text>
+              ) : null}
+            </View>
           </TouchableOpacity>
           
           <TouchableOpacity 
             style={styles.monthNavButton} 
             onPress={goToNextMonth}
           >
-            <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.primary} />
+            <View>
+              <MaterialCommunityIcons name="chevron-right" size={24} color={theme.colors.primary} />
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -3942,7 +4504,9 @@ const DashboardScreen = ({ navigation, route }) => {
         })}
         activeOpacity={0.8}
       >
-        <Ionicons name="add" size={24} color="white" />
+        <View>
+          <Ionicons name="add" size={24} color="white" />
+        </View>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -4083,6 +4647,121 @@ const createStyles = (theme) => StyleSheet.create({
     fontWeight: 'bold',
     color: theme.colors.primary,
   },
+  
+  // 📋 STILI PER STRUTTURA EDUCATIVA RETRIBUZIONE
+  educationalBreakdown: {
+    // Contenitore principale per il breakdown educativo
+  },
+  salaryRow: {
+    // Riga dello stipendio CCNL fisso
+  },
+  salaryMainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  salaryLabel: {
+    // Stili per etichetta stipendio
+  },
+  salaryAmount: {
+    // Stili per importo stipendio
+  },
+  salaryNote: {
+    // Stili per nota esplicativa
+  },
+  workDaysRow: {
+    // Riga giorni lavorati vs pagati
+  },
+  workDaysLabel: {
+    // Etichetta giorni lavorati
+  },
+  workHoursInfo: {
+    // Info ore totali
+  },
+  extrasSection: {
+    backgroundColor: theme.colors.card,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
+  extrasTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  extraRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  alignItems: 'flex-start',
+  marginBottom: 4,
+  width: '100%',
+  },
+  extraLabel: {
+  fontSize: 13,
+  flex: 1,
+  flexShrink: 1,
+  flexWrap: 'wrap',
+  paddingRight: 8,
+  },
+  extraAmount: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  flexShrink: 0,
+  minWidth: 84,
+  maxWidth: 140,
+  textAlign: 'right',
+  alignSelf: 'flex-start',
+  },
+  extraNote: {
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginTop: 4,
+  },
+  totalFinalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  totalFinalLabel: {
+    // Etichetta totale finale
+  },
+  totalFinalAmount: {
+    // Importo totale finale
+  },
+  
+  // Nuovi stili per la sezione comparativa
+  comparisonSection: {
+    marginTop: 16,
+  },
+  currentEarningsRow: {
+    flexDirection: 'column',
+  },
+  projectedEarningsRow: {
+    flexDirection: 'column',
+  },
+  comparisonMainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  comparisonLabel: {
+    flex: 1,
+  },
+  comparisonAmount: {
+    textAlign: 'right',
+  },
+  comparisonNote: {
+    marginTop: 4,
+  },
+  progressRow: {
+    marginTop: 8,
+  },
+  progressText: {
+    textAlign: 'center',
+  },
+  
   totalSubtext: {
     fontSize: 14,
     color: theme.colors.textSecondary,

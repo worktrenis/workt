@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,73 +13,336 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as FileSystem from 'expo-file-system';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
+import { formatDate } from '../utils';
 import DatabaseService from '../services/DatabaseService';
 import BackupService from '../services/BackupService';
+import AutoBackupService from '../services/AutoBackupService';
 import { clearAllBackupsFromAsyncStorage } from '../../App';
 
 const BackupScreen = ({ navigation }) => {
-  // Funzione per aprire il time picker
-  const openTimePicker = () => {
-    setShowTimePicker(true);
-  };
-
   const { theme } = useTheme();
   const styles = createStyles(theme);
   const [isLoading, setIsLoading] = useState(false);
-  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
-  const [autoBackupTime, setAutoBackupTime] = useState('02:00');
-  const [showTimePicker, setShowTimePicker] = useState(false);
-  const [backupDestination, setBackupDestination] = useState('asyncstorage');
-  const [availableDestinations, setAvailableDestinations] = useState([]);
-  const [showDestinationPicker, setShowDestinationPicker] = useState(false);
   const [existingBackups, setExistingBackups] = useState([]);
   const [loadingBackups, setLoadingBackups] = useState(false);
 
-  // Carica le impostazioni backup reali all'avvio della schermata
+  // State per backup automatico al salvataggio
+  const [autoBackupOnSave, setAutoBackupOnSave] = useState(false);
+  const [showBackupNotification, setShowBackupNotification] = useState(true);
+  const [maxBackupsCount, setMaxBackupsCount] = useState(5);
+  const [autoBackupDestination, setAutoBackupDestination] = useState('memory');
+  const [customPaths, setCustomPaths] = useState({});
+  const [backupStats, setBackupStats] = useState(null);
+  
+  // State per configurazione cloud
+  const [cloudProvider, setCloudProvider] = useState('drive');
+  const [cloudEmail, setCloudEmail] = useState('');
+
+  // Carica le impostazioni backup al salvataggio all'avvio della schermata
   useEffect(() => {
     const loadBackupSettings = async () => {
       try {
-        if (typeof BackupService.getBackupSettings === 'function') {
-          const settings = await BackupService.getBackupSettings();
-          console.log('📱 [BackupScreen] Impostazioni caricate:', settings);
-          setAutoBackupEnabled(!!settings.enabled); // Correzione: usa 'enabled' non 'autoBackupEnabled'
-          if (settings.autoBackupTime) setAutoBackupTime(settings.autoBackupTime);
-          if (settings.time) setAutoBackupTime(settings.time); // Correzione: usa 'time' come fallback
-          if (settings.backupDestination) setBackupDestination(settings.backupDestination);
-          if (settings.destination) setBackupDestination(settings.destination); // Correzione: usa 'destination' come fallback
-          console.log('📱 [BackupScreen] Stato UI aggiornato - enabled:', !!settings.enabled, 'time:', settings.time || settings.autoBackupTime);
-        }
-        // Carica anche le destinazioni disponibili
-        if (typeof BackupService.getAvailableDestinations === 'function') {
-          const destinations = BackupService.getAvailableDestinations();
-          setAvailableDestinations(destinations);
+        // Carica impostazioni backup al salvataggio con gestione errori
+        try {
+          const autoBackupSettings = await AutoBackupService.getAutoBackupSettings();
+          setAutoBackupOnSave(autoBackupSettings.enabled);
+          setShowBackupNotification(autoBackupSettings.showNotification);
+          setMaxBackupsCount(autoBackupSettings.maxBackups);
+          setAutoBackupDestination(autoBackupSettings.destination || 'memory');
+          
+          // Carica informazioni sui percorsi personalizzati
+          const pathsInfo = await AutoBackupService.getCustomPathsInfo();
+          setCustomPaths(pathsInfo || {});
+          
+          // Carica statistiche backup con fallback
+          try {
+            const stats = await AutoBackupService.getBackupStats();
+            console.log('🔍 DEBUG - backupStats caricati:', JSON.stringify(stats, null, 2));
+            
+            // Calcolo alternativo diretto se getBackupStats non funziona
+            if (!stats || stats.count === 0) {
+              console.log('🔍 FALLBACK - Calcolo statistiche manualmente...');
+              const keys = await AsyncStorage.getAllKeys();
+              const autoBackupKeys = keys.filter(key => key.startsWith('auto_backup_'));
+              console.log('🔍 FALLBACK - Chiavi backup trovate:', autoBackupKeys.length);
+              
+              let totalSize = 0;
+              let lastBackup = null;
+              
+              for (const key of autoBackupKeys) {
+                try {
+                  const data = await AsyncStorage.getItem(key);
+                  if (data) {
+                    totalSize += data.length;
+                    const backup = JSON.parse(data);
+                    if (backup.created && (!lastBackup || backup.created > lastBackup)) {
+                      lastBackup = backup.created;
+                    }
+                  }
+                } catch (e) {
+                  console.log('❌ Errore lettura backup:', key, e);
+                }
+              }
+              
+              setBackupStats({
+                count: autoBackupKeys.length,
+                totalSize: Math.round(totalSize / 1024),
+                lastBackup: lastBackup
+              });
+              console.log('🔍 FALLBACK - Statistiche calcolate:', {
+                count: autoBackupKeys.length,
+                totalSize: Math.round(totalSize / 1024),
+                lastBackup: lastBackup
+              });
+            } else {
+              setBackupStats({
+                count: stats.count || 0,
+                totalSize: Math.round((stats.totalSize || 0) / 1024),
+                lastBackup: stats.lastBackup
+              });
+            }
+          } catch (statsError) {
+            console.log('❌ Errore caricamento statistiche, provo fallback:', statsError);
+            // Fallback completo
+            const keys = await AsyncStorage.getAllKeys();
+            const autoBackupKeys = keys.filter(key => key.startsWith('auto_backup_'));
+            setBackupStats({
+              count: autoBackupKeys.length,
+              totalSize: 0,
+              lastBackup: null
+            });
+          }
+          
+          // Carica configurazione cloud
+          const cloudConfig = await AutoBackupService.getCloudConfig();
+          setCloudProvider(cloudConfig.provider || 'drive');
+          setCloudEmail(cloudConfig.email || '');
+        } catch (autoBackupError) {
+          console.warn('⚠️ Errore caricamento impostazioni AutoBackupService:', autoBackupError);
+          // Usa valori di default se il servizio non è disponibile
+          setAutoBackupOnSave(false);
+          setShowBackupNotification(true);
+          setMaxBackupsCount(5);
+          setAutoBackupDestination('memory');
+          setCustomPaths({});
+          setBackupStats(null);
         }
       } catch (e) {
         console.error('Errore caricamento impostazioni backup:', e);
       }
     };
-    loadBackupSettings();
+    
+    const initializeBackupScreen = async () => {
+      await loadBackupSettings();
+      // Carica anche la lista dei backup all'avvio
+      await loadExistingBackups();
+      // Pulisci SEMPRE automaticamente i backup in eccesso se il backup automatico è attivo
+      console.log('🔄 Controllo pulizia automatica backup...');
+      try {
+        const settings = await AutoBackupService.getAutoBackupSettings();
+        if (settings.enabled && settings.maxBackups > 0) {
+          console.log(`🧹 Pulizia automatica attiva: mantengo max ${settings.maxBackups} backup`);
+          await cleanExcessAutoBackups();
+          // Ricarica statistiche e lista dopo pulizia
+          const stats = await AutoBackupService.getBackupStats();
+          setBackupStats(stats);
+          await loadExistingBackups();
+        } else {
+          console.log('ℹ️ Backup automatico non attivo, salto pulizia');
+        }
+      } catch (cleanError) {
+        console.error('⚠️ Errore pulizia automatica:', cleanError);
+      }
+    };
+    
+    initializeBackupScreen();
+    
+    // Controllo periodico ogni 30 secondi per pulizia automatica
+    const cleanupInterval = setInterval(async () => {
+      try {
+        const settings = await AutoBackupService.getAutoBackupSettings();
+        if (settings.enabled && settings.maxBackups > 0) {
+          console.log('🔄 Controllo periodico pulizia backup automatici...');
+          const autoBackups = await AutoBackupService.getAutoBackupsList();
+          if (autoBackups.length > settings.maxBackups) {
+            console.log(`🧹 Pulizia periodica: ${autoBackups.length} > ${settings.maxBackups}`);
+            await cleanExcessAutoBackups();
+            // Aggiorna silenziosamente le statistiche con fallback
+            try {
+              const stats = await AutoBackupService.getBackupStats();
+              if (!stats || stats.count === 0) {
+                // Fallback
+                const keys = await AsyncStorage.getAllKeys();
+                const autoBackupKeys = keys.filter(key => key.startsWith('auto_backup_'));
+                setBackupStats({
+                  count: autoBackupKeys.length,
+                  totalSize: 0,
+                  lastBackup: null
+                });
+              } else {
+                setBackupStats({
+                  count: stats.count || 0,
+                  totalSize: Math.round((stats.totalSize || 0) / 1024),
+                  lastBackup: stats.lastBackup
+                });
+              }
+            } catch (statsError) {
+              console.warn('⚠️ Errore aggiornamento statistiche:', statsError);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Errore controllo periodico:', error);
+      }
+    }, 30000); // Ogni 30 secondi
+    
+    // Cleanup interval on unmount
+    return () => {
+      if (cleanupInterval) {
+        clearInterval(cleanupInterval);
+      }
+    };
   }, []);
 
-  // Funzione per convertire l'orario di backup in un oggetto Date per il DateTimePicker
-  const getCurrentTimeForPicker = () => {
-    const [hours, minutes] = autoBackupTime.split(':');
-    const date = new Date();
-    date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-    return date;
+  // Salva le impostazioni del backup automatico al salvataggio
+  const saveAutoBackupOnSaveSettings = async () => {
+    try {
+      setIsLoading(true);
+      const settings = {
+        enabled: autoBackupOnSave,
+        showNotification: showBackupNotification,
+        maxBackups: maxBackupsCount,
+        destination: autoBackupDestination
+      };
+      
+      const success = await AutoBackupService.saveAutoBackupSettings(settings);
+      
+      if (success) {
+        // Pulisci SEMPRE automaticamente i backup automatici in eccesso
+        console.log('🧹 Pulizia automatica backup dopo salvataggio impostazioni...');
+        await cleanExcessAutoBackups();
+        
+        Alert.alert('Successo', 'Impostazioni backup automatico salvate correttamente');
+        // Ricarica le statistiche
+        const stats = await AutoBackupService.getBackupStats();
+        console.log('🔍 DEBUG - backupStats dopo salvataggio:', JSON.stringify(stats, null, 2));
+        setBackupStats(stats);
+        
+        // Ricarica la lista backup
+        await loadExistingBackups();
+      } else {
+        Alert.alert('Errore', 'Impossibile salvare le impostazioni');
+      }
+    } catch (error) {
+      console.error('Errore salvataggio impostazioni backup automatico:', error);
+      Alert.alert('Errore', 'Errore durante il salvataggio delle impostazioni');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  // Gestisce il cambio di orario dal DateTimePicker
-  const handleTimeChange = (event, selectedTime) => {
-    setShowTimePicker(false);
-    if (selectedTime) {
-      const hours = selectedTime.getHours().toString().padStart(2, '0');
-      const minutes = selectedTime.getMinutes().toString().padStart(2, '0');
-      setAutoBackupTime(`${hours}:${minutes}`);
+  // Pulisce i backup automatici in eccesso mantenendo solo il numero configurato
+  const cleanExcessAutoBackups = async () => {
+    try {
+      console.log('🧹 Pulizia backup automatici in eccesso...');
+      
+      // Ottieni le impostazioni correnti per essere sicuri
+      const settings = await AutoBackupService.getAutoBackupSettings();
+      const maxBackups = settings.maxBackups || maxBackupsCount || 5;
+      
+      // Ottieni tutti i backup automatici
+      const autoBackups = await AutoBackupService.getAutoBackupsList();
+      console.log(`📊 Trovati ${autoBackups.length} backup automatici, limite: ${maxBackups}`);
+      
+      if (autoBackups.length > maxBackups) {
+        // Ordina per data (più recenti per primi)
+        autoBackups.sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date));
+        
+        // Backup da eliminare (quelli in eccesso)
+        const backupsToDelete = autoBackups.slice(maxBackups);
+        console.log(`🗑️ Elimino ${backupsToDelete.length} backup automatici in eccesso`);
+        
+        let deletedCount = 0;
+        for (const backup of backupsToDelete) {
+          try {
+            if (backup.filePath && backup.filePath.includes('/')) {
+              await FileSystem.deleteAsync(backup.filePath);
+              console.log(`✅ Eliminato backup automatico: ${backup.name}`);
+              deletedCount++;
+            }
+          } catch (deleteError) {
+            console.warn(`⚠️ Errore eliminazione backup ${backup.name}:`, deleteError);
+          }
+        }
+        
+        console.log(`🎯 Eliminati ${deletedCount}/${backupsToDelete.length} backup automatici, mantenuti ${maxBackups} più recenti`);
+        return deletedCount;
+      } else {
+        console.log(`✅ Numero backup automatici (${autoBackups.length}) entro il limite (${maxBackups})`);
+        return 0;
+      }
+    } catch (error) {
+      console.error('❌ Errore pulizia backup automatici:', error);
+      return 0;
     }
+  };
+
+  // Gestisce l'impostazione di un percorso personalizzato per la memoria
+  const setCustomMemoryPath = async () => {
+    try {
+      setIsLoading(true);
+      const result = await AutoBackupService.setCustomMemoryPath();
+      
+      if (result.success) {
+        Alert.alert('Successo', 'Percorso personalizzato impostato correttamente');
+        // Ricarica le informazioni sui percorsi
+        const pathsInfo = await AutoBackupService.getCustomPathsInfo();
+        setCustomPaths(pathsInfo || {});
+      } else {
+        Alert.alert('Errore', result.error || 'Impossibile impostare il percorso');
+      }
+    } catch (error) {
+      console.error('Errore impostazione percorso:', error);
+      Alert.alert('Errore', 'Errore durante l\'impostazione del percorso');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Resetta un percorso personalizzato
+  const resetCustomPath = async (destinationType) => {
+    try {
+      setIsLoading(true);
+      const success = await AutoBackupService.resetCustomPath(destinationType);
+      
+      if (success) {
+        Alert.alert('Successo', 'Percorso ripristinato a quello di default');
+        // Ricarica le informazioni sui percorsi
+        const pathsInfo = await AutoBackupService.getCustomPathsInfo();
+        setCustomPaths(pathsInfo || {});
+      } else {
+        Alert.alert('Errore', 'Impossibile ripristinare il percorso');
+      }
+    } catch (error) {
+      console.error('Errore reset percorso:', error);
+      Alert.alert('Errore', 'Errore durante il ripristino del percorso');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Formatta la dimensione file in modo leggibile
+  const formatFileSize = (bytes) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
   // Funzione per ottenere il nome visualizzabile della destinazione
@@ -184,12 +447,38 @@ const BackupScreen = ({ navigation }) => {
   const loadExistingBackups = async () => {
     try {
       setLoadingBackups(true);
+      
+      // Carica backup manuali
+      let manualBackups = [];
       if (typeof BackupService.getExistingBackups === 'function') {
-        const backups = await BackupService.getExistingBackups();
-        setExistingBackups(backups || []);
-      } else {
-        setExistingBackups([]);
+        manualBackups = await BackupService.getExistingBackups();
       }
+      
+      // Carica backup automatici
+      let autoBackups = [];
+      try {
+        autoBackups = await AutoBackupService.getAutoBackupsList();
+      } catch (autoError) {
+        console.warn('⚠️ Errore caricamento backup automatici:', autoError);
+      }
+      
+      console.log(`📊 BACKUP RECAP: ${manualBackups.length} manuali + ${autoBackups.length} automatici = ${manualBackups.length + autoBackups.length} totali`);
+      
+      // Combina e ordina tutti i backup per data (più recenti per primi)
+      const allBackups = [...(manualBackups || []), ...(autoBackups || [])];
+      
+      // Normalizza le proprietà e aggiungi una key unica
+      const normalizedBackups = allBackups.map((backup, index) => ({
+        ...backup,
+        key: backup.name || `backup_${index}`,
+        createdAt: backup.createdAt || backup.date || new Date(),
+        size: backup.size || 0,
+        filePath: backup.filePath || backup.path // Assicura che filePath sia sempre disponibile
+      }));
+      
+      normalizedBackups.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      
+      setExistingBackups(normalizedBackups);
     } catch (error) {
       console.error('Errore caricamento backup esistenti:', error);
       setExistingBackups([]);
@@ -202,6 +491,14 @@ const BackupScreen = ({ navigation }) => {
   useEffect(() => {
     loadExistingBackups();
   }, []);
+
+  // 🔄 AGGIORNAMENTO AUTOMATICO: Ricarica backup SEMPRE quando la pagina viene focalizzata
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 BACKUP - Screen focalizzato, ricarico lista backup automaticamente (SEMPRE)...');
+      loadExistingBackups();
+    }, []) // Nessuna dipendenza - refresh SEMPRE
+  );
 
 
   // ...
@@ -220,18 +517,52 @@ const BackupScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               setLoadingBackups(true);
-              await BackupService.deleteLocalBackup(backup.key);
-              await loadExistingBackups(); // Ricarica la lista
               
-              Alert.alert(
-                '✅ Backup Eliminato',
-                `Il backup "${backup.name}" è stato eliminato con successo.`
-              );
+              console.log('🗑️ DEBUG - Tentativo eliminazione backup:', {
+                name: backup.name,
+                type: backup.type,
+                filePath: backup.filePath,
+                path: backup.path,
+                key: backup.key
+              });
+              
+              let success = false;
+              
+              // Elimina in base al tipo di backup
+              if (backup.type === 'auto') {
+                // Backup automatico - elimina direttamente il file
+                const targetPath = backup.filePath || backup.path;
+                console.log('🗑️ DEBUG - Eliminazione backup automatico:', targetPath);
+                
+                if (targetPath && targetPath.includes('/')) {
+                  await FileSystem.deleteAsync(targetPath);
+                  console.log('✅ DEBUG - Backup automatico eliminato con successo');
+                  success = true;
+                } else {
+                  console.error('❌ DEBUG - Percorso file backup automatico non valido:', targetPath);
+                  throw new Error('Percorso file non valido');
+                }
+              } else {
+                // Backup manuale - usa il servizio esistente
+                console.log('🗑️ DEBUG - Eliminazione backup manuale:', backup.key);
+                await BackupService.deleteLocalBackup(backup.key);
+                console.log('✅ DEBUG - Backup manuale eliminato con successo');
+                success = true;
+              }
+              
+              if (success) {
+                await loadExistingBackups(); // Ricarica la lista
+                
+                Alert.alert(
+                  '✅ Backup Eliminato',
+                  `Il backup "${backup.name}" è stato eliminato con successo.`
+                );
+              }
             } catch (error) {
-              console.error('Errore eliminazione backup:', error);
+              console.error('❌ Errore eliminazione backup:', error);
               Alert.alert(
                 '❌ Errore',
-                'Impossibile eliminare il backup. Riprova.'
+                `Impossibile eliminare il backup: ${error.message}\n\nRiprova o contatta il supporto.`
               );
             } finally {
               setLoadingBackups(false);
@@ -256,10 +587,22 @@ const BackupScreen = ({ navigation }) => {
             try {
               setIsLoading(true);
               
-              // Leggi i dati del backup
-              const backupData = await AsyncStorage.getItem(backup.key);
-              if (!backupData) {
-                throw new Error('Dati backup non trovati');
+              let backupData;
+              
+              if (backup.type === 'auto') {
+                // Backup automatico - leggi dal file system
+                const FileSystem = await import('expo-file-system');
+                const fileContent = await FileSystem.readAsStringAsync(backup.filePath);
+                const parsedData = JSON.parse(fileContent);
+                
+                // Estrai solo i dati (senza metadati)
+                backupData = JSON.stringify(parsedData.data || parsedData);
+              } else {
+                // Backup manuale - leggi da AsyncStorage
+                backupData = await AsyncStorage.getItem(backup.key);
+                if (!backupData) {
+                  throw new Error('Dati backup non trovati');
+                }
               }
 
               await BackupService.importBackup(backupData);
@@ -305,20 +648,28 @@ const BackupScreen = ({ navigation }) => {
     try {
       setIsLoading(true);
       
-      // Leggi i dati del backup da AsyncStorage
-      const backupData = await AsyncStorage.getItem(backup.key);
-      if (!backupData) {
-        throw new Error('Dati backup non trovati');
+      let backupContent;
+      
+      if (backup.type === 'auto') {
+        // Backup automatico - leggi dal file system
+        const FileSystem = await import('expo-file-system');
+        backupContent = await FileSystem.readAsStringAsync(backup.filePath);
+      } else {
+        // Backup manuale - leggi da AsyncStorage
+        backupContent = await AsyncStorage.getItem(backup.key);
+        if (!backupContent) {
+          throw new Error('Dati backup non trovati');
+        }
       }
 
-      // Salva come file
+      // Salva come file per l'esportazione
       const fileName = `${backup.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
       
       const FileSystem = await import('expo-file-system');
       const Sharing = await import('expo-sharing');
       
       const fileUri = FileSystem.documentDirectory + fileName;
-      await FileSystem.writeAsStringAsync(fileUri, backupData);
+      await FileSystem.writeAsStringAsync(fileUri, backupContent);
       
       if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
@@ -335,43 +686,6 @@ const BackupScreen = ({ navigation }) => {
         '❌ Errore Esportazione',
         'Impossibile esportare il backup. Riprova.'
       );
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const saveBackupSettings = async () => {
-    // Se il backup automatico è abilitato e non è selezionata una destinazione valida, mostra il picker e blocca il salvataggio
-    if (autoBackupEnabled && (!backupDestination || !availableDestinations.find(d => d.id === backupDestination))) {
-      Alert.alert('Seleziona destinazione', 'Devi selezionare una cartella di destinazione per il backup automatico.');
-      setShowDestinationPicker(true);
-      return;
-    }
-    try {
-      setIsLoading(true);
-      const success = await BackupService.updateAllBackupSettings(
-        autoBackupEnabled, 
-        autoBackupTime, 
-        backupDestination
-      );
-      if (success) {
-        // Aggiorna lo stato locale con i valori effettivamente salvati
-        if (typeof BackupService.getBackupSettings === 'function') {
-          const settings = await BackupService.getBackupSettings();
-          setAutoBackupEnabled(!!settings.enabled); // Correzione: usa 'enabled' non 'autoBackupEnabled'
-          if (settings.time) setAutoBackupTime(settings.time); // Correzione: usa 'time' non 'autoBackupTime'
-          if (settings.destination) setBackupDestination(settings.destination); // Correzione: usa 'destination' non 'backupDestination'
-        }
-        Alert.alert('Successo', 'Impostazioni backup salvate correttamente');
-        const systemStatus = BackupService.getSystemStatus();
-        console.log('📱 Sistema backup attivo:', systemStatus.current);
-        console.log('📁 Destinazione:', backupDestination);
-      } else {
-        Alert.alert('Errore', 'Impossibile salvare le impostazioni backup');
-      }
-    } catch (error) {
-      console.error('Errore salvataggio impostazioni:', error);
-      Alert.alert('Errore', 'Impossibile salvare le impostazioni');
     } finally {
       setIsLoading(false);
     }
@@ -793,137 +1107,215 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
     <SafeAreaView style={styles.container}>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
 
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Backup e Ripristino</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
       <ScrollView style={styles.content}>
-        {/* Sezione Backup Automatico */}
+        {/* Nuova Sezione: Backup Automatico al Salvataggio */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🔄 Backup Automatico</Text>
+          <Text style={styles.sectionTitle}>💾 Backup Automatico al Salvataggio</Text>
+          <Text style={styles.sectionDescription}>
+            Crea automaticamente un backup ogni volta che salvi un inserimento
+          </Text>
+          
           <View style={styles.autoBackupContainer}>
             <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Attiva backup automatico</Text>
+              <Text style={styles.switchLabel}>Attiva backup al salvataggio</Text>
               <Switch
-                value={autoBackupEnabled}
-                onValueChange={async (value) => {
-                  console.log('📱 [BackupScreen] Switch cambiato a:', value);
-                  setAutoBackupEnabled(value);
-                  // Se si abilita, obbliga la selezione destinazione se non valida
-                  if (value && (!backupDestination || !availableDestinations.find(d => d.id === backupDestination))) {
-                    Alert.alert('Seleziona destinazione', 'Devi selezionare una cartella di destinazione per il backup automatico.');
-                    // Aggiorna subito le destinazioni disponibili prima di mostrare il picker
-                    if (typeof BackupService?.getAvailableDestinations === 'function') {
-                      const destinations = BackupService.getAvailableDestinations();
-                      setAvailableDestinations(destinations);
-                    }
-                    setShowDestinationPicker(true);
-                    return;
-                  }
-                  setIsLoading(true);
-                  try {
-                    console.log('📱 [BackupScreen] Chiamando updateBackupSettings con:', value, autoBackupTime);
-                    const result = await BackupService.updateBackupSettings(value, autoBackupTime);
-                    console.log('📱 [BackupScreen] Risultato updateBackupSettings:', result);
-                    
-                    // Verifica che le impostazioni siano state salvate correttamente
-                    const savedSettings = await BackupService.getBackupSettings();
-                    console.log('📱 [BackupScreen] Verifica impostazioni salvate:', savedSettings);
-                    
-                    if (savedSettings.enabled !== value) {
-                      console.error('❌ [BackupScreen] Le impostazioni non sono state salvate correttamente!');
-                      Alert.alert('Errore', 'Le impostazioni non sono state salvate correttamente');
-                      setAutoBackupEnabled(savedSettings.enabled); // Ripristina lo stato corretto
-                    }
-                  } catch (e) {
-                    console.error('Errore aggiornamento impostazioni backup:', e);
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
+                value={autoBackupOnSave}
+                onValueChange={setAutoBackupOnSave}
                 trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
                 thumbColor={theme.colors.surface}
               />
             </View>
             
-            {autoBackupEnabled && (
+            {autoBackupOnSave && (
               <>
-                {/* Avviso modalità sviluppo */}
-                {__DEV__ && (
-                  <View style={[styles.infoContainer, { backgroundColor: '#FFF3CD', borderColor: '#FFC107', marginBottom: 15 }]}>
-                    <Text style={[styles.infoText, { color: '#856404' }]}>
-                      ⚠️ <Text style={{ fontWeight: 'bold' }}>Modalità Sviluppo</Text>{'\n'}
-                      Il backup automatico funziona solo con app aperta. Nella versione finale funzionerà anche con app chiusa.
-                    </Text>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Mostra notifica backup</Text>
+                  <Switch
+                    value={showBackupNotification}
+                    onValueChange={setShowBackupNotification}
+                    trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
+                    thumbColor={theme.colors.surface}
+                  />
+                </View>
+                
+                <View style={styles.pickerContainer}>
+                  <Text style={styles.pickerLabel}>Backup da mantenere:</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker
+                      selectedValue={maxBackupsCount || 5}
+                      onValueChange={(value) => setMaxBackupsCount(value)}
+                      style={styles.picker}
+                      dropdownIconColor={theme.colors.primary}
+                    >
+                      <Picker.Item label="3" value={3} />
+                      <Picker.Item label="5" value={5} />
+                      <Picker.Item label="10" value={10} />
+                    </Picker>
+                  </View>
+                </View>
+                
+                <View style={styles.pickerContainer}>
+                  <Text style={styles.pickerLabel}>Destinazione backup:</Text>
+                  <View style={styles.pickerWrapper}>
+                    <Picker
+                      selectedValue={autoBackupDestination}
+                      onValueChange={setAutoBackupDestination}
+                      style={styles.picker}
+                      dropdownIconColor={theme.colors.primary}
+                    >
+                      <Picker.Item label="📱 Memoria" value="memory" />
+                      <Picker.Item label="📂 Cartella" value="custom" />
+                      <Picker.Item label="☁️ Cloud" value="cloud" />
+                    </Picker>
+                  </View>
+                </View>
+                
+                {/* Configurazione cloud */}
+                {autoBackupDestination === 'cloud' && (
+                  <View style={styles.customPathContainer}>
+                    <Text style={styles.pathsTitle}>☁️ Configurazione Cloud</Text>
+                    <View style={styles.cloudConfigSection}>
+                      <Text style={styles.pickerLabel}>Provider:</Text>
+                      <View style={styles.pickerWrapper}>
+                        <Picker
+                          selectedValue={cloudProvider}
+                          onValueChange={setCloudProvider}
+                          style={styles.picker}
+                          dropdownIconColor={theme.colors.primary}
+                        >
+                          <Picker.Item label="Google Drive" value="drive" />
+                          <Picker.Item label="iCloud" value="icloud" />
+                        </Picker>
+                      </View>
+                      
+                      <Text style={styles.pickerLabel}>Email/Account:</Text>
+                      <TextInput
+                        style={styles.cloudEmailInput}
+                        value={cloudEmail}
+                        onChangeText={setCloudEmail}
+                        placeholder="es. tuoemail@gmail.com"
+                        placeholderTextColor={theme.colors.textSecondary}
+                        keyboardType="email-address"
+                        autoCapitalize="none"
+                      />
+                      
+                      <TouchableOpacity
+                        style={[styles.pathButton, styles.pathButtonPrimary]}
+                        onPress={async () => {
+                          try {
+                            const success = await AutoBackupService.setCloudConfig(cloudProvider, cloudEmail);
+                            if (success) {
+                              Alert.alert('Successo', 'Configurazione cloud salvata');
+                            } else {
+                              Alert.alert('Errore', 'Impossibile salvare la configurazione');
+                            }
+                          } catch (error) {
+                            console.error('Errore configurazione cloud:', error);
+                            Alert.alert('Errore', 'Errore durante il salvataggio');
+                          }
+                        }}
+                        disabled={isLoading || !cloudEmail.trim()}
+                      >
+                        <Text style={styles.pathButtonText}>💾 Salva Configurazione</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
                 
-                <View style={styles.timeContainer}>
-                  <Text style={styles.timeLabel}>Orario backup (ogni 24h):</Text>
-                  <TouchableOpacity 
-                    style={styles.timeSelector}
-                    onPress={openTimePicker}
-                  >
-                    <Ionicons name="time-outline" size={20} color={theme.colors.primary} />
-                    <Text style={styles.timeSelectorText}>{autoBackupTime}</Text>
-                  </TouchableOpacity>
-                </View>
-                
-                {/* Selezione Destinazione Backup */}
-                <View style={styles.destinationContainer}>
-                  <Text style={styles.destinationLabel}>📁 Destinazione backup:</Text>
-                  <TouchableOpacity 
-                    style={styles.destinationButton}
-                    onPress={() => {
-                      // Aggiorna subito le destinazioni disponibili prima di mostrare il picker
-                      if (typeof BackupService?.getAvailableDestinations === 'function') {
-                        const destinations = BackupService.getAvailableDestinations();
-                        setAvailableDestinations(destinations);
-                      }
-                      setShowDestinationPicker(true);
-                    }}
-                  >
-                    <Ionicons 
-                      name={availableDestinations.find(d => d.id === backupDestination)?.icon || 'folder-outline'} 
-                      size={20} 
-                      color={theme.colors.primary} 
-                    />
-                    <Text style={styles.destinationButtonText}>
-                      {availableDestinations.find(d => d.id === backupDestination)?.name || 'Memoria App'}
+                {/* Selezione cartella personalizzata */}
+                {autoBackupDestination === 'custom' && (
+                  <View style={styles.customPathContainer}>
+                    <Text style={styles.pathsTitle}>📂 Cartella backup personalizzata</Text>
+                    <Text style={styles.customPathDescription}>
+                      Scegli dove salvare i backup. Verrà aperto il menu di condivisione: 
+                      salva il file nella cartella desiderata per impostare il percorso.
                     </Text>
-                    <Ionicons name="chevron-down" size={16} color={theme.colors.textSecondary} />
-                  </TouchableOpacity>
-                  
-                  <Text style={styles.destinationDescription}>
-                    {availableDestinations.find(d => d.id === backupDestination)?.description || 
-                     'Salva nella memoria interna dell\'app'}
-                  </Text>
-                </View>
+                    <TouchableOpacity
+                      style={[styles.pathButton, styles.pathButtonPrimary]}
+                      onPress={async () => {
+                        try {
+                          setIsLoading(true);
+                          const result = await AutoBackupService.selectBackupFolder();
+                          if (result.success) {
+                            Alert.alert('✅ Percorso Impostato', 
+                              `I backup verranno salvati nella cartella selezionata.\n\nPercorso: ${result.displayName}`,
+                              [{ text: 'OK' }]
+                            );
+                            // Ricarica le informazioni sui percorsi
+                            const pathsInfo = await AutoBackupService.getCustomPathsInfo();
+                            setCustomPaths(pathsInfo || {});
+                          } else if (!result.canceled) {
+                            Alert.alert('Errore', result.error || 'Impossibile configurare il percorso personalizzato');
+                          }
+                        } catch (error) {
+                          console.error('Errore configurazione percorso:', error);
+                          Alert.alert('Errore', 'Errore durante la configurazione del percorso');
+                        } finally {
+                          setIsLoading(false);
+                        }
+                      }}
+                      disabled={isLoading}
+                    >
+                      <Text style={styles.pathButtonText}>📁 Scegli Cartella</Text>
+                    </TouchableOpacity>
+                    
+                    {customPaths.custom && (
+                      <View style={styles.selectedPathInfo}>
+                        <Text style={styles.selectedPathLabel}>Cartella selezionata:</Text>
+                        <Text style={styles.selectedPathValue} numberOfLines={2} ellipsizeMode="middle">
+                          {customPaths.custom.path}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                
+                {/* Statistiche backup */}
+                {autoBackupOnSave && (
+                  <View style={styles.statsContainer}>
+                    <Text style={styles.statsTitle}>📊 Statistiche backup automatici</Text>
+                    <View style={styles.statsRow}>
+                      <Text style={styles.statsLabel}>Backup totali:</Text>
+                      <Text style={styles.statsValue}>{backupStats?.count || 0}</Text>
+                    </View>
+                    <View style={styles.statsRow}>
+                      <Text style={styles.statsLabel}>Spazio occupato:</Text>
+                      <Text style={styles.statsValue}>{formatFileSize(backupStats?.totalSize || 0)}</Text>
+                    </View>
+                    {backupStats?.lastBackup && (
+                      <View style={styles.statsRow}>
+                        <Text style={styles.statsLabel}>Ultimo backup:</Text>
+                        <Text style={styles.statsValue}>
+                          {formatDate(backupStats.lastBackup)}
+                        </Text>
+                      </View>
+                    )}
+                    {!backupStats && (
+                      <View style={styles.statsRow}>
+                        <Text style={styles.statsLabel}>Stato:</Text>
+                        <Text style={styles.statsValue}>Caricamento...</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
               </>
             )}
           </View>
+          
+          {/* Bottone Salva Impostazioni Backup Automatico */}
+          {autoBackupOnSave && (
+            <TouchableOpacity 
+              style={[styles.saveButton, { backgroundColor: '#4CAF50' }]} 
+              onPress={saveAutoBackupOnSaveSettings} 
+              disabled={isLoading}
+            >
+              <Ionicons name="save-outline" size={20} color="white" />
+              <Text style={[styles.saveButtonText, { color: 'white' }]}>
+                Salva Impostazioni Backup Automatico
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
-
-
-        {/* Feedback visivo per backup automatico programmato */}
-        {autoBackupEnabled && (
-          <View style={{alignItems: 'center', marginBottom: 16}}>
-            <Ionicons name="calendar-outline" size={20} color={theme.colors.primary} />
-            <Text style={{color: theme.colors.textSecondary, fontSize: 13, marginTop: 4}}>
-              Backup automatico programmato ogni giorno alle {autoBackupTime} su: {availableDestinations.find(d => d.id === backupDestination)?.name || 'Memoria App'}
-            </Text>
-          </View>
-        )}
-
-        {/* Bottone Salva Impostazioni */}
-        <TouchableOpacity style={styles.saveButton} onPress={saveBackupSettings} disabled={isLoading}>
-          <Ionicons name="save-outline" size={20} color={theme.colors.onPrimary} />
-          <Text style={styles.saveButtonText}>Salva Impostazioni</Text>
-        </TouchableOpacity>
 
         {/* Sezione Backup Manuali */}
         <View style={styles.section}>
@@ -1122,89 +1514,15 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
             </TouchableOpacity>
         </View>
 
-        {/* Info Sistema */}
-        <View style={styles.infoContainer}>
-          <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
-          <Text style={styles.infoText}>
-            📦 I backup includono tutte le ore lavorate e configurazioni.{'\n'}
-            🚀 Sistema IBRIDO: Backup nativo (app builds) + fallback JavaScript (Expo).{'\n'}
-            🔔 Sistema nativo: Funziona anche con app chiusa tramite notifiche.{'\n'}
-            📁 Backup manuali: Scegli dove salvare (file, condivisione, memoria app).{'\n'}
-            📁 Backup automatici: Scegli destinazione dalla sezione sopra.{'\n'}
-            {__DEV__ && '⚠️ Modalità sviluppo: Backup automatico solo con app aperta.'}
-          </Text>
-        </View>
-      </ScrollView>
 
-      {/* Modal Selezione Destinazione */}
-      {showDestinationPicker && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>📁 Scegli Destinazione Backup</Text>
-              <TouchableOpacity onPress={() => setShowDestinationPicker(false)}>
-                <Ionicons name="close" size={24} color={theme.colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.destinationList}>
-              {availableDestinations.length === 0 ? (
-                <Text style={{ textAlign: 'center', color: theme.colors.textSecondary, marginTop: 32 }}>
-                  Nessuna destinazione disponibile. Premi "Salva Impostazioni" per aggiornare le destinazioni o riavvia l'app.
-                </Text>
-              ) : (
-                availableDestinations.map((destination) => (
-                  <TouchableOpacity
-                    key={destination.id}
-                    style={[
-                      styles.destinationOption,
-                      backupDestination === destination.id && styles.destinationOptionSelected
-                    ]}
-                    onPress={() => {
-                      setBackupDestination(destination.id);
-                      setShowDestinationPicker(false);
-                    }}
-                  >
-                    <View style={styles.destinationOptionLeft}>
-                      <Ionicons 
-                        name={destination.icon} 
-                        size={24} 
-                        color={backupDestination === destination.id ? '#007AFF' : theme.colors.textSecondary} 
-                      />
-                      <View style={styles.destinationOptionText}>
-                        <Text style={[
-                          styles.destinationOptionName,
-                          backupDestination === destination.id && { color: '#007AFF', fontWeight: '600' }
-                        ]}>
-                          {destination.name}
-                        </Text>
-                        <Text style={styles.destinationOptionDescription}>
-                          {destination.description}
-                        </Text>
-                        <View style={styles.destinationOptionTags}>
-                          {destination.available && (
-                            <View style={[styles.tag, styles.tagAvailable]}>
-                              <Text style={styles.tagText}>✅ Disponibile</Text>
-                            </View>
-                          )}
-                          {destination.reliable && (
-                            <View style={[styles.tag, styles.tagReliable]}>
-                              <Text style={styles.tagText}>🔒 Affidabile</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
-                    </View>
-                    {backupDestination === destination.id && (
-                      <Ionicons name="checkmark-circle" size={20} color="#007AFF" />
-                    )}
-                  </TouchableOpacity>
-                ))
-              )}
-            </ScrollView>
-          </View>
-        </View>
-      )}
+
+
+ 
+
+
+
+
+      </ScrollView>
 
       {/* Loading Overlay */}
       {isLoading && (
@@ -1212,17 +1530,6 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Elaborando...</Text>
         </View>
-      )}
-
-      {/* DateTimePicker per orario backup */}
-      {showTimePicker && (
-        <DateTimePicker
-          value={getCurrentTimeForPicker()}
-          mode="time"
-          is24Hour={true}
-          display="default"
-          onChange={handleTimeChange}
-        />
       )}
     </SafeAreaView>
   );
@@ -1365,15 +1672,17 @@ const createStyles = (theme) => StyleSheet.create({
   },
   infoContainer: {
     flexDirection: 'row',
-    backgroundColor: theme.colors.surface,
+    backgroundColor: theme.name === 'dark' ? 'rgba(33, 150, 243, 0.1)' : theme.colors.surface,
     borderRadius: 8,
     padding: 16,
     gap: 8,
+    borderWidth: theme.name === 'dark' ? 1 : 0,
+    borderColor: theme.name === 'dark' ? 'rgba(33, 150, 243, 0.3)' : 'transparent',
   },
   infoText: {
     flex: 1,
     fontSize: 12,
-    color: theme.colors.textSecondary,
+    color: theme.name === 'dark' ? '#E3F2FD' : theme.colors.textSecondary,
     lineHeight: 18,
   },
   // Modal styles
@@ -1603,6 +1912,168 @@ const createStyles = (theme) => StyleSheet.create({
     borderWidth: 1,
     borderColor: theme.colors.primary,
     marginTop: 8,
+  },
+  sectionDescription: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    marginBottom: 16,
+    lineHeight: 20,
+  },
+  pickerContainer: {
+    gap: 8,
+  },
+  pickerLabel: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+  },
+  pickerWrapper: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+    backgroundColor: theme.colors.surface,
+  },
+  picker: {
+    height: 50,
+    color: theme.colors.text,
+  },
+  statsContainer: {
+    backgroundColor: theme.colors.background,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+  },
+  statsTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: 8,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  statsLabel: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+  },
+  statsValue: {
+    fontSize: 13,
+    color: theme.colors.text,
+    fontWeight: '500',
+  },
+  infoContainer: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginTop: 12,
+  },
+  infoText: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  pathsContainer: {
+    marginTop: 16,
+    padding: 12,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  pathsTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginBottom: 12,
+  },
+  pathItem: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  pathHeader: {
+    marginBottom: 6,
+  },
+  pathLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: theme.colors.text,
+    marginBottom: 2,
+  },
+  pathStatus: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    fontStyle: 'italic',
+  },
+  pathButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  pathButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  pathButtonPrimary: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+  },
+  pathButtonSecondary: {
+    backgroundColor: 'transparent',
+    borderColor: theme.colors.border,
+  },
+  pathButtonText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: theme.colors.onPrimary,
+  },
+  pathButtonTextSecondary: {
+    color: theme.colors.text,
+  },
+  customPathContainer: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 8,
+    padding: 12,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  customPathDescription: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  selectedPathInfo: {
+    marginTop: 12,
+    padding: 8,
+    backgroundColor: theme.colors.background,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  selectedPathLabel: {
+    fontSize: 12,
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  selectedPathValue: {
+    fontSize: 12,
+    color: theme.colors.text,
+    fontFamily: 'monospace',
+  },
+  cloudConfigSection: {
+    gap: 12,
+  },
+  cloudEmailInput: {
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 8,
+    padding: 12,
+    color: theme.colors.text,
+    backgroundColor: theme.colors.surface,
+    fontSize: 14,
   },
 });
 export default BackupScreen;

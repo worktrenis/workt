@@ -197,9 +197,21 @@ class BackupService {
       
       console.log('✅ Backup importato con successo');
       
+      // Determina il nome del backup basato sul formato
+      let backupName = 'backup-importato';
+      if (parsedData.backupInfo?.name) {
+        backupName = parsedData.backupInfo.name;
+      } else if (parsedData.metadata?.timestamp) {
+        const date = new Date(parsedData.metadata.timestamp);
+        backupName = `backup-auto-${date.toLocaleDateString('it-IT')}`;
+      } else if (parsedData.exportDate) {
+        const date = new Date(parsedData.exportDate);
+        backupName = `backup-${date.toLocaleDateString('it-IT')}`;
+      }
+      
       return {
         success: true,
-        backupName: parsedData.backupInfo?.name || 'backup-importato',
+        backupName: backupName,
         importDate: new Date().toISOString()
       };
       
@@ -337,7 +349,19 @@ class BackupService {
         return false;
       }
 
+      // Controlla se è un backup automatico (nuovo formato)
+      if (backupData.metadata && backupData.interventi) {
+        console.log('✅ Formato backup automatico valido');
+        return true;
+      }
+
+      // Controlla se è un backup manuale (formato legacy)
       if (!backupData.backupInfo) {
+        // Se ha gli interventi ma non i metadati, potrebbe essere un export diretto
+        if (backupData.interventi || Array.isArray(backupData)) {
+          console.log('✅ Formato backup diretto valido');
+          return true;
+        }
         console.log('❌ Metadati backup mancanti');
         return false;
       }
@@ -350,7 +374,7 @@ class BackupService {
         }
       }
 
-      console.log('✅ Formato backup valido');
+      console.log('✅ Formato backup manuale valido');
       return true;
       
     } catch (error) {
@@ -650,8 +674,20 @@ class BackupService {
       // Ottieni dati dal database
       const data = await DatabaseService.getAllData();
       
+      console.log('🔍 DEBUG - Dati ottenuti per backup:', {
+        keys: Object.keys(data || {}),
+        workEntriesCount: data?.workEntries?.length || 0,
+        standbyDaysCount: data?.standbyDays?.length || 0,
+        settingsCount: data?.settings?.length || 0,
+        totalSize: JSON.stringify(data || {}).length
+      });
+      
       if (!data || Object.keys(data).length === 0) {
         throw new Error('Nessun dato trovato per il backup');
+      }
+
+      if (!data.workEntries || data.workEntries.length === 0) {
+        console.warn('⚠️ ATTENZIONE: Nessun work entry trovato per il backup');
       }
 
       // Crea metadati backup
@@ -666,14 +702,27 @@ class BackupService {
           type: 'manual',
           version: '1.0',
           app: 'WorkTracker',
-          entries: data.work_entries?.length || 0
+          entries: data.workEntries?.length || 0
         },
         ...data
       };
 
+      console.log('📦 DEBUG - Backup data creato:', {
+        backupInfoEntries: backupData.backupInfo.entries,
+        workEntriesLength: backupData.workEntries?.length || 0,
+        jsonSize: JSON.stringify(backupData).length,
+        backupKeys: Object.keys(backupData)
+      });
+
       // Prova prima expo-sharing se disponibile
       try {
         const jsonString = JSON.stringify(backupData, null, 2);
+        
+        console.log('📄 DEBUG - JSON string creato:', {
+          size: jsonString.length,
+          sizeKB: (jsonString.length / 1024).toFixed(2) + 'KB',
+          preview: jsonString.substring(0, 200) + '...'
+        });
         
         // Prova expo-sharing per salvare direttamente
         try {
@@ -684,7 +733,14 @@ class BackupService {
           const fileUri = `${FileSystem.documentDirectory}${fileName}`;
           await FileSystem.writeAsStringAsync(fileUri, jsonString);
           
-          console.log('📁 File backup creato:', fileUri);
+          // Verifica dimensione file scritto
+          const fileInfo = await FileSystem.getInfoAsync(fileUri);
+          console.log('📁 File backup creato:', {
+            uri: fileUri,
+            size: fileInfo.size || 'unknown',
+            sizeKB: fileInfo.size ? (fileInfo.size / 1024).toFixed(2) + 'KB' : 'unknown',
+            exists: fileInfo.exists
+          });
           
           // Condividi/Salva con expo-sharing
           if (await Sharing.isAvailableAsync()) {
@@ -705,7 +761,8 @@ class BackupService {
                 type: 'manual',
                 version: '1.0',
                 app: 'WorkTracker',
-                entries: data.work_entries?.length || 0,
+                entries: data.workEntries?.length || 0,
+                size: fileSize, // 🔧 FIX: Aggiungi dimensione file
                 destination: 'sharing',
                 path: `Salvato dall'utente`,
                 filePath: `File salvato nella destinazione scelta dall'utente`,
@@ -746,7 +803,8 @@ class BackupService {
                 type: 'manual',
                 version: '1.0',
                 app: 'WorkTracker',
-                entries: data.work_entries?.length || 0,
+                entries: data.workEntries?.length || 0,
+                size: jsonString.length, // 🔧 FIX: Aggiungi dimensione JSON
                 destination: 'sharing',
                 path: 'Condiviso tramite sistema',
                 filePath: fileName,
@@ -779,6 +837,7 @@ class BackupService {
         ...backupData,
         backupInfo: {
           ...backupData.backupInfo,
+          size: JSON.stringify(backupWithAsyncMetadata).length, // 🔧 FIX: Aggiungi dimensione JSON
           destination: 'asyncstorage',
           path: backupKey,
           filePath: `AsyncStorage: ${backupKey}`
@@ -902,14 +961,16 @@ class BackupService {
               metadataKeys: Object.keys(metadata),
               type: metadata.type,
               destination: metadata.destination,
-              path: metadata.path
+              path: metadata.path,
+              metadataSize: metadata.size, // 🔧 DEBUG: Dimensione dai metadati
+              backupDataLength: backupData.length // 🔧 DEBUG: Lunghezza stringa
             });
             
             const backup = {
               key: key,
               name: metadata.name || key,
               createdAt: metadata.created || metadata.createdAt || new Date().toISOString(),
-              size: backupData.length, // Usa length invece di Blob per React Native
+              size: metadata.size || backupData.length, // 🔧 FIX: Usa metadata.size se presente
               type: metadata.type || 'manual',
               entries: parsed.workEntries?.length || parsed.data?.workEntries?.length || 0,
               destination: metadata.destination || 'asyncstorage',
@@ -939,6 +1000,9 @@ class BackupService {
     try {
       console.log('🗑️ Inizio eliminazione di tutti i backup...');
       
+      let totalDeleted = 0;
+      
+      // 1. Elimina backup da AsyncStorage (backup manuali)
       const allKeys = await AsyncStorage.getAllKeys();
       const backupKeys = allKeys.filter(key => 
         key.startsWith('backup_') || 
@@ -957,17 +1021,53 @@ class BackupService {
         key !== 'auto_backup_destination'
       );
       
-      console.log(`🔍 Trovate ${backupKeys.length} chiavi backup da eliminare:`, backupKeys);
+      console.log(`🔍 Trovate ${backupKeys.length} chiavi backup AsyncStorage da eliminare:`, backupKeys);
       
-      if (backupKeys.length === 0) {
-        console.log('ℹ️ Nessun backup trovato da eliminare');
-        return { success: true, deletedCount: 0, message: 'Nessun backup trovato' };
+      if (backupKeys.length > 0) {
+        await AsyncStorage.multiRemove(backupKeys);
+        totalDeleted += backupKeys.length;
+        console.log(`✅ Eliminati ${backupKeys.length} backup da AsyncStorage`);
       }
       
-      // Elimina tutti i backup
-      await AsyncStorage.multiRemove(backupKeys);
+      // 2. Elimina file di backup automatici dal filesystem
+      try {
+        const FileSystem = await import('expo-file-system');
+        
+        // Lista delle cartelle da controllare per backup automatici
+        const backupDirs = [
+          `${FileSystem.documentDirectory}backups/`,
+          `${FileSystem.documentDirectory}Downloads/`,
+          `${FileSystem.documentDirectory}temp_backups/`
+        ];
+        
+        for (const backupDir of backupDirs) {
+          const dirInfo = await FileSystem.getInfoAsync(backupDir);
+          
+          if (dirInfo.exists) {
+            const files = await FileSystem.readDirectoryAsync(backupDir);
+            const backupFiles = files.filter(file => file.endsWith('.json'));
+            
+            console.log(`🔍 Cartella ${backupDir}: trovati ${backupFiles.length} file backup da eliminare`);
+            
+            for (const fileName of backupFiles) {
+              try {
+                const filePath = `${backupDir}${fileName}`;
+                await FileSystem.deleteAsync(filePath);
+                totalDeleted++;
+                console.log(`🗑️ File eliminato: ${fileName} da ${backupDir}`);
+              } catch (fileError) {
+                console.warn(`⚠️ Errore eliminazione file ${fileName}:`, fileError.message);
+              }
+            }
+          } else {
+            console.log(`ℹ️ Cartella ${backupDir} non esistente`);
+          }
+        }
+      } catch (fsError) {
+        console.warn('⚠️ Errore accesso filesystem backup automatici:', fsError.message);
+      }
       
-      // Elimina anche le liste di backup
+      // 3. Elimina anche le liste di backup
       const listKeys = ['javascript_backups', 'super_backups', 'recent_backups'];
       for (const listKey of listKeys) {
         try {
@@ -977,12 +1077,12 @@ class BackupService {
         }
       }
       
-      console.log(`✅ Eliminati ${backupKeys.length} backup da AsyncStorage`);
+      console.log(`✅ Eliminazione completata: ${totalDeleted} backup totali`);
       
       return { 
         success: true, 
-        deletedCount: backupKeys.length,
-        message: `Eliminati ${backupKeys.length} backup con successo`
+        deletedCount: totalDeleted,
+        message: `Eliminati ${totalDeleted} backup con successo`
       };
       
     } catch (error) {

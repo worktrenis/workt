@@ -1599,7 +1599,38 @@ class DatabaseService {
         throw new Error('Dati backup non validi');
       }
 
-      const { workEntries = [], standbyDays = [], settings = [] } = backupData;
+      // ✅ SUPPORTO MULTI-FORMATO: Gestisce backup automatici e manuali
+      let workEntries = [];
+      let standbyDays = [];
+      let settings = [];
+
+      // Controlla se è un backup automatico (formato nuovo)
+      if (backupData.interventi && backupData.metadata) {
+        console.log('📦 Rilevato backup automatico con formato nuovo');
+        workEntries = backupData.interventi || [];
+        standbyDays = backupData.standbyDays || [];
+        settings = backupData.settings || [];
+      }
+      // Controlla se è un backup manuale (formato legacy)
+      else if (backupData.workEntries || backupData.data) {
+        console.log('📦 Rilevato backup manuale con formato legacy');
+        const data = backupData.data || backupData;
+        workEntries = data.workEntries || [];
+        standbyDays = data.standbyDays || [];
+        settings = data.settings || [];
+      }
+      // Controlla se è un array diretto di interventi
+      else if (Array.isArray(backupData)) {
+        console.log('📦 Rilevato backup come array diretto di interventi');
+        workEntries = backupData;
+      }
+      // Controlla se ha direttamente le proprietà
+      else {
+        console.log('📦 Tentativo estrazione diretta delle proprietà');
+        workEntries = backupData.workEntries || backupData.interventi || [];
+        standbyDays = backupData.standbyDays || [];
+        settings = backupData.settings || [];
+      }
       
       console.log(`📊 Ripristino: ${workEntries.length} work entries, ${standbyDays.length} standby days, ${settings.length} settings`);
 

@@ -903,7 +903,7 @@ class SimplePDFService {
       let standbyAllowance = 0;
       let totalEarnings = 0;
 
-      if (breakdown) {
+  if (breakdown) {
         // Guadagni ordinari + straordinari + reperibilità
         ordinaryEarnings = (breakdown.ordinary?.total || 0) + (breakdown.standby?.totalEarnings || 0);
         
@@ -926,8 +926,8 @@ class SimplePDFService {
           }
         }
         
-        // Totale finale
-        totalEarnings = breakdown.totalEarnings || 0;
+  // Totale finale (già calcolato con la preferenza dentro CalculationService)
+  totalEarnings = breakdown.totalEarnings || 0;
         
         console.log(`� SimplePDF ENTRY ${entry.date} - ALLOWANCES DEBUG:`, {
           travelAllowance,
@@ -937,9 +937,16 @@ class SimplePDFService {
           totalEarnings
         });
       } else {
-        // Fallback se non c'è breakdown
+        // Fallback se non c'è breakdown: rispetta la preferenza su giorni speciali senza ore
         totalEarnings = entry.totalEarnings || 0;
-        console.log(`⚠️ SimplePDF FALLBACK ${entry.date} - No breakdown, using entry.totalEarnings:`, totalEarnings);
+        const workHours = calculationService?.calculateWorkHours?.(workEntry) || 0;
+        const travelHours = calculationService?.calculateTravelHours?.(workEntry) || 0;
+        const isSpecialDayType = ['ferie','malattia','permesso','riposo','festivo'].includes(String(entry.day_type || '').toLowerCase());
+        const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
+        if (isSpecialDayType && (workHours + travelHours) === 0 && !showEffective) {
+          totalEarnings = 0;
+        }
+        console.log(`⚠️ SimplePDF FALLBACK ${entry.date} - No breakdown, using entry.totalEarnings (after pref):`, totalEarnings);
       }
 
       // Tipo giornata

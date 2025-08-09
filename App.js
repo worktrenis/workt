@@ -10,6 +10,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initNativeBackgroundBackup } from './src/services/NativeBackgroundBackup';
 
 // 🧪 TEST BACKUP NATIVO - Carica il comando globale
 try {
@@ -51,6 +52,105 @@ try {
 } catch (testError) {
   console.log('⚠️ Test aggiornamenti non caricati:', testError.message);
 }
+
+// 🚀 SISTEMA AGGIORNAMENTI MANUALI - Controllo all'avvio e gestione manuale
+try {
+  global.checkManualUpdates = () => ManualUpdateService.checkForUpdatesManually();
+  global.checkStartupUpdates = () => ManualUpdateService.checkForUpdatesAtStartup();
+  global.getPendingUpdates = () => ManualUpdateService.getPendingUpdates();
+  global.getUpdateHistory = () => ManualUpdateService.getUpdateHistory();
+  global.clearUpdateNotifications = () => UpdateNotificationService.clearUpdateNotification();
+  console.log('🚀 Sistema aggiornamenti manuali caricato!');
+  console.log('🚀 Comandi: checkManualUpdates(), checkStartupUpdates(), getPendingUpdates(), getUpdateHistory(), clearUpdateNotifications()');
+} catch (manualUpdateError) {
+  console.log('⚠️ Sistema aggiornamenti manuali non caricato:', manualUpdateError.message);
+}
+
+// 🎉 TEST WELCOME MODAL - Carica i comandi globali per il tutorial di benvenuto
+try {
+  global.testWelcome = () => {
+    console.log('🎉 Comando testWelcome() non ancora disponibile');
+    console.log('🎉 Usa resetWelcome() dopo il caricamento dell\'app per testare il tutorial');
+  };
+  console.log('🎉 Test welcome modal preparato!');
+  console.log('🎉 Comando: testWelcome() (disponibile dopo caricamento app)');
+  
+  // Carica comandi debug welcome modal
+  require('./welcome-debug.js');
+} catch (welcomeError) {
+  console.log('⚠️ Test welcome modal non caricato:', welcomeError.message);
+}
+
+  // 🎯 NOTIFICA AGGIORNAMENTO v1.3.1 - Carica sistema notifiche personalizzate
+  try {
+    console.log('🎯 Caricamento notifiche aggiornamento v1.3.1...');
+    const { forceUpdateNotificationV131, checkUpdateStatus, resetUpdateSystem, resetV131PopupFlag } = require('./force-update-notification-v1-3-1');
+    global.forceUpdateNotificationV131 = forceUpdateNotificationV131;
+    global.checkUpdateStatus = checkUpdateStatus;
+    global.resetUpdateSystem = resetUpdateSystem;
+    global.resetV131PopupFlag = resetV131PopupFlag;
+    console.log('🎯 Notifiche aggiornamento v1.3.1 caricate!');
+    console.log('🎯 Comandi: forceUpdateNotificationV131(), checkUpdateStatus(), resetUpdateSystem(), resetV131PopupFlag()');
+  } catch (testError) {
+    console.log('⚠️ Notifiche aggiornamento v1.3.1 non caricate:', testError.message);
+    // Aggiungi fallback sicuri
+    global.forceUpdateNotificationV131 = () => console.log('🔄 Popup v1.3.1 non disponibile');
+    global.checkUpdateStatus = () => console.log('🔄 CheckStatus v1.3.1 non disponibile');
+    global.resetUpdateSystem = () => console.log('🔄 ResetSystem v1.3.1 non disponibile');
+    global.resetV131PopupFlag = () => console.log('🔄 ResetFlag v1.3.1 non disponibile');
+  }
+
+  // 🧹 PULIZIA TRANSIZIONE v1.3.0 → v1.3.1
+  try {
+    const { cleanTransitionTo131, checkTransitionStatus, forceShowV131Popup } = require('./clean-transition-v1-3-1');
+    global.cleanTransitionTo131 = cleanTransitionTo131;
+    global.checkTransitionStatus = checkTransitionStatus;
+    global.forceShowV131Popup = forceShowV131Popup;
+    console.log('🧹 Script pulizia transizione v1.3.1 caricato!');
+    console.log('🧹 Comandi: cleanTransitionTo131(), checkTransitionStatus(), forceShowV131Popup()');
+  } catch (cleanError) {
+    console.log('⚠️ Script pulizia transizione non caricato:', cleanError.message);
+  }
+
+// 🧪 CARICA SISTEMA TEST AGGIORNAMENTO v1.3.1
+if (__DEV__) {
+  require('./test-update-system-v1-3-1.js');
+}
+
+// 🧪 CARICA DEBUG WELCOME CONTRACT SYNC
+try {
+  console.log('🧪 Caricamento debug welcome contract sync...');
+  const { testWelcomeContractSync, resetToDefault } = require('./debug-welcome-contract-sync');
+  global.testWelcomeContractSync = testWelcomeContractSync;
+  global.resetContractToDefault = resetToDefault;
+  console.log('🧪 Debug welcome contract sync caricato!');
+  console.log('🧪 Comandi: testWelcomeContractSync(), resetContractToDefault()');
+} catch (debugError) {
+  console.log('⚠️ Debug welcome contract sync non caricato:', debugError.message);
+}
+
+// 🎭 CARICA TESTER COMPONENTI DEVELOPMENT
+if (__DEV__) {
+  require('./test-development-components.js');
+}
+
+// 🚨 CARICA PULIZIA EMERGENZA POPUP
+if (__DEV__) {
+  require('./emergency-popup-cleanup.js');
+}
+
+// 🧹 CARICA SISTEMA PULIZIA AGGIORNAMENTI
+if (__DEV__) {
+  require('./clean-update-system.js');
+}
+
+// 🚀 CARICA COMANDI PUBBLICAZIONE OTA v1.3.1
+if (__DEV__) {
+  require('./publish-ota-v1-3-1.js');
+}
+
+// 🎯 CARICA NOTIFICHE FORCE UPDATE v1.3.1
+// Già caricato sopra nella sezione notifiche aggiornamento v1.3.1
 
 // 🔍 DEBUG VERSIONI - Comando per verificare stato versioni
 try {
@@ -116,6 +216,59 @@ try {
   console.log('🔧 Comandi: forceUpdatePopup(), checkCurrentVersionState()');
 } catch (forceError) {
   console.log('⚠️ Force update popup non caricato:', forceError.message);
+}
+
+// 📱 RILEVAMENTO BUILD NATIVA - Distingue aggiornamenti nativi da OTA
+try {
+  const { checkNativeBuildUpdate, forceNativeBuildPopup, getBuildInfo, resetNativeBuildSystem } = require('./native-build-update-detector');
+  global.checkNativeBuildUpdate = checkNativeBuildUpdate;
+  global.forceNativeBuildPopup = forceNativeBuildPopup;
+  global.getBuildInfo = getBuildInfo;
+  global.resetNativeBuildSystem = resetNativeBuildSystem;
+  console.log('📱 Rilevamento build nativa caricato!');
+  console.log('📱 Comandi: checkNativeBuildUpdate(), forceNativeBuildPopup(), getBuildInfo(), resetNativeBuildSystem()');
+} catch (nativeError) {
+  console.log('⚠️ Rilevamento build nativa non caricato:', nativeError.message);
+}
+
+// 🧪 TEST BUILD NATIVA - Sistema completo di test per aggiornamenti nativi
+try {
+  const { testNativeBuildDetection, resetForNewTest, testAllUpdateScenarios, testOTAvsNativeComparison } = require('./test-native-build-system');
+  global.testNativeBuildDetection = testNativeBuildDetection;
+  global.resetForNewTest = resetForNewTest;
+  global.testAllUpdateScenarios = testAllUpdateScenarios;
+  global.testOTAvsNativeComparison = testOTAvsNativeComparison;
+  console.log('🧪 Test build nativa caricato!');
+  console.log('🧪 Comandi: testNativeBuildDetection(), resetForNewTest(), testAllUpdateScenarios(), testOTAvsNativeComparison()');
+} catch (testNativeError) {
+  console.log('⚠️ Test build nativa non caricato:', testNativeError.message);
+}
+
+// 🔔 TEST NOTIFICHE BACKUP - Sistema di test per controllo notifiche backup
+try {
+  const { testBackupNotificationControl, testBackupWithDifferentNotificationStates, checkBackupNotificationStatus, resetNotificationTestState } = require('./test-backup-notifications');
+  global.testBackupNotificationControl = testBackupNotificationControl;
+  global.testBackupWithDifferentNotificationStates = testBackupWithDifferentNotificationStates;
+  global.checkBackupNotificationStatus = checkBackupNotificationStatus;
+  global.resetNotificationTestState = resetNotificationTestState;
+  console.log('🔔 Test notifiche backup caricato!');
+  console.log('🔔 Comandi: testBackupNotificationControl(), testBackupWithDifferentNotificationStates(), checkBackupNotificationStatus(), resetNotificationTestState()');
+} catch (testNotificationError) {
+  console.log('⚠️ Test notifiche backup non caricato:', testNotificationError.message);
+}
+
+// 📍 BACKUP PATH INSPECTOR - Visualizza percorsi e dettagli backup completi
+try {
+  const { inspectAllBackups, findBackupByName, verifyBackupPaths, showLatestBackup, copyBackupPath } = require('./backup-path-inspector');
+  global.inspectAllBackups = inspectAllBackups;
+  global.findBackupByName = findBackupByName;
+  global.verifyBackupPaths = verifyBackupPaths;
+  global.showLatestBackup = showLatestBackup;
+  global.copyBackupPath = copyBackupPath;
+  console.log('📍 Backup path inspector caricato!');
+  console.log('📍 Comandi: inspectAllBackups(), findBackupByName("nome"), verifyBackupPaths(), showLatestBackup(), copyBackupPath("nome")');
+} catch (inspectorError) {
+  console.log('⚠️ Backup path inspector non caricato:', inspectorError.message);
 }
 
 // ✅ HANDLER NOTIFICHE CORRETTO - Mostra solo notifiche legittime
@@ -219,8 +372,15 @@ import VacationSettingsScreen from './src/screens/VacationSettingsScreen';
 import HourlyRatesSettingsScreen from './src/screens/HourlyRatesSettingsScreen';
 import CalculationMethodSettingsScreen from './src/screens/CalculationMethodSettingsScreen';
 import AppInfoScreen from './src/screens/AppInfoScreen';
+import AppUpdateScreen from './src/screens/AppUpdateScreen';
+
+// 🏷️ COMPONENTI MODALITÀ DEVELOPMENT
+import DevelopmentWatermark from './src/components/DevelopmentWatermark';
+import DevelopmentBanner from './src/components/DevelopmentBanner';
 
 import { useDatabase } from './src/hooks';
+import { useWelcome } from './src/hooks/useWelcome';
+import WelcomeModal from './src/components/WelcomeModal';
 import DatabaseHealthService from './src/services/DatabaseHealthService';
 // import NotificationService from './src/services/FixedNotificationService'; // DISATTIVATO - usando SuperNotificationService
 import BackupService from './src/services/BackupService';
@@ -228,7 +388,10 @@ import { registerBackgroundBackupTask } from './src/services/BackgroundBackupTas
 const SuperNotificationService = require('./src/services/SuperNotificationService');
 const SuperBackupService = require('./src/services/SuperBackupService');
 import UpdateService from './src/services/UpdateService';
+import ManualUpdateService from './src/services/ManualUpdateService';
+import UpdateNotificationService from './src/services/UpdateNotificationService';
 import { ThemeProvider, useTheme, lightTheme } from './src/contexts/ThemeContext';
+import { SystemNotificationProvider } from './src/contexts/SystemNotificationContext';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -305,9 +468,14 @@ function SettingsStack() {
         options={{ title: 'Indennità Trasferta' }}
       />
       <Stack.Screen 
+        name="NotificationMainMenu" 
+        component={require('./src/screens/NotificationMainMenu').default} 
+        options={{ title: 'Gestione Notifiche' }}
+      />
+      <Stack.Screen 
         name="NotificationSettings" 
         component={require('./src/screens/NotificationSettingsScreen').default} 
-        options={{ title: 'Notifiche' }}
+        options={{ title: 'Notifiche Lavoro' }}
       />
       <Stack.Screen 
         name="ThemeSettings" 
@@ -328,6 +496,21 @@ function SettingsStack() {
         name="AppInfo" 
         component={AppInfoScreen} 
         options={{ title: 'Info App' }}
+      />
+      <Stack.Screen 
+        name="AppUpdate" 
+        component={AppUpdateScreen} 
+        options={{ title: 'Aggiornamenti App' }}
+      />
+      <Stack.Screen 
+        name="SystemNotificationMenu" 
+        component={require('./src/screens/SystemNotificationMenuScreen').default} 
+        options={{ title: 'Notifiche Sistema' }}
+      />
+      <Stack.Screen 
+        name="NotificationDebug" 
+        component={require('./src/screens/NotificationDebugScreen').default} 
+        options={{ title: 'Debug Notifiche' }}
       />
     </Stack.Navigator>
   );
@@ -436,6 +619,23 @@ async function checkForOTAUpdate() {
 
 export default function App() {
   const { isInitialized, isLoading, error } = useDatabase();
+  const { 
+    shouldShowWelcome, 
+    isLoading: welcomeLoading, 
+    markWelcomeCompleted,
+    markWelcomeSkipped 
+  } = useWelcome();
+  
+  // Stato per forzare il welcome modal da debug
+  const [forceShowWelcomeModal, setForceShowWelcomeModal] = React.useState(false);
+  
+  // Funzione globale per test debug
+  React.useEffect(() => {
+    global.testWelcomeModal = () => {
+      setForceShowWelcomeModal(true);
+      console.log('🎉 Welcome Modal forzato per test');
+    };
+  }, []);
 
   // Gestisce i cambiamenti dello stato dell'app (background/foreground)
   React.useEffect(() => {
@@ -470,6 +670,23 @@ export default function App() {
       console.log('- Constants.executionEnvironment:', Constants.executionEnvironment);
       console.log('- __DEV__:', __DEV__);
       
+      // 📱 CONTROLLO BUILD NATIVA: Prima di tutto controlla se è cambiata la build
+      setTimeout(async () => {
+        try {
+          console.log('📱 Controllo aggiornamento build nativa...');
+          const nativeUpdateResult = await global.checkNativeBuildUpdate();
+          
+          if (nativeUpdateResult?.updateDetected) {
+            console.log('🎯 AGGIORNAMENTO BUILD NATIVA RILEVATO:', nativeUpdateResult);
+            // Il popup viene gestito automaticamente da checkNativeBuildUpdate
+          } else {
+            console.log('✅ Nessun aggiornamento build nativa rilevato');
+          }
+        } catch (nativeError) {
+          console.log('⚠️ Errore controllo build nativa:', nativeError);
+        }
+      }, 1500); // Controlla build nativa dopo 1.5 secondi
+      
       // ⚠️ RITARDA L'AVVIO DEI SERVIZI PER EVITARE DATABASE LOCK
       setTimeout(() => {
         console.log('🚀 App: Avvio servizi dopo inizializzazione database...');
@@ -480,7 +697,106 @@ export default function App() {
         // Inizializza aggiornamenti automatici
         setTimeout(() => {
           console.log('🔄 App: Inizializzazione servizio aggiornamenti...');
+          
+          // 🎯 CONTROLLO SPECIFICO v1.3.1: POPUP SEMPRE VISIBILE per aggiornamento
+          const checkV131Update = async () => {
+            try {
+              const lastKnownVersion = await AsyncStorage.getItem('last_known_version');
+              const hasShownV131Popup = await AsyncStorage.getItem('update_popup_shown_v1_3_1');
+              
+              console.log('📋 Versione precedente nota:', lastKnownVersion);
+              console.log('📋 Popup v1.3.1 già mostrato:', hasShownV131Popup);
+              
+              // MOSTRA SEMPRE il popup se:
+              // 1. Non c'è versione precedente (prima installazione/reset)
+              // 2. La versione è diversa da 1.3.1 (aggiornamento effettivo)
+              // 3. Il popup v1.3.1 non è mai stato mostrato (per sicurezza)
+              const shouldShowPopup = !lastKnownVersion || 
+                                    lastKnownVersion !== '1.3.1' || 
+                                    hasShownV131Popup !== 'true';
+              
+              if (shouldShowPopup) {
+                console.log('🎯 MOSTRANDO POPUP v1.3.1 - Condizioni:', {
+                  lastKnownVersion,
+                  hasShownV131Popup,
+                  shouldShowPopup
+                });
+                
+                setTimeout(() => {
+                  if (typeof global.forceUpdateNotificationV131 === 'function') {
+                    global.forceUpdateNotificationV131();
+                  } else {
+                    console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip sicuro');
+                  }
+                }, 3000); // Aspetta 3 secondi per permettere all'app di caricarsi
+              } else {
+                console.log('✅ Popup v1.3.1 già mostrato, non necessario');
+              }
+            } catch (error) {
+              console.error('❌ Errore controllo v1.3.1:', error);
+              // In caso di errore, mostra comunque il popup per sicurezza
+              setTimeout(() => {
+                if (typeof global.forceUpdateNotificationV131 === 'function') {
+                  global.forceUpdateNotificationV131();
+                } else {
+                  console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip sicuro');
+                }
+              }, 3000);
+            }
+          };
+          
+          checkV131Update();
           UpdateService.checkOnAppStart();
+          
+          // 🔍 CONTROLLO AGGIORNAMENTI ALL'AVVIO (Sistema Manuale)
+          // Controlla se ci sono aggiornamenti disponibili e invia notifica (senza aggiornare automaticamente)
+          // RITARDATO per evitare conflitti con popup v1.3.1
+          setTimeout(async () => {
+            try {
+              // Non eseguire se è davvero la prima installazione (evita conflitti con welcome modal)
+              const hasWelcomeCompleted = await AsyncStorage.getItem('welcome_tutorial_completed');
+              if (!hasWelcomeCompleted) {
+                console.log('🔍 App: Skip controllo aggiornamenti (prima installazione)');
+                return;
+              }
+              
+              console.log('🔍 App: Controllo aggiornamenti all\'avvio...');
+              const updateCheck = await ManualUpdateService.checkForUpdatesAtStartup();
+              if (updateCheck.hasUpdate) {
+                console.log('📱 App: Notifica aggiornamento inviata all\'avvio');
+              } else {
+                const reason = updateCheck.reason === 'dev_simulation_disabled' 
+                  ? 'Simulazione disabilitata in sviluppo' 
+                  : 'Nessun aggiornamento disponibile';
+                console.log(`ℹ️ App: ${reason}`);
+              }
+            } catch (error) {
+              console.error('❌ App: Errore controllo aggiornamenti all\'avvio:', error);
+            }
+          }, 8000); // Aumentato a 8 secondi per evitare conflitti
+          
+          // 🚨 BACKUP POPUP v1.3.1: Se per qualche motivo il controllo sopra fallisce,
+          // forza comunque la visualizzazione del popup dopo 5 secondi
+          setTimeout(async () => {
+            try {
+              const hasShownV131Popup = await AsyncStorage.getItem('update_popup_shown_v1_3_1');
+              if (hasShownV131Popup !== 'true') {
+                console.log('🚨 BACKUP: Forzando popup v1.3.1 per sicurezza...');
+                if (typeof global.forceUpdateNotificationV131 === 'function') {
+                  global.forceUpdateNotificationV131();
+                } else {
+                  console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip backup');
+                }
+              }
+            } catch (error) {
+              console.log('🚨 BACKUP: Errore controllo backup popup, forzo comunque:', error);
+              if (typeof global.forceUpdateNotificationV131 === 'function') {
+                global.forceUpdateNotificationV131();
+              } else {
+                console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip backup error');
+              }
+            }
+          }, 5000); // Backup dopo 5 secondi
         }, 1000);
         
 
@@ -526,6 +842,23 @@ export default function App() {
             const stats = await SuperNotificationService.getNotificationStats();
             console.log(`📊 App: Notifiche attive: ${stats.activeNotifications}, Programmate oggi: ${stats.scheduledToday}`);
             
+            // 🔔 NUOVO SISTEMA PERSISTENTE - Inizializza servizio anti-interruzione
+            try {
+              const PersistentNotificationService = require('./src/services/PersistentNotificationService').default;
+              const persistentInitialized = await PersistentNotificationService.initialize();
+              if (persistentInitialized) {
+                console.log('✅ Sistema notifiche persistenti attivato');
+                
+                // Controllo immediato e riprogrammazione se necessario
+                await PersistentNotificationService.checkAndMaintainNotifications();
+                
+                const persistentStats = await PersistentNotificationService.getStatistics();
+                console.log('📊 Statistiche sistema persistente:', persistentStats);
+              }
+            } catch (persistentError) {
+              console.error('❌ Errore inizializzazione sistema persistente:', persistentError);
+            }
+            
             // DISATTIVATA PROGRAMMAZIONE AUTOMATICA ALL'AVVIO (evita notifiche immediate)
             if (stats.activeNotifications === 0) {
               console.log('ℹ️ App: Nessuna notifica programmata. Usa le Impostazioni → Notifiche per attivarle manualmente.');
@@ -537,11 +870,23 @@ export default function App() {
           // Gestisci possibili errori di importazione
           const notificationsModule = global.Notifications || Notifications;
           
-          // Cancella qualsiasi notifica visibile all'avvio
+          // Cancella qualsiasi notifica visibile all'avvio (eccetto aggiornamenti)
           if (notificationsModule) {
             try {
+              // Ottieni tutte le notifiche e filtra quelle da mantenere
+              const notifications = await notificationsModule.getAllScheduledNotificationsAsync();
+              const updateNotifications = notifications.filter(notif => 
+                notif.content.data?.type === 'update-available'
+              );
+              
               await notificationsModule.dismissAllNotificationsAsync();
-              console.log('App: Notifiche visibili cancellate all\'avvio');
+              
+              // Se c'erano notifiche di aggiornamento, non cancellarle
+              if (updateNotifications.length > 0) {
+                console.log(`App: Mantenute ${updateNotifications.length} notifiche di aggiornamento`);
+              }
+              
+              console.log('App: Notifiche visibili cancellate all\'avvio (mantenendo aggiornamenti)');
             } catch (notifError) {
               console.warn('⚠️ App: Errore cancellazione notifiche:', notifError.message);
             }
@@ -630,20 +975,25 @@ export default function App() {
         // CANCELLA TUTTO ALL'AVVIO - SOLUZIONE DRASTICA
         if (notificationsModule) {
           try {
-            console.log('🗑️ CANCELLAZIONE DRASTICA ALL\'AVVIO - Rimuovo TUTTE le notifiche');
-            await notificationsModule.cancelAllScheduledNotificationsAsync();
+            console.log('🗑️ CANCELLAZIONE SELETTIVA ALL\'AVVIO - Rimuovo notifiche eccetto aggiornamenti');
+            
+            // Ottieni tutte le notifiche programmate
+            const scheduledNotifications = await notificationsModule.getAllScheduledNotificationsAsync();
+            
+            // Cancella solo quelle che NON sono aggiornamenti
+            for (const notif of scheduledNotifications) {
+              if (notif.content.data?.type !== 'update-available') {
+                await notificationsModule.cancelScheduledNotificationAsync(notif.identifier);
+              }
+            }
+            
+            // Per le notifiche visibili, rimuovi solo quelle non di aggiornamento
+            // (Non possiamo filtrare le dismissAll, ma almeno preserviamo le scheduled)
             await notificationsModule.dismissAllNotificationsAsync();
             
-            // Doppia cancellazione per sicurezza
-            setTimeout(async () => {
-              await notificationsModule.cancelAllScheduledNotificationsAsync();
-              await notificationsModule.dismissAllNotificationsAsync();
-              console.log('🗑️ Seconda cancellazione completata');
-            }, 2000);
-            
-            console.log('✅ App: Notifiche residue pulite correttamente');
+            console.log('✅ App: Notifiche residue pulite (mantenendo aggiornamenti)');
           } catch (notifError) {
-            console.warn('⚠️ App: Errore pulizia notifiche:', notifError.message);
+            console.warn('⚠️ App: Errore pulizia selettiva notifiche:', notifError.message);
           }
         }          
           // Verifica stato backup
@@ -662,7 +1012,11 @@ export default function App() {
     }
   }, [isInitialized]);
 
-  if (isLoading || !isInitialized) {
+  useEffect(() => {
+    initNativeBackgroundBackup();
+  }, []);
+
+  if (isLoading || !isInitialized || welcomeLoading) {
     return <LoadingScreen />;
   }
 
@@ -670,14 +1024,73 @@ export default function App() {
     return <LoadingScreen error={error} />;
   }
 
+  // Funzioni di navigazione per il welcome modal
+  const handleNavigateToSettings = () => {
+    markWelcomeCompleted();
+    // Note: La navigazione diretta qui non è possibile perché siamo fuori dal NavigationContainer
+    // Il welcome modal verrà chiuso e l'utente potrà navigare normalmente
+  };
+
+  const handleNavigateToTimeEntry = () => {
+    markWelcomeCompleted();
+    // Note: Stesso discorso - il modal si chiude e l'utente può navigare
+  };
+
+  const handleWelcomeClose = () => {
+    markWelcomeCompleted();
+    setForceShowWelcomeModal(false); // Reset anche il forzato
+  };
+
+  const handleContractSettingsChanged = (newSettings) => {
+    console.log('🔧 [App] Contract settings changed dal WelcomeModal:', newSettings);
+    
+    // Forza un refresh delle impostazioni invalidando la cache AsyncStorage
+    // Questo farà si che useSettings ricarichi dal database
+    const forceSettingsRefresh = async () => {
+      try {
+        // Rimuovi temporaneamente la cache per forzare un reload dal database
+        await AsyncStorage.removeItem('settings');
+        console.log('🔧 [App] Cache settings invalidata - i componenti ricaricheranno dal database');
+        
+        // Salva nuovamente per ripristinare la cache con i dati aggiornati
+        setTimeout(async () => {
+          await AsyncStorage.setItem('settings', JSON.stringify(newSettings));
+          console.log('🔧 [App] Cache settings ripristinata con i nuovi dati');
+        }, 100);
+      } catch (error) {
+        console.error('🔧 [App] Errore nel refresh forzato delle impostazioni:', error);
+      }
+    };
+    
+    forceSettingsRefresh();
+  };
+
+  // Determina se mostrare il welcome modal
+  const showWelcomeModal = shouldShowWelcome || forceShowWelcomeModal;
+
   return (
     <ThemeProvider>
-      <SafeAreaProvider>
-        <NavigationContainer>
-          <MainTabs />
-          <StatusBar style="auto" />
-        </NavigationContainer>
-      </SafeAreaProvider>
+      <SystemNotificationProvider>
+        <SafeAreaProvider>
+          <NavigationContainer>
+            <MainTabs />
+            <StatusBar style="auto" />
+            
+            {/* 🏷️ FILIGRANE MODALITÀ DEVELOPMENT */}
+            <DevelopmentWatermark />
+            <DevelopmentBanner />
+          </NavigationContainer>
+
+          {/* 🎉 WELCOME MODAL per nuovi utenti */}
+          <WelcomeModal
+            visible={showWelcomeModal}
+            onClose={handleWelcomeClose}
+            onNavigateToSettings={handleNavigateToSettings}
+            onNavigateToTimeEntry={handleNavigateToTimeEntry}
+            onContractSettingsChanged={handleContractSettingsChanged}
+          />
+        </SafeAreaProvider>
+      </SystemNotificationProvider>
     </ThemeProvider>
   );
 }

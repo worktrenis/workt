@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -14,7 +14,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { PressableAnimated, FadeInCard } from '../components/AnimatedComponents';
 import { useTheme } from '../contexts/ThemeContext';
+import { useFocusEffect } from '@react-navigation/native';
 import UpdateService from '../services/UpdateService';
+import { CompactSystemNotificationBadge } from '../components/SystemNotificationBadge';
 
 // Importa la versione dell'app dal package.json
 import { version } from '../../package.json';
@@ -31,7 +33,12 @@ const ModernSettingItem = ({ item, onPress, index, theme, isLoading = false }) =
           <MaterialCommunityIcons name={item.icon} size={28} color="white" />
         </View>
         <View style={styles.modernSettingContent}>
-          <Text style={[styles.modernSettingTitle, { color: theme.colors.text }]}>{item.title}</Text>
+          <View style={styles.titleRow}>
+            <Text style={[styles.modernSettingTitle, { color: theme.colors.text }]}>{item.title}</Text>
+            {item.showNotificationBadge && (
+              <CompactSystemNotificationBadge />
+            )}
+          </View>
           <Text style={[styles.modernSettingSubtitle, { color: theme.colors.textSecondary }]}>
             {isLoading ? 'Controllo aggiornamenti...' : item.subtitle}
           </Text>
@@ -68,6 +75,17 @@ const ModernHeader = ({ theme }) => (
 const SettingsScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const [isCheckingUpdates, setIsCheckingUpdates] = useState(false);
+
+  // 🔄 AGGIORNAMENTO AUTOMATICO: Controlla aggiornamenti quando la pagina viene focalizzata
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔄 SETTINGS - Screen focalizzato, controllo aggiornamenti silenzioso...');
+      // Controllo silenzioso aggiornamenti in background
+      UpdateService.checkForUpdates().catch(err => {
+        console.log('🔄 SETTINGS - Controllo aggiornamenti silenzioso fallito (normale):', err.message);
+      });
+    }, [])
+  );
 
   // Gestisce il controllo aggiornamenti
   const handleCheckUpdates = async () => {
@@ -109,6 +127,7 @@ const SettingsScreen = ({ navigation }) => {
       navigation.navigate(item.screen);
     }
   };
+
   const settingsOptions = [
     {
       title: 'Contratto CCNL',
@@ -175,10 +194,11 @@ const SettingsScreen = ({ navigation }) => {
     },
     {
       title: 'Notifiche',
-      subtitle: 'Promemoria e avvisi automatici',
+      subtitle: 'Gestione completa di tutte le notifiche',
       icon: 'bell-ring',
-      screen: 'NotificationSettings',
-      color: '#FF5722'
+      screen: 'NotificationMainMenu',
+      color: '#FF5722',
+      showNotificationBadge: true
     },
     {
       title: 'Tema e Aspetto',
@@ -196,9 +216,9 @@ const SettingsScreen = ({ navigation }) => {
     },
     {
       title: 'Aggiornamenti App',
-      subtitle: 'Controlla e installa aggiornamenti',
+      subtitle: 'Controlla e gestisci aggiornamenti disponibili',
       icon: 'update',
-      action: 'checkUpdates',
+      screen: 'AppUpdate',
       color: '#4CAF50'
     }
   ];
@@ -342,6 +362,12 @@ const styles = StyleSheet.create({
   modernSettingContent: {
     flex: 1,
     paddingRight: 12,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
   },
   modernSettingTitle: {
     fontSize: 18,

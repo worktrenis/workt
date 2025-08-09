@@ -522,25 +522,65 @@ const TimeEntryScreen = () => {
     }
   }, [settings, calculationService, entries, refreshEntries]);
   
-  // Wrapper per refresh manuale: svuota breakdowns PRIMA di aggiornare entries
+  // Ref per tracciare l'ultimo refresh e debounce
+  const lastRefreshRef = useRef(0);
+  const refreshTimeoutRef = useRef(null);
+  
+  // Wrapper per refresh manuale: svuota breakdowns PRIMA di aggiornare entries con debounce
   const handleManualRefresh = useCallback(() => {
+    const now = Date.now();
+    const timeSinceLastRefresh = now - (lastRefreshRef.current || 0);
+    
+    // Debounce: evita refresh troppo frequenti
+    if (timeSinceLastRefresh < 1000) {
+      console.log('🔄 Refresh troppo frequente, debounce attivo');
+      
+      // Cancella il timeout precedente se esistente
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+      
+      // Imposta un nuovo timeout per il refresh
+      refreshTimeoutRef.current = setTimeout(() => {
+        console.log('🔄 Refresh eseguito dopo debounce');
+        setBreakdowns({});
+        refreshEntries();
+        lastRefreshRef.current = Date.now();
+      }, 1000 - timeSinceLastRefresh);
+      
+      return;
+    }
+    
+    // Refresh immediato se è passato abbastanza tempo
+    console.log('🔄 Refresh manuale immediato');
     setBreakdowns({});
     refreshEntries();
+    lastRefreshRef.current = now;
   }, [refreshEntries]);
 
-  // Listener per il ritorno dal form
+  // Listener per il ritorno dal form - versione ottimizzata
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
-      // Solo se stiamo tornando da una navigazione (non al primo caricamento)
+      const now = Date.now();
+      const timeSinceLastRefresh = now - (lastRefreshRef.current || 0);
+      
+      // Controlla se ci sono parametri di refresh
       const navigationState = navigation.getState();
       const currentRoute = navigationState.routes[navigationState.index];
       
-      // Se abbiamo un parametro refreshFromForm, significa che stiamo tornando dal form
       if (currentRoute.params?.refreshFromForm) {
-        console.log('🔄 TimeEntryScreen: Ritorno dal form, refreshing entries');
+        console.log('🔄 TimeEntryScreen: Parametro refresh dal form trovato');
         handleManualRefresh();
-        // Rimuovi il parametro per evitare refresh multipli
         navigation.setParams({ refreshFromForm: undefined });
+        return;
+      }
+      
+      // Refresh automatico solo se è passato molto tempo (30 secondi)
+      if (timeSinceLastRefresh > 30000) {
+        console.log('🔄 TimeEntryScreen: Refresh automatico su focus (è passato molto tempo)');
+        handleManualRefresh();
+      } else {
+        console.log(`🔄 TimeEntryScreen: Focus ricevuto, ma refresh recente (${Math.round(timeSinceLastRefresh/1000)}s fa)`);
       }
     });
 
@@ -701,6 +741,23 @@ const TimeEntryScreen = () => {
     }
   }, [selectedYear, selectedMonth, settings, calculationService]);
 
+  // Debug: traccia le modalità di calcolo attive
+  useEffect(() => {
+    console.log('📊 [TimeEntryScreen] Modalità di calcolo attive:');
+    console.log('- calculateEarningsBreakdown (async): ✅ Principale');
+    console.log('- calculateEarningsBreakdownSync (sync): ⚠️ Disabilitato per consistenza');
+    console.log('- Auto-retry per calcoli falliti: ✅ Attivo');
+    console.log(`- Entries caricate: ${entries.length}`);
+    console.log(`- Breakdowns calcolati: ${Object.keys(breakdowns).length}`);
+    
+    const failedCount = Object.keys(breakdowns).filter(id => 
+      breakdowns[id]?.details?.calculationFailed
+    ).length;
+    if (failedCount > 0) {
+      console.log(`- ❌ Calcoli falliti: ${failedCount}`);
+    }
+  }, [entries, breakdowns]);
+
   // Calcola breakdown solo al primo caricamento o quando mancano
   useEffect(() => {
     const calculateMissingBreakdowns = async () => {
@@ -720,21 +777,23 @@ const TimeEntryScreen = () => {
       // Copia i breakdown esistenti
       const newBreakdowns = { ...breakdowns };
       
-      // Calcola solo quelli mancanti
+      // Calcola solo quelli mancanti usando SEMPRE il metodo asincrono
       for (const item of missingEntries) {
         try {
           const workEntry = createWorkEntryFromData(item, calculationService);
           const breakdown = await calculationService.calculateEarningsBreakdown(workEntry, settings);
           newBreakdowns[item.id] = breakdown;
         } catch (error) {
-          console.error(`Errore calcolo breakdown per entry ${item.id}:`, error);
-          try {
-            const workEntry = createWorkEntryFromData(item, calculationService);
-            const breakdown = calculationService.calculateEarningsBreakdownSync(workEntry, settings);
-            newBreakdowns[item.id] = breakdown;
-          } catch (syncError) {
-            console.error(`Errore anche con metodo sincrono per entry ${item.id}:`, syncError);
-          }
+          console.error(`❌ Errore calcolo breakdown per entry ${item.id}:`, error);
+          // Non usare più il fallback sincrono per evitare inconsistenze
+          // Assegna un breakdown vuoto temporaneo
+          newBreakdowns[item.id] = {
+            ordinary: { total: 0, hours: {}, earnings: {} },
+            standby: null,
+            allowances: { travel: 0, meal: 0, standby: 0 },
+            totalEarnings: 0,
+            details: { error: error.message, calculationFailed: true }
+          };
         }
       }
       
@@ -743,6 +802,50 @@ const TimeEntryScreen = () => {
     
     calculateMissingBreakdowns();
   }, [entries]); // Solo quando cambiano le entries, ma calcola solo i mancanti
+
+  // Sistema di auto-recovery per i calcoli falliti  
+  useEffect(() => {
+    const retryFailedCalculations = async () => {
+      if (!settings || !calculationService) return;
+      
+      const failedIds = Object.keys(breakdowns).filter(id => 
+        breakdowns[id]?.details?.calculationFailed
+      );
+      
+      if (failedIds.length === 0) return;
+      
+      console.log(`🔄 Tentativo di ricalcolare ${failedIds.length} breakdown falliti...`);
+      const newBreakdowns = { ...breakdowns };
+      
+      for (const id of failedIds) {
+        const entry = entries.find(e => e.id.toString() === id);
+        if (!entry) continue;
+        
+        try {
+          const workEntry = createWorkEntryFromData(entry, calculationService);
+          const breakdown = await calculationService.calculateEarningsBreakdown(workEntry, settings);
+          newBreakdowns[id] = breakdown;
+          console.log(`✅ Ricalcolo riuscito per entry ${id}`);
+        } catch (error) {
+          console.error(`❌ Ricalcolo fallito per entry ${id}:`, error);
+          // Mantieni l'errore ma aggiorna il timestamp
+          newBreakdowns[id] = {
+            ...newBreakdowns[id],
+            details: {
+              ...newBreakdowns[id].details,
+              lastRetry: Date.now()
+            }
+          };
+        }
+      }
+      
+      setBreakdowns(newBreakdowns);
+    };
+    
+    // Retry dopo 2 secondi se ci sono calcoli falliti
+    const timer = setTimeout(retryFailedCalculations, 2000);
+    return () => clearTimeout(timer);
+  }, [breakdowns, settings, entries, calculationService]);
 
   // Pulisce breakdown di entries eliminate e forza ricalcolo solo se cambiano davvero le impostazioni  
   const lastSettingsHashRef = useRef();
@@ -800,6 +903,15 @@ const TimeEntryScreen = () => {
       DataUpdateService.removeAllListeners('workEntriesUpdated');
     };
   }, [selectedYear, selectedMonth, refreshEntries]);
+
+  // Cleanup per i timeout quando il componente viene smontato
+  useEffect(() => {
+    return () => {
+      if (refreshTimeoutRef.current) {
+        clearTimeout(refreshTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Array dei mesi in italiano
   const mesiItaliani = [
@@ -884,6 +996,14 @@ const TimeEntryScreen = () => {
           </View>
           
           <View style={styles.headerRight}>
+            {/* Indicatore di calcolo fallito */}
+            {breakdown.details?.calculationFailed && (
+              <View style={styles.calculationErrorBadge}>
+                <MaterialCommunityIcons name="alert-circle" size={14} color="#FF5722" />
+                <Text style={styles.calculationErrorText}>Calcolo fallito</Text>
+              </View>
+            )}
+            
             {isSpecialDay && (
               <View style={[styles.dayTypeBadge, { backgroundColor: dayTypeInfo.color }]}>
                 <MaterialCommunityIcons name={dayTypeInfo.icon} size={14} color="white" />
@@ -2564,6 +2684,21 @@ const createStyles = (theme) => StyleSheet.create({
   dayTypeBadgeText: {
     color: 'white',
     fontSize: 12,
+    fontWeight: 'bold',
+    marginLeft: 4,
+  },
+  calculationErrorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFEBEE',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  calculationErrorText: {
+    color: '#FF5722',
+    fontSize: 10,
     fontWeight: 'bold',
     marginLeft: 4,
   },

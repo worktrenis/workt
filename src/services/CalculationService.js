@@ -829,7 +829,10 @@ class CalculationService {
         // Logica precedente per retrocompatibilità - SOLO se PROPORTIONAL_CCNL non è attivo
         else if (selectedOptions.includes('HALF_ALLOWANCE_HALF_DAY') && isHalfDay) {
           baseTravelAllowance = travelAllowanceAmount / 2;
-          console.log(`[CalculationService] Indennità trasferta 50% per mezza giornata (${workEntry.date}): ${baseTravelAllowance.toFixed(2)}€`);
+          // CORREZIONE: Con mezza giornata, ignora travelAllowancePercent del form
+          // per evitare doppi calcoli (il dimezzamento è già completo)
+          travelAllowancePercent = 1.0;
+          console.log(`[CalculationService] Indennità trasferta 50% per mezza giornata (${workEntry.date}): ${baseTravelAllowance.toFixed(2)}€ (travelAllowancePercent forzato a 1.0 per evitare doppio calcolo)`);
         }
         // FULL_ALLOWANCE_HALF_DAY mantiene l'importo pieno anche per mezze giornate
         
@@ -848,11 +851,13 @@ class CalculationService {
     if (isFixedDay && dayType !== 'lavorativa') {
       console.log(`[CalculationService] Giorno fisso rilevato (${dayType}) per ${workEntry.date}, applicazione retribuzione giornaliera standard`);
       
-      // Per i giorni fissi, viene corrisposta la retribuzione giornaliera standard
+      // Per i giorni fissi, applica la preferenza: se disattiva la visualizzazione, non calcolare il guadagno (totale=0)
       const dailyRate = settings.contract?.dailyRate || 109.19;
+      const showEffective = settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false;
+      const effectiveDaily = showEffective ? dailyRate : 0;
       
       return {
-        regularPay: dailyRate,
+        regularPay: effectiveDaily,
         overtimePay: 0,
         ordinaryBonusPay: 0,
         travelPay: 0,
@@ -860,7 +865,7 @@ class CalculationService {
         standbyTravelPay: 0,
         standbyAllowance: 0,
         travelAllowance: 0,
-        total: dailyRate,
+        total: effectiveDaily,
         breakdown: {
           isFixedDay: true,
           dayType: dayType
@@ -977,8 +982,10 @@ class CalculationService {
     if (isFixedDay && dayType !== 'lavorativa') {
       console.log(`[CalculationService] Giorno fisso rilevato (${dayType}) per ${workEntry.date}, applicazione retribuzione giornaliera standard`);
       
-      // Per i giorni fissi, viene corrisposta la retribuzione giornaliera standard (senza orari)
+      // Per i giorni fissi, applica la preferenza: se disattiva la visualizzazione, non calcolare il guadagno (totale=0)
       const dailyRate = contract.dailyRate || 109.19;
+      const showEffective = settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false;
+      const effectiveDaily = showEffective ? dailyRate : 0;
       
       const fixedDayResult = {
         ordinary: {
@@ -989,11 +996,11 @@ class CalculationService {
             viaggio_extra: 0
           },
           earnings: {
-            giornaliera: dailyRate, // Retribuzione giornaliera standard per giorni fissi
+            giornaliera: effectiveDaily, // Retribuzione effettiva per giorni fissi in base alla preferenza
             viaggio_extra: 0,
             lavoro_extra: 0
           },
-          total: dailyRate
+          total: effectiveDaily
         },
         standby: {
           workHours: {},
@@ -1007,7 +1014,7 @@ class CalculationService {
           meal: 0,
           standby: 0
         },
-        totalEarnings: dailyRate,
+        totalEarnings: effectiveDaily,
         details: {
           isSaturday,
           isSunday,
@@ -1348,7 +1355,10 @@ class CalculationService {
         // Logica precedente per retrocompatibilità - SOLO se PROPORTIONAL_CCNL non è attivo
         else if (selectedOptions.includes('HALF_ALLOWANCE_HALF_DAY') && totalOrdinaryHours < 8) {
           baseTravelAllowance = travelAllowanceAmount / 2;
-          console.log(`[CalculationService] Breakdown - Indennità trasferta 50% per mezza giornata (${workEntry.date}): ${baseTravelAllowance.toFixed(2)}€`);
+          // CORREZIONE: Con mezza giornata, ignora travelAllowancePercent del form
+          // per evitare doppi calcoli (il dimezzamento è già completo)
+          travelAllowancePercent = 1.0;
+          console.log(`[CalculationService] Breakdown - Indennità trasferta 50% per mezza giornata (${workEntry.date}): ${baseTravelAllowance.toFixed(2)}€ (travelAllowancePercent forzato a 1.0 per evitare doppio calcolo)`);
         }
         // FULL_ALLOWANCE_HALF_DAY mantiene l'importo pieno anche per mezze giornate
         
@@ -1452,18 +1462,14 @@ class CalculationService {
 
   /**
    * Versione sincrona di calculateEarningsBreakdown per compatibilità retroattiva
-   * Usa sempre il metodo standard senza sistema multi-fascia
+   * DEPRECATA: Usare sempre calculateEarningsBreakdown (asincrono) per garantire consistenza
    */
   calculateEarningsBreakdownSync(workEntry, settings) {
+    console.warn('⚠️ calculateEarningsBreakdownSync è deprecato. Usa calculateEarningsBreakdown per consistenza.');
     try {
-      // Disabilita temporaneamente il sistema multi-fascia per questa chiamata
-      const syncSettings = {
-        ...settings,
-        _forceSyncMode: true
-      };
-      
-      // Chiama la versione standard senza await
-      return this._calculateEarningsBreakdownStandard(workEntry, syncSettings);
+      // Per garantire consistenza, usa la stessa logica del metodo asincrono
+      // ma senza chiamate async (versione semplificata)
+      return this._calculateBasicBreakdown(workEntry, settings);
     } catch (error) {
       console.error('❌ Errore nel calcolo sincrono:', error);
       // Ritorna un breakdown vuoto in caso di errore
@@ -1478,11 +1484,11 @@ class CalculationService {
   }
 
   /**
-   * Metodo standard per il calcolo senza sistema multi-fascia
-   * Supporta DAILY_RATE_WITH_SUPPLEMENTS e metodi tradizionali
+   * Metodo di base per calcolo semplificato (senza sistema multi-fascia)
+   * Garantisce consistenza con il metodo asincrono principale
    */
-  _calculateEarningsBreakdownStandard(workEntry, settings) {
-    console.log('[CalculationService] Usando metodo standard (senza multi-fascia)');
+  _calculateBasicBreakdown(workEntry, settings) {
+    console.log('[CalculationService] Usando metodo basic per compatibilità sync');
     
     const contract = settings.contract || this.defaultContract;
     const baseRate = contract.hourlyRate || 16.41;
@@ -1493,10 +1499,93 @@ class CalculationService {
     const isSaturday = date.getDay() === 6;
     const isSunday = date.getDay() === 0;
     const isHoliday = isItalianHoliday(date);
+    const isSpecialDay = isSaturday || isSunday || isHoliday;
     
-    // Forza il dashboard a usare sempre la logica asincrona per breakdown giornaliero
-    // Questo garantisce coerenza con PDF e breakdown dettagliato
-    throw new Error('Il dashboard deve usare calculateEarningsBreakdown (asincrono) per il breakdown giornaliero. La versione sync è solo per retrocompatibilità PDF legacy.');
+    // Gestione giorni fissi come il metodo asincrono
+    const dayType = workEntry.dayType || 'lavorativa';
+    const isFixedDay = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType);
+    
+    if (isFixedDay && dayType !== 'lavorativa') {
+      return {
+        ordinary: {
+          hours: {
+            lavoro_giornaliera: 0,
+            viaggio_giornaliera: 0,
+            lavoro_extra: 0,
+            viaggio_extra: 0
+          },
+          earnings: {
+            giornaliera: dailyRate,
+            viaggio_extra: 0,
+            lavoro_extra: 0
+          },
+          total: dailyRate
+        },
+        standby: {
+          workHours: {},
+          travelHours: {},
+          workEarnings: {},
+          travelEarnings: {},
+          dailyIndemnity: 0,
+          totalEarnings: 0
+        },
+        allowances: {
+          meal: 0,
+          standby: 0
+        },
+        totalEarnings: dailyRate,
+        details: {
+          isSaturday,
+          isSunday,
+          isHoliday,
+          isSpecialDay,
+          isFixedDay: true,
+          dayType,
+          syncMode: true
+        }
+      };
+    }
+
+    // Calcolo base per giorni lavorativi (versione semplificata)
+    const ordinaryHours = this.calculateWorkHours(workEntry);
+    const travelHours = this.calculateTravelHours(workEntry);
+    
+    // Calcoli base senza sistema multi-fascia
+    const ordinaryEarnings = ordinaryHours * baseRate;
+    const travelEarnings = travelHours * baseRate * (settings.travelMultiplier || 1);
+    
+    const result = {
+      ordinary: {
+        hours: {
+          lavoro_giornaliera: ordinaryHours,
+          viaggio_giornaliera: travelHours,
+          lavoro_extra: 0,
+          viaggio_extra: 0
+        },
+        earnings: {
+          giornaliera: ordinaryEarnings + travelEarnings,
+          viaggio_extra: 0,
+          lavoro_extra: 0
+        },
+        total: ordinaryEarnings + travelEarnings
+      },
+      standby: null,
+      allowances: {
+        meal: 0,
+        standby: 0
+      },
+      totalEarnings: ordinaryEarnings + travelEarnings,
+      details: {
+        isSaturday,
+        isSunday,
+        isHoliday,
+        isSpecialDay,
+        isFixedDay: false,
+        syncMode: true
+      }
+    };
+    
+    return result;
   }
 
   /**

@@ -35,3 +35,10 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# Diagnostica e test files
+test-veloce*.js
+*-diagnostics.js
+debug-*.js
+app-diagnostic.js
+emergency-*.js

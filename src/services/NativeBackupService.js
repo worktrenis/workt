@@ -4,6 +4,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DatabaseService from './DatabaseService';
 import { Alert } from 'react-native';
+import SystemNotificationPersistence from './SystemNotificationPersistenceService';
 
 class NativeBackupService {
   constructor() {
@@ -324,6 +325,22 @@ class NativeBackupService {
           if (backupResult.success) {
             console.log('✅ [NATIVE] Backup silenzioso completato con successo');
             
+            // 🔔 Aggiungi notifica di sistema per backup completato
+            await this.addSystemNotification({
+              type: 'success',
+              title: '✅ Backup Completato',
+              message: `Backup automatico salvato con successo (${backupResult.entriesCount} registrazioni, ${(backupResult.size / 1024).toFixed(1)}KB)`,
+              category: 'backup',
+              priority: 'normal',
+              persistent: true,
+              metadata: {
+                destination: backupResult.destination,
+                entriesCount: backupResult.entriesCount,
+                size: backupResult.size,
+                timestamp: new Date().toISOString()
+              }
+            });
+            
             // Programma il prossimo backup automaticamente
             setTimeout(async () => {
               await this.scheduleNextAutoBackup();
@@ -333,6 +350,21 @@ class NativeBackupService {
             await this.showSilentBackupCompletedNotification(backupResult);
           } else {
             console.error('❌ [NATIVE] Backup silenzioso fallito:', backupResult.error);
+            
+            // 🔔 Aggiungi notifica di sistema per backup fallito
+            await this.addSystemNotification({
+              type: 'error',
+              title: '❌ Backup Fallito',
+              message: `Errore durante backup automatico: ${backupResult.error}`,
+              category: 'backup',
+              priority: 'high',
+              persistent: true,
+              metadata: {
+                error: backupResult.error,
+                timestamp: new Date().toISOString()
+              }
+            });
+            
             await this.showSilentBackupErrorNotification(backupResult.error);
           }
           
@@ -1270,7 +1302,18 @@ class NativeBackupService {
     }  
   }
 
-  // 📋 Alias per compatibilità con BackupService
+  // � METODO HELPER PER NOTIFICHE DI SISTEMA
+  async addSystemNotification(notification) {
+    try {
+      await SystemNotificationPersistence.initialize();
+      await SystemNotificationPersistence.addNotification(notification);
+      console.log(`📱 Notifica sistema aggiunta: ${notification.title}`);
+    } catch (error) {
+      console.error('❌ Errore creazione notifica sistema:', error);
+    }
+  }
+
+  // �📋 Alias per compatibilità con BackupService
   async listLocalBackups() {
     return await this.getBackupList();
   }

@@ -13,12 +13,14 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSettings } from '../hooks';
 
 const { width } = Dimensions.get('window');
 
 const ThemeSettingsScreen = ({ navigation }) => {
   const { theme, isDark, toggleTheme, setTheme, autoTheme, saveAutoTheme, themeMode, saveThemeMode } = useTheme();
   const styles = createStyles(theme);
+  const { settings, updatePartialSettings } = useSettings();
 
   const themeOptions = [
     {
@@ -222,6 +224,35 @@ const ThemeSettingsScreen = ({ navigation }) => {
                 isSelected={themeMode === themeOption.id}
               />
             ))}
+          </View>
+        </View>
+
+        {/* Preferenze di visualizzazione */}
+        <View style={[styles.sectionCard, { backgroundColor: theme.colors.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>Preferenze di Visualizzazione</Text>
+          <Text style={[styles.sectionDescription, { color: theme.colors.textSecondary }]}>
+            Controlla come mostrare gli importi nelle giornate speciali senza ore di lavoro
+          </Text>
+          <View style={styles.quickToggleContent}>
+            <MaterialCommunityIcons 
+              name="cash-multiple" 
+              size={24} 
+              color={theme.colors.primary} 
+            />
+            <View style={styles.quickToggleText}>
+              <Text style={[styles.quickToggleTitle, { color: theme.colors.text }]}>
+                Mostra retribuzione nei giorni speciali senza ore
+              </Text>
+              <Text style={[styles.quickToggleSubtitle, { color: theme.colors.textSecondary }]}>
+                Ferie, malattia, permesso, riposo compensativo, festivo
+              </Text>
+            </View>
+            <Switch
+              value={settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false}
+              onValueChange={(value) => updatePartialSettings({ showEffectiveEarningsOnSpecialNoWorkDays: value })}
+              trackColor={{ false: '#E0E0E0', true: '#81C784' }}
+              thumbColor={(settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false) ? '#4CAF50' : '#f4f3f4'}
+            />
           </View>
         </View>
 
