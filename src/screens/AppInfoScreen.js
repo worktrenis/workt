@@ -313,7 +313,7 @@ const AppInfoScreen = ({ navigation }) => {
           </Text>
           <TouchableOpacity
             style={{marginTop: 16, alignSelf: 'flex-start'}}
-            onPress={() => Linking.openURL('https://github.com/bzlikaj/workt/blob/main/INFORMATIVA_PRIVACY.md')}
+            onPress={() => Linking.openURL('https://github.com/worktrenis/workt/blob/main/INFORMATIVA_PRIVACY.md')}
           >
             <Text style={{color: theme.colors.primary, textDecorationLine: 'underline', fontWeight: '600'}}>
               Leggi l'informativa privacy completa
