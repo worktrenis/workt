@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.workt.production",
-      "buildNumber": "11",
+      "buildNumber": "14",
       "infoPlist": {
         "UIBackgroundModes": [
           "background-processing",
@@ -38,7 +38,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.workt.production",
-      "versionCode": 11,
+      "versionCode": 14,
       "permissions": [
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE",
