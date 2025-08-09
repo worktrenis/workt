@@ -21,16 +21,16 @@ const AppInfoScreen = ({ navigation }) => {
   const { theme } = useTheme();
 
   const changelog = [
-    {
-        "version": "1.5.0",
-        "date": "9 agosto 2025",
-        "changes": [
-            "Coerenza riepilogo giornaliero vs TimeEntry",
-            "Preferenza guadagni giorni speciali + PDF",
-            "Allineamento netto/retribuzione su feriali",
-            "UI Compensi Aggiuntivi + overflow"
-        ]
-    },
+  {
+    "version": "1.1.0",
+    "date": "9 agosto 2025",
+    "changes": [
+      "Coerenza riepilogo giornaliero vs TimeEntry",
+      "Preferenza guadagni giorni speciali + PDF",
+      "Allineamento netto/retribuzione su feriali",
+      "UI Compensi Aggiuntivi + overflow"
+    ]
+  },
     {
       version: '1.4.1',
       date: '7 Agosto 2025',

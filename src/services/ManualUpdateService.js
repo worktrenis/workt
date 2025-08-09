@@ -5,7 +5,7 @@ import SystemNotificationPersistence from './SystemNotificationPersistenceServic
 
 class ManualUpdateService {
   constructor() {
-    this.currentVersion = '1.4.0';
+  this.currentVersion = '1.1.0';
     this.isChecking = false;
     this.isUpdating = false;
     

@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 class UpdateService {
   constructor() {
     this.isChecking = false;
-    this.currentVersion = '1.4.0'; // ✅ AGGIORNATO v1.4.0: Sistema notifiche persistenti, cleanup UI, badge real-time
+  this.currentVersion = '1.1.0'; // ✅ Allineato runtime OTA 1.1.0
   }
 
   /**

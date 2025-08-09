@@ -13,6 +13,14 @@ function updateAppInfoChangelog(version, message) {
   const filePath = './src/screens/AppInfoScreen.js';
   let content = fs.readFileSync(filePath, 'utf8');
   
+  // Evita inserimento duplicato se la versione è già presente in cima
+  const alreadyHasTop = new RegExp(`version['\"]:\\s*['\"]${version}['\"]`).test(content)
+                      || new RegExp(`\\{\\s*\\"version\\":\\s*\\"${version}\\"`).test(content);
+  if (alreadyHasTop) {
+    console.log(`ℹ️ Changelog già contiene v${version}, skip inserimento`);
+    return;
+  }
+  
   const today = new Date().toLocaleDateString('it-IT', {
     day: '2-digit',
     month: 'long',
@@ -86,7 +94,7 @@ async function publishOTAUpdate() {
     console.log('⬆️ Pubblicazione in corso...');
     
     // Esegui comando EAS update
-    const command = `eas update --branch production --message "${releaseMessage}"`;
+  const command = `${easCmd} update --branch production --message "${releaseMessage}"`;
     console.log(`🔧 Comando: ${command}`);
     
     try {
@@ -119,13 +127,19 @@ async function publishOTAUpdate() {
   }
 }
 
-// Verifica che EAS CLI sia installato
+// Verifica che EAS CLI sia disponibile (globale o via npx)
+let easCmd = 'eas';
 try {
   execSync('eas --version', { encoding: 'utf8' });
 } catch (error) {
-  console.error('❌ ERRORE: EAS CLI non installato!');
-  console.error('💡 Installa con: npm install -g @expo/eas-cli');
-  process.exit(1);
+  try {
+    execSync('npx eas --version', { encoding: 'utf8' });
+    easCmd = 'npx eas';
+  } catch (e) {
+    console.error('❌ ERRORE: EAS CLI non disponibile!');
+    console.error('💡 Installa con: npm install -g @expo/eas-cli oppure usa npx @expo/eas-cli');
+    process.exit(1);
+  }
 }
 
 publishOTAUpdate();
