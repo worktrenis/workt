@@ -2,12 +2,12 @@
   "expo": {
     "name": "WorkT - Tracker Ore Lavoro",
     "slug": "workt",
-  "version": "1.1.0",
+  "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-  "description": "WorkT v1.1.0: correzioni riepilogo giornaliero vs TimeEntry, preferenza guadagni giorni speciali (anche PDF), allineamento netto/retribuzione su feriali, UI Compensi Aggiuntivi e overflow.",
+  "description": "WorkT v1.1.1: Dashboard Giorni Non Ordinari aggregata per percentuale (Lavoro/Viaggio separati), allineamento CCNL e fix UI minori.",
     "platforms": [
       "ios",
       "android"

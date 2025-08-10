@@ -22,6 +22,16 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
   {
+    version: '1.1.1',
+    date: '10 Agosto 2025',
+    changes: [
+      'Dashboard: Giorni Non Ordinari aggregati per percentuale',
+      'Separazione Lavoro e Viaggio anche nella Dashboard',
+      'Allineamento CCNL e sabatoMode nel breakdown',
+      'Piccoli fix UI e testi informativi'
+    ]
+  },
+  {
     "version": "1.1.0",
     "date": "9 agosto 2025",
     "changes": [

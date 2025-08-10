@@ -7,6 +7,12 @@
 
  Changelog - WorkT Tracker Ore Lavoro
 
+## [1.1.1] - 2025-08-10
+
+- Dashboard: Giorni Non Ordinari aggregati per percentuale, con Lavoro e Viaggio separati
+- Allineamento CCNL e sabatoMode nella Dashboard
+- Piccoli fix UI e testi informativi
+
 ## [1.4.1] - 2025-08-07
 
 ### 🔢 **CALCOLI ACCURATI - Sistema di Calcolo Preciso e Dashboard Educativo**
