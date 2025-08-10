@@ -159,8 +159,8 @@ export const CCNL_CONTRACTS = {
     name: 'CCNL Metalmeccanico PMI - Livello 8',
     code: 'METAL_PMI_L8',
   monthlySalary: 2719.17,
-  dailyRate: 104.59, // 2719.17 / 26
-  hourlyRate: 15.71, // 2719.17 / 173
+  dailyRate: 104.58, // 2719.17 / 26
+  hourlyRate: 15.72, // 2719.17 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
