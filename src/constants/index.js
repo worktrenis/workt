@@ -290,10 +290,19 @@ export const DEFAULT_SETTINGS = {
 // Valori per gruppo livello: importi in euro
 // Campi usati dall'app: feriale16 (16h feriale), feriale24 (24h feriale), festivo24 (24h festivo/domenica)
 export const CCNL_STANDBY_RATES = {
-  // Nota: weekly6Days è opzionale (forfait settimana 6 giorni) e sarà valorizzato quando i dati ufficiali sono confermati
-  GROUP_L1_3: { feriale16: 5.76, feriale24: 8.67, festivo24: 9.36, weekly6Days: null },
-  GROUP_L4_5: { feriale16: 6.87, feriale24: 10.77, festivo24: 11.56, weekly6Days: null },
-  GROUP_SUPER_5: { feriale16: 7.89, feriale24: 12.98, festivo24: 13.66, weekly6Days: null }, // livelli 6-9
+  // Nota: weekly6Days riporta il forfait settimanale (6 giorni) distinto per tipologia: 16h/24h feriale e 24h festivo
+  GROUP_L1_3: { 
+    feriale16: 5.76, feriale24: 8.67, festivo24: 9.36,
+    weekly6Days: { feriale16: 37.48, feriale24: 38.17, festivo24: 41.09 }
+  },
+  GROUP_L4_5: { 
+    feriale16: 6.87, feriale24: 10.77, festivo24: 11.56,
+    weekly6Days: { feriale16: 45.10, feriale24: 45.88, festivo24: 49.79 }
+  },
+  GROUP_SUPER_5: { 
+    feriale16: 7.89, feriale24: 12.98, festivo24: 13.66, // livelli 6-9
+    weekly6Days: { feriale16: 52.45, feriale24: 53.12, festivo24: 58.21 }
+  },
 };
 
 // Helper per ottenere le indennità di reperibilità in base al livello dal contract key

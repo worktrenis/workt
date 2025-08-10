@@ -160,9 +160,15 @@ const StandbySettingsScreen = ({ navigation }) => {
         Feriale 16h: €{IND_16H_FERIALE.toFixed(2)} · Feriale 24h: €{IND_24H_FERIALE.toFixed(2)} · Festivo/Domenica 24h: €{IND_24H_FESTIVO.toFixed(2)}
       </Text>
       {IND_WEEKLY_6 ? (
-        <Text style={{ color: theme.colors.text }}>
-          Settimana (6 giorni): €{Number(IND_WEEKLY_6).toFixed(2)}
-        </Text>
+        typeof IND_WEEKLY_6 === 'object' ? (
+          <Text style={{ color: theme.colors.text }}>
+            Settimana (6 giorni): 16h €{Number(IND_WEEKLY_6.feriale16).toFixed(2)} · 24h €{Number(IND_WEEKLY_6.feriale24).toFixed(2)} · Festivo 24h €{Number(IND_WEEKLY_6.festivo24).toFixed(2)}
+          </Text>
+        ) : (
+          <Text style={{ color: theme.colors.text }}>
+            Settimana (6 giorni): €{Number(IND_WEEKLY_6).toFixed(2)}
+          </Text>
+        )
       ) : null}
       <TouchableOpacity onPress={() => Linking.openURL('https://www.consulentidellavoro.pc.it/2025/06/20/ccnl-metalmeccanica-p-i-confapi-con-ladeguamento-ipca-nuovi-minimi-da-giugno/')} style={{ marginTop: 8 }}>
         <Text style={{ color: '#1976D2', textDecorationLine: 'underline' }}>Fonte: Consulenti del Lavoro – nuovi minimi da giugno 2025</Text>
@@ -449,7 +455,7 @@ const StandbySettingsScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.optionRow}>
-                  <Text style={styles.optionLabel}>Sabato (reperibilità)</Text>
+                  <Text style={[styles.optionLabel, {flexShrink: 1}]}>Sabato (reperibilità)</Text>
                   <View style={{flexDirection:'row', alignItems:'center'}}>
                     <TouchableOpacity 
                       style={[styles.toggleButton, saturdayMode==='feriale' && styles.toggleButtonActive]}
