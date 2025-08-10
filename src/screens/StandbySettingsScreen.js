@@ -125,13 +125,6 @@ const StandbySettingsScreen = ({ navigation }) => {
       // Aggiorna anche i toggle locali
       setTariffa24h(settings.standbySettings.allowanceType !== '16h');
       setSaturdayAsRest(settings.standbySettings.saturdayAsRest === true);
-      // Se non valorizzati, precompila i campi custom con i valori CCNL correnti per trasparenza in UI
-      setFormData(prev => ({
-        ...prev,
-        customFeriale16: prev.customFeriale16 || IND_16H_FERIALE.toString(),
-        customFeriale24: prev.customFeriale24 || IND_24H_FERIALE.toString(),
-        customFestivo: prev.customFestivo || IND_24H_FESTIVO.toString(),
-      }));
     }
   }, [settings]);
 
