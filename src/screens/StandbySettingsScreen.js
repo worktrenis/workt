@@ -320,14 +320,7 @@ const StandbySettingsScreen = ({ navigation }) => {
     }
   };
 
-  // Tariffe indennità giornaliera CCNL Metalmeccanico PMI Livello 5
-  const contract = settings.contract || CCNL_CONTRACTS.METALMECCANICO_PMI_L5;
-  const dailyRate = contract.dailyRate;
-  // Esempio: 14% del giornaliero per feriale, maggiorazioni per sabato/domenica/festivo
-  const indFeriale = dailyRate * 0.14;
-  const indSabato = dailyRate * 0.14 * 1.2;
-  const indDomenica = dailyRate * 0.14 * 1.5;
-  const indFestivo = dailyRate * 0.14 * 1.5;
+  // (rimosso) vecchio esempio calcolo indennità giornaliera non utilizzato
 
   if (isLoading) {
     return (
@@ -571,41 +564,7 @@ const StandbySettingsScreen = ({ navigation }) => {
                 </View>
               </View>
 
-              <View style={{
-                marginBottom:20,
-                backgroundColor: theme.colors.card,
-                borderRadius:14,
-                padding:16,
-                shadowColor: theme.colors.shadow,
-                shadowOpacity:0.07,
-                shadowRadius:8,
-                elevation:2,
-                borderWidth:1,
-                borderColor: theme.colors.border
-              }}>
-                <View style={{flexDirection:'row',alignItems:'center',marginBottom:10}}>
-                  <Ionicons name="cash-outline" size={22} color="#007AFF" style={{marginRight:8}} />
-                  <Text style={{fontWeight:'bold',fontSize:17,color: theme.colors.text}}>Indennità reperibilità CCNL 2024</Text>
-                </View>
-                <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                  <Text style={{fontSize:15,color: theme.colors.text}}>Feriale (16h)</Text>
-                  <Text style={{fontWeight:'bold',fontSize:15,color:'#007AFF'}}>€4,22</Text>
-                </View>
-                <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                  <Text style={{fontSize:15,color: theme.colors.text}}>Feriale (24h)</Text>
-                  <Text style={{fontWeight:'bold',fontSize:15,color:'#007AFF'}}>€7,03</Text>
-                </View>
-                <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-                  <Text style={{fontSize:15,color: theme.colors.text}}>Festivo/libero (24h)</Text>
-                  <Text style={{fontWeight:'bold',fontSize:15,color:'#007AFF'}}>€10,63</Text>
-                </View>
-                <View style={{flexDirection:'row',alignItems:'center',marginTop:10}}>
-                  <Ionicons name="information-circle-outline" size={16} color="#007AFF" style={{marginRight:4}} />
-                  <Text style={{fontSize:12,color: theme.colors.textSecondary,flex:1}}>
-                    Fonte: CCNL Metalmeccanico PMI Confapi, art. 23, aggiornamento 2024. Il sabato è feriale salvo sia il tuo giorno di riposo settimanale.
-                  </Text>
-                </View>
-              </View>
+              <InfoBox />
 
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Indennità Personalizzata</Text>
@@ -617,7 +576,7 @@ const StandbySettingsScreen = ({ navigation }) => {
                       value={formData.customFeriale16}
                       onChangeText={(value) => setFormData(prev => ({ ...prev, customFeriale16: value }))
                       }
-                      placeholder="4.22"
+                      placeholder={IND_16H_FERIALE.toFixed(2)}
                       placeholderTextColor={theme.colors.textSecondary}
                       keyboardType="numeric"
                       returnKeyType="next"
@@ -633,7 +592,7 @@ const StandbySettingsScreen = ({ navigation }) => {
                       value={formData.customFeriale24}
                       onChangeText={(value) => setFormData(prev => ({ ...prev, customFeriale24: value }))
                       }
-                      placeholder="7.03"
+                      placeholder={IND_24H_FERIALE.toFixed(2)}
                       placeholderTextColor={theme.colors.textSecondary}
                       keyboardType="numeric"
                       returnKeyType="next"
@@ -649,7 +608,7 @@ const StandbySettingsScreen = ({ navigation }) => {
                       value={formData.customFestivo}
                       onChangeText={(value) => setFormData(prev => ({ ...prev, customFestivo: value }))
                       }
-                      placeholder="10.63"
+                      placeholder={IND_24H_FESTIVO.toFixed(2)}
                       placeholderTextColor={theme.colors.textSecondary}
                       keyboardType="numeric"
                       returnKeyType="next"
