@@ -35,7 +35,8 @@ export class StandbyCalculator {
       const customFeriale24 = standbySettings.customFeriale24;
       const customFestivo = standbySettings.customFestivo;
       const allowanceType = standbySettings.allowanceType || '24h';
-      const saturdayAsRest = standbySettings.saturdayAsRest === true;
+  const saturdayAsRest = standbySettings.saturdayAsRest === true;
+  const saturdayMode = standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
       
       // Determina il tipo di giorno
       const dateObj = workEntry.date ? new Date(workEntry.date) : new Date();
@@ -46,15 +47,17 @@ export class StandbyCalculator {
       let baseDailyAllowance;
       
       // Determina il tipo di giorno considerando le impostazioni personalizzate
-      const isRestDay = isSunday || isHoliday || (isSaturday && saturdayAsRest);
+  const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
       
       if (isRestDay) {
         // Giorni di riposo (domenica, festivi, sabato se configurato come riposo)
         baseDailyAllowance = customFestivo || IND_24H_FESTIVO;
         console.log(`[StandbyCalculator] Indennità reperibilità giorno di riposo per ${workEntry.date}: ${baseDailyAllowance}€ (personalizzata: ${!!customFestivo})`);
       } else {
-        // Giorni feriali (incluso sabato se non è giorno di riposo)
-        if (allowanceType === '16h') {
+        // Giorni feriali (incluso sabato feriale/feriale24)
+        if (isSaturday && saturdayMode === 'feriale24') {
+          baseDailyAllowance = customFeriale24 || IND_24H_FERIALE;
+        } else if (allowanceType === '16h') {
           baseDailyAllowance = customFeriale16 || IND_16H_FERIALE;
         } else {
           baseDailyAllowance = customFeriale24 || IND_24H_FERIALE;

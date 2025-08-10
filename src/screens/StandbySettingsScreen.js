@@ -64,7 +64,7 @@ const StandbySettingsScreen = ({ navigation }) => {
     return `${today.getFullYear()}-${(today.getMonth()+1).toString().padStart(2,'0')}`;
   });
   const [tariffa24h, setTariffa24h] = useState(true); // true = 24h, false = 16h
-  const [saturdayAsRest, setSaturdayAsRest] = useState(false); // nuovo toggle
+  const [saturdayMode, setSaturdayMode] = useState('feriale'); // 'feriale' | 'feriale24' | 'festivo'
 
   // Indennità CCNL ufficiali per livello (Unionmeccanica Confapi, 01/06/2025)
   const { getStandbyRatesForContract } = require('../constants');
@@ -82,10 +82,14 @@ const StandbySettingsScreen = ({ navigation }) => {
   const isTodaySaturday = today.getDay() === 6;
   let tipoGiorno = 'Feriale';
   let indennita = tariffa24h ? IND_24H_FERIALE : IND_16H_FERIALE;
-  if (isTodayHoliday || isTodaySunday || (isTodaySaturday && saturdayAsRest)) {
+  // Determina il tipo di giorno/indennità per l'anteprima
+  if (isTodayHoliday || isTodaySunday || (isTodaySaturday && saturdayMode === 'festivo')) {
     tipoGiorno = isTodayHoliday ? 'Festivo' : (isTodaySunday ? 'Domenica' : 'Sabato (riposo)');
     indennita = IND_24H_FESTIVO;
-  } else if (isTodaySaturday && !saturdayAsRest) {
+  } else if (isTodaySaturday && saturdayMode === 'feriale24') {
+    tipoGiorno = 'Sabato (feriale 24h)';
+    indennita = IND_24H_FERIALE;
+  } else if (isTodaySaturday) {
     tipoGiorno = 'Sabato (lavorativo)';
     indennita = tariffa24h ? IND_24H_FERIALE : IND_16H_FERIALE;
   } else {
@@ -123,7 +127,9 @@ const StandbySettingsScreen = ({ navigation }) => {
       setStandbyDays(settings.standbySettings.standbyDays || {});
       // Aggiorna anche i toggle locali
       setTariffa24h(settings.standbySettings.allowanceType !== '16h');
-      setSaturdayAsRest(settings.standbySettings.saturdayAsRest === true);
+      const mode = settings.standbySettings.saturdayMode 
+        || ((settings.standbySettings.saturdayAsRest === true) ? 'festivo' : 'feriale');
+      setSaturdayMode(mode);
     }
   }, [settings]);
 
@@ -296,7 +302,8 @@ const StandbySettingsScreen = ({ navigation }) => {
         customFestivo: parseFloat(formData.customFestivo) || null,
         // Impostazioni aggiuntive
         allowanceType: tariffa24h ? '24h' : '16h',
-        saturdayAsRest: saturdayAsRest,
+  saturdayAsRest: saturdayMode === 'festivo', // retrocompatibilità
+  saturdayMode,
       };
 
       await updatePartialSettings({
@@ -433,16 +440,27 @@ const StandbySettingsScreen = ({ navigation }) => {
                 </View>
 
                 <View style={styles.optionRow}>
-                  <Text style={styles.optionLabel}>Sabato come giorno di riposo</Text>
-                  <Switch
-                    value={saturdayAsRest}
-                    onValueChange={(value) => {
-                      setSaturdayAsRest(value);
-                      setFormData(prev => ({ ...prev, saturdayAsRest: value }));
-                    }}
-                    trackColor={{ false: theme.colors.border, true: theme.colors.primary }}
-                    thumbColor={saturdayAsRest ? '#fff' : '#f4f3f4'}
-                  />
+                  <Text style={styles.optionLabel}>Sabato (reperibilità)</Text>
+                  <View style={{flexDirection:'row', alignItems:'center'}}>
+                    <TouchableOpacity 
+                      style={[styles.toggleButton, saturdayMode==='feriale' && styles.toggleButtonActive]}
+                      onPress={() => setSaturdayMode('feriale')}
+                    >
+                      <Text style={[styles.toggleButtonText, saturdayMode==='feriale' && styles.toggleButtonTextActive]}>Feriale</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.toggleButton, saturdayMode==='feriale24' && styles.toggleButtonActive]}
+                      onPress={() => setSaturdayMode('feriale24')}
+                    >
+                      <Text style={[styles.toggleButtonText, saturdayMode==='feriale24' && styles.toggleButtonTextActive]}>Feriale 24h</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.toggleButton, saturdayMode==='festivo' && styles.toggleButtonActive]}
+                      onPress={() => setSaturdayMode('festivo')}
+                    >
+                      <Text style={[styles.toggleButtonText, saturdayMode==='festivo' && styles.toggleButtonTextActive]}>Festivo 24h</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
                 
                 <View style={styles.optionRow}>

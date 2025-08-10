@@ -108,10 +108,13 @@ const DashboardScreen = ({ navigation, route }) => {
 
   // 🔧 FUNZIONE HELPER PER OTTENERE TARIFFE REALI INDENNITÀ REPERIBILITÀ
   const getStandbyRatesFromSettings = (settings) => {
-    // Valori CCNL di default (stessi del CalculationService)
-    const IND_16H_FERIALE = 4.22;
-    const IND_24H_FERIALE = 7.03;
-    const IND_24H_FESTIVO = 10.63;
+    // Valori CCNL per livello (override dei vecchi default)
+    const contractKey = settings?.contract?.key;
+    const { getStandbyRatesForContract } = require('../constants');
+    const ccnlRates = getStandbyRatesForContract(contractKey);
+    const IND_16H_FERIALE = ccnlRates.feriale16; // ex 4.22
+    const IND_24H_FERIALE = ccnlRates.feriale24; // ex 7.03
+    const IND_24H_FESTIVO = ccnlRates.festivo24; // ex 10.63
     
     if (!settings?.standbySettings?.enabled) {
       return {
@@ -121,12 +124,13 @@ const DashboardScreen = ({ navigation, route }) => {
       };
     }
     
-    // Usa impostazioni personalizzate se disponibili
+  // Usa impostazioni personalizzate se disponibili
     const customFeriale16 = settings.standbySettings.customFeriale16;
     const customFeriale24 = settings.standbySettings.customFeriale24;
     const customFestivo = settings.standbySettings.customFestivo;
     const allowanceType = settings.standbySettings.allowanceType || '24h';
-    const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+  const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+  const saturdayMode = settings.standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
     
     // Calcola tariffa feriale
     let ferialeRate;
@@ -140,7 +144,7 @@ const DashboardScreen = ({ navigation, route }) => {
     const festivoRate = customFestivo || IND_24H_FESTIVO;
     
     // Sabato: segue le regole feriali o festive a seconda dell'impostazione
-    const sabatoRate = saturdayAsRest ? festivoRate : ferialeRate;
+  const sabatoRate = saturdayMode === 'festivo' ? festivoRate : (saturdayMode === 'feriale24' ? (customFeriale24 || IND_24H_FERIALE) : ferialeRate);
     
     return {
       feriale: ferialeRate,

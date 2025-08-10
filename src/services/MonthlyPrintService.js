@@ -1978,7 +1978,8 @@ class MonthlyPrintService {
   const customFeriale24 = settings.standbySettings.customFeriale24 || IND_24H_FERIALE;
   const customFestivo = settings.standbySettings.customFestivo || IND_24H_FESTIVO;
     const allowanceType = settings.standbySettings.allowanceType || '24h';
-    const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+  const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+  const saturdayMode = settings.standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
     
     for (let day = 1; day <= lastDay; day++) {
       date.setDate(day);
@@ -1996,9 +1997,12 @@ class MonthlyPrintService {
         let allowance;
         let dayType;
         
-        if (isSunday || (isSaturday && saturdayAsRest)) {
+        if (isSunday || (isSaturday && saturdayMode === 'festivo')) {
           allowance = customFestivo;
           dayType = 'festivo';
+        } else if (isSaturday && saturdayMode === 'feriale24') {
+          allowance = customFeriale24;
+          dayType = 'feriale';
         } else if (allowanceType === '16h') {
           allowance = customFeriale16;
           dayType = 'feriale';
