@@ -286,6 +286,33 @@ export const DEFAULT_SETTINGS = {
   ccnlAppliedIncrements: {}, // Esempio: { METALMECCANICO_PMI_L5: ['2025-09-01'] }
 };
 
+// Indennità di reperibilità CCNL Unionmeccanica Confapi (decorrenza 01/06/2025)
+// Valori per gruppo livello: importi in euro
+// Campi usati dall'app: feriale16 (16h feriale), feriale24 (24h feriale), festivo24 (24h festivo/domenica)
+export const CCNL_STANDBY_RATES = {
+  // Nota: weekly6Days è opzionale (forfait settimana 6 giorni) e sarà valorizzato quando i dati ufficiali sono confermati
+  GROUP_L1_3: { feriale16: 5.76, feriale24: 8.67, festivo24: 9.36, weekly6Days: null },
+  GROUP_L4_5: { feriale16: 6.87, feriale24: 10.77, festivo24: 11.56, weekly6Days: null },
+  GROUP_SUPER_5: { feriale16: 7.89, feriale24: 12.98, festivo24: 13.66, weekly6Days: null }, // livelli 6-9
+};
+
+// Helper per ottenere le indennità di reperibilità in base al livello dal contract key
+export function getStandbyRatesForContract(contractKey) {
+  try {
+    if (typeof contractKey !== 'string') {
+      return CCNL_STANDBY_RATES.GROUP_L4_5;
+    }
+    // Estrae il livello dal key es. METALMECCANICO_PMI_L5 -> 5
+    const match = contractKey.match(/_L(\d)$/);
+    const level = match ? parseInt(match[1], 10) : 5;
+    if (level <= 3) return CCNL_STANDBY_RATES.GROUP_L1_3;
+    if (level === 4 || level === 5) return CCNL_STANDBY_RATES.GROUP_L4_5;
+    return CCNL_STANDBY_RATES.GROUP_SUPER_5; // 6-9
+  } catch {
+    return CCNL_STANDBY_RATES.GROUP_L4_5;
+  }
+}
+
 // Calculation utilities
 export const calculateOvertimeRate = (hour, contract = CCNL_CONTRACTS.METALMECCANICO_PMI_L5) => {
   // CCNL Metalmeccanico PMI - Fasce orarie straordinari:

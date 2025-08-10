@@ -865,6 +865,19 @@ class MonthlyPrintService {
                 })()}
               </div>
             </div>
+            ${(() => {
+              const { getStandbyRatesForContract } = require('../constants');
+              const key = settings?.contract?.key;
+              const rates = getStandbyRatesForContract(key);
+              const w6 = settings.standbySettings?.customWeekly6Days || rates.weekly6Days;
+              if (!w6) return '';
+              return `
+                <div class="contract-item">
+                  <div class="contract-label">Reperibilità Settimana (6 giorni)</div>
+                  <div class="contract-value">€${w6}</div>
+                </div>
+              `;
+            })()}
           </div>
         </div>
       </div>

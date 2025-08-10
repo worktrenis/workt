@@ -54,6 +54,7 @@ const StandbySettingsScreen = ({ navigation }) => {
     customFeriale16: '',
     customFeriale24: '',
     customFestivo: '',
+  customWeekly6Days: '',
     // Impostazioni aggiuntive
     allowanceType: '24h', // '16h' o '24h'
     saturdayAsRest: false, // se sabato è considerato giorno di riposo
@@ -73,6 +74,7 @@ const StandbySettingsScreen = ({ navigation }) => {
   const IND_16H_FERIALE = ccnlRates.feriale16;
   const IND_24H_FERIALE = ccnlRates.feriale24;
   const IND_24H_FESTIVO = ccnlRates.festivo24;
+  const IND_WEEKLY_6 = ccnlRates.weekly6Days;
 
   // Calcolo tipo giorno e tariffa
   const today = new Date();
@@ -120,6 +122,7 @@ const StandbySettingsScreen = ({ navigation }) => {
         customFeriale16: settings.standbySettings.customFeriale16?.toString() || '',
         customFeriale24: settings.standbySettings.customFeriale24?.toString() || '',
         customFestivo: settings.standbySettings.customFestivo?.toString() || '',
+  customWeekly6Days: settings.standbySettings.customWeekly6Days?.toString() || '',
         // Impostazioni aggiuntive
         allowanceType: settings.standbySettings.allowanceType || '24h',
         saturdayAsRest: settings.standbySettings.saturdayAsRest === true,
@@ -156,6 +159,11 @@ const StandbySettingsScreen = ({ navigation }) => {
       <Text style={{ color: theme.colors.text }}>
         Feriale 16h: €{IND_16H_FERIALE.toFixed(2)} · Feriale 24h: €{IND_24H_FERIALE.toFixed(2)} · Festivo/Domenica 24h: €{IND_24H_FESTIVO.toFixed(2)}
       </Text>
+      {IND_WEEKLY_6 ? (
+        <Text style={{ color: theme.colors.text }}>
+          Settimana (6 giorni): €{Number(IND_WEEKLY_6).toFixed(2)}
+        </Text>
+      ) : null}
       <TouchableOpacity onPress={() => Linking.openURL('https://www.consulentidellavoro.pc.it/2025/06/20/ccnl-metalmeccanica-p-i-confapi-con-ladeguamento-ipca-nuovi-minimi-da-giugno/')} style={{ marginTop: 8 }}>
         <Text style={{ color: '#1976D2', textDecorationLine: 'underline' }}>Fonte: Consulenti del Lavoro – nuovi minimi da giugno 2025</Text>
       </TouchableOpacity>
@@ -300,6 +308,7 @@ const StandbySettingsScreen = ({ navigation }) => {
         customFeriale16: parseFloat(formData.customFeriale16) || null,
         customFeriale24: parseFloat(formData.customFeriale24) || null,
         customFestivo: parseFloat(formData.customFestivo) || null,
+  customWeekly6Days: parseFloat(formData.customWeekly6Days) || null,
         // Impostazioni aggiuntive
         allowanceType: tariffa24h ? '24h' : '16h',
   saturdayAsRest: saturdayMode === 'festivo', // retrocompatibilità
@@ -622,6 +631,22 @@ const StandbySettingsScreen = ({ navigation }) => {
                       placeholderTextColor={theme.colors.textSecondary}
                       keyboardType="numeric"
                       returnKeyType="next"
+                    />
+                    <Text style={styles.inputSuffix}>€</Text>
+                  </View>
+                </View>
+                <View style={{marginBottom:8}}>
+                  <Text style={{fontSize:14,fontWeight:'bold',color: theme.colors.text}}>Settimana (6 giorni) – opzionale</Text>
+                  <View style={styles.inputContainer}>
+                    <TextInput
+                      style={styles.textInput}
+                      value={formData.customWeekly6Days}
+                      onChangeText={(value) => setFormData(prev => ({ ...prev, customWeekly6Days: value }))
+                      }
+                      placeholder={IND_WEEKLY_6 ? Number(IND_WEEKLY_6).toFixed(2) : ''}
+                      placeholderTextColor={theme.colors.textSecondary}
+                      keyboardType="numeric"
+                      returnKeyType="done"
                     />
                     <Text style={styles.inputSuffix}>€</Text>
                   </View>
