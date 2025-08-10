@@ -4,9 +4,9 @@ export const CCNL_CONTRACTS = {
   METALMECCANICO_PMI_L1: {
     name: 'CCNL Metalmeccanico PMI - Livello 1',
     code: 'METAL_PMI_L1',
-    monthlySalary: 1417.36,
-    dailyRate: 54.52, // 1417.36 / 26
-    hourlyRate: 8.19, // 1417.36 / 173
+  monthlySalary: 1587.26,
+  dailyRate: 61.05, // 1587.26 / 26
+  hourlyRate: 9.18, // 1587.26 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -20,15 +20,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 1'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L2: {
     name: 'CCNL Metalmeccanico PMI - Livello 2',
     code: 'METAL_PMI_L2',
-    monthlySalary: 1565.32,
-    dailyRate: 60.20,
-    hourlyRate: 9.05,
+  monthlySalary: 1752.96,
+  dailyRate: 67.42, // 1752.96 / 26
+  hourlyRate: 10.13, // 1752.96 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -42,15 +42,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 2'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L3: {
     name: 'CCNL Metalmeccanico PMI - Livello 3',
     code: 'METAL_PMI_L3',
-    monthlySalary: 1736.76,
-    dailyRate: 66.80,
-    hourlyRate: 10.04,
+  monthlySalary: 1944.96,
+  dailyRate: 74.81, // 1944.96 / 26
+  hourlyRate: 11.24, // 1944.96 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -64,15 +64,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 3'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L4: {
     name: 'CCNL Metalmeccanico PMI - Livello 4',
     code: 'METAL_PMI_L4',
-    monthlySalary: 1812.06,
-    dailyRate: 69.70,
-    hourlyRate: 10.48,
+  monthlySalary: 2029.28,
+  dailyRate: 78.05, // 2029.28 / 26
+  hourlyRate: 11.73, // 2029.28 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -86,15 +86,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 4'
+    lastUpdated: '2025-06-01',
+    source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L5: {
     name: 'CCNL Metalmeccanico PMI - Livello 5',
     code: 'METAL_PMI_L5',
-    monthlySalary: 1941.07,
-    dailyRate: 74.66,
-    hourlyRate: 11.22,
+  monthlySalary: 2173.77,
+  dailyRate: 83.61, // 2173.77 / 26
+  hourlyRate: 12.57, // 2173.77 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -108,15 +108,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 5'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L6: {
     name: 'CCNL Metalmeccanico PMI - Livello 6',
     code: 'METAL_PMI_L6',
-    monthlySalary: 2081.18,
-    dailyRate: 80.05,
-    hourlyRate: 12.03,
+    monthlySalary: 2330.66,
+    dailyRate: 89.64, // 2330.66 / 26
+    hourlyRate: 13.47, // 2330.66 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -130,15 +130,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 6'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L7: {
     name: 'CCNL Metalmeccanico PMI - Livello 7',
     code: 'METAL_PMI_L7',
-    monthlySalary: 2232.77,
-    dailyRate: 85.88,
-    hourlyRate: 12.90,
+  monthlySalary: 2500.42,
+  dailyRate: 96.17, // 2500.42 / 26
+  hourlyRate: 14.45, // 2500.42 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -152,15 +152,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 7'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L8: {
     name: 'CCNL Metalmeccanico PMI - Livello 8',
     code: 'METAL_PMI_L8',
-    monthlySalary: 2428.09,
-    dailyRate: 93.39,
-    hourlyRate: 14.04,
+  monthlySalary: 2719.17,
+  dailyRate: 104.59, // 2719.17 / 26
+  hourlyRate: 15.71, // 2719.17 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -174,15 +174,15 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 8'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
   },
   METALMECCANICO_PMI_L9: {
     name: 'CCNL Metalmeccanico PMI - Livello 9',
     code: 'METAL_PMI_L9',
-    monthlySalary: 2700.29,
-    dailyRate: 103.86,
-    hourlyRate: 15.61,
+  monthlySalary: 3023.98,
+  dailyRate: 116.31, // 3023.98 / 26
+  hourlyRate: 17.47, // 3023.98 / 173
     workingDaysPerMonth: 26,
     workingHoursPerDay: 8,
     overtimeRates: { 
@@ -196,8 +196,46 @@ export const CCNL_CONTRACTS = {
       overtimeNightAfter22: 1.5   // Straordinario notturno (dopo le 22) +50%
     },
     nightWorkStart: 22, nightWorkEnd: 6,
-    lastUpdated: '2025-07-23',
-    source: 'CCNL Metalmeccanico PMI - Livello 9'
+  lastUpdated: '2025-06-01',
+  source: 'Unionmeccanica Confapi – Minimi giugno 2025 (IPCA)'
+  },
+};
+
+// Tranche di adeguamento CCNL 2025-2026 (fonte FIM-CISL, FIOM-CGIL)
+// Valori noti: riferiti al 5° livello (L5). Altri livelli verranno aggiunti quando disponibili.
+export const CCNL_2025_2026_INCREMENTS = {
+  METALMECCANICO_PMI_L1: {
+    '2025-06-01': 20.37,
+    // Importi successivi non ancora ufficializzati per L1 nella fonte usata
+  },
+  METALMECCANICO_PMI_L2: {
+    '2025-06-01': 22.50,
+  },
+  METALMECCANICO_PMI_L3: {
+    '2025-06-01': 24.96,
+  },
+  METALMECCANICO_PMI_L4: {
+    '2025-06-01': 26.04,
+  },
+  METALMECCANICO_PMI_L5: {
+    // 01/06/2025: +27,90€ (già incluso nei valori di default presenti in CCNL_CONTRACTS)
+    '2025-06-01': 27.90,
+    // 01/09/2025: +22,10€
+    '2025-09-01': 22.10,
+    // 01/06/2026: +50,00€
+    '2026-06-01': 50.00,
+  },
+  METALMECCANICO_PMI_L6: {
+    '2025-06-01': 29.91,
+  },
+  METALMECCANICO_PMI_L7: {
+    '2025-06-01': 32.09,
+  },
+  METALMECCANICO_PMI_L8: {
+    '2025-06-01': 34.90,
+  },
+  METALMECCANICO_PMI_L9: {
+    '2025-06-01': 38.81,
   },
 };
 
@@ -243,6 +281,9 @@ export const DEFAULT_SETTINGS = {
     customDeductionRate: 32, // Percentuale trattenute personalizzata (default più realistico)
     useActualAmount: false, // Se true, calcola sulla cifra presente, se false usa stima annuale
   },
+  // Adeguamenti automatici CCNL (tranche 2025-2026)
+  autoUpdateCCNLIncrements: true,
+  ccnlAppliedIncrements: {}, // Esempio: { METALMECCANICO_PMI_L5: ['2025-09-01'] }
 };
 
 // Calculation utilities

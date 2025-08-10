@@ -1,11 +1,14 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DatabaseService from '../services/DatabaseService';
 import DatabaseHealthService from '../services/DatabaseHealthService';
 import { useCalculationService } from './useCalculationService';
 import { useVacationAutoCompile } from './useVacationAutoCompile';
 import { useWelcome } from './useWelcome';
-import { DEFAULT_SETTINGS } from '../constants';
+import { DEFAULT_SETTINGS, CCNL_CONTRACTS } from '../constants';
+import { applyScheduledCCNLIncrements } from '../services/CCNLUpdateService';
+import { CCNL_2025_2026_INCREMENTS } from '../constants';
 
 export { useCalculationService, useVacationAutoCompile, useWelcome };
 
@@ -304,8 +307,76 @@ export const useSettings = () => {
         }
       }
       
-      const appSettings = await DatabaseService.getSetting('appSettings', DEFAULT_SETTINGS);
+  let appSettings = await DatabaseService.getSetting('appSettings', DEFAULT_SETTINGS);
       
+      // Allineamento minimi tabellari aggiornati per TUTTI i livelli (se inferiori e senza tariffe personalizzate)
+      try {
+        const key = appSettings.contract?.key;
+        const isCustom = appSettings.contract?.customRatesEnabled === true;
+        if (key && CCNL_CONTRACTS[key] && !isCustom) {
+          const def = CCNL_CONTRACTS[key];
+          const currentMonthly = Number(appSettings.contract?.monthlySalary);
+          if (!Number.isNaN(currentMonthly) && currentMonthly < def.monthlySalary) {
+            const newMonthly = def.monthlySalary;
+            const workingDays = appSettings.contract.workingDaysPerMonth || def.workingDaysPerMonth || 26;
+            const updatedContract = {
+              ...appSettings.contract,
+              monthlySalary: newMonthly,
+              dailyRate: parseFloat((newMonthly / workingDays).toFixed(2)),
+              hourlyRate: parseFloat((newMonthly / 173).toFixed(2)),
+              lastUpdated: def.lastUpdated,
+              source: (def.source || 'CCNL Unionmeccanica Confapi') + ' (allineato minimi)'
+            };
+            appSettings = { ...appSettings, contract: updatedContract };
+            await DatabaseService.setSetting('appSettings', appSettings);
+            await AsyncStorage.setItem('settings', JSON.stringify(appSettings));
+            try {
+              const levelName = def.name?.split(' - ').pop() || key.replace('METALMECCANICO_PMI_', 'Livello ');
+              Alert.alert('Minimi CCNL aggiornati', `${levelName} allineato a € ${newMonthly.toFixed(2)}.`);
+            } catch {}
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ HOOK - Errore allineamento minimi CCNL:', e?.message);
+      }
+
+      // Adeguamenti automatici CCNL (se attivi)
+      try {
+        if (appSettings.autoUpdateCCNLIncrements && appSettings.contract?.key) {
+          const key = appSettings.contract.key;
+          const applied = appSettings.ccnlAppliedIncrements?.[key] || [];
+          const { contract: updatedContract, updated } = applyScheduledCCNLIncrements(appSettings.contract, undefined, applied);
+          if (updated) {
+            // Marca come applicate tutte le decorrenze <= oggi non ancora applicate
+            const today = new Date().toISOString().slice(0,10);
+            const pending = Object.keys(CCNL_2025_2026_INCREMENTS[key] || {}).filter(d => d <= today && !applied.includes(d) && !(key==='METALMECCANICO_PMI_L5' && d==='2025-06-01'));
+            const newApplied = [...applied, ...pending];
+            appSettings = { 
+              ...appSettings, 
+              contract: updatedContract,
+              ccnlAppliedIncrements: { 
+                ...(appSettings.ccnlAppliedIncrements || {}),
+                [key]: newApplied
+              }
+            };
+            // Persisti l'adeguamento per coerenza tra riavvii
+            await DatabaseService.setSetting('appSettings', appSettings);
+            await AsyncStorage.setItem('settings', JSON.stringify(appSettings));
+            console.log('✅ HOOK - Adeguamento automatico CCNL applicato:', updatedContract.monthlySalary);
+            try {
+              const dates = pending.join(', ');
+              const euro = (n) => `€ ${Number(n).toFixed(2)}`;
+              Alert.alert(
+                'Adeguamento CCNL applicato',
+                `Retribuzione mensile aggiornata a ${euro(updatedContract.monthlySalary)}${dates ? `\nDecorrenze: ${dates}` : ''}`
+              );
+            } catch {}
+          }
+        }
+      } catch (e) {
+        console.log('⚠️ HOOK - Errore adeguamento automatico CCNL:', e?.message);
+      }
+
       // 🚨 DEBUG CONTRATTO dal database
       const contractType = appSettings.contract_type || 'unknown';
       const dailyRate = appSettings.daily_rate || 'non trovato';
