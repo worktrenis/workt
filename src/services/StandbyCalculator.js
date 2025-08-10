@@ -22,10 +22,13 @@ export class StandbyCalculator {
     const isStandbyDay = this.isStandbyDay(workEntry, settings);
     
     if (isStandbyDay && settings?.standbySettings?.enabled) {
-      // Valori CCNL di default
-      const IND_16H_FERIALE = 4.22;
-      const IND_24H_FERIALE = 7.03;
-      const IND_24H_FESTIVO = 10.63;
+      // Valori CCNL per livello (Unionmeccanica Confapi, 01/06/2025)
+      const { getStandbyRatesForContract } = require('../constants');
+      const contractKey = settings?.contract?.key;
+      const ccnlRates = getStandbyRatesForContract(contractKey);
+      const IND_16H_FERIALE = ccnlRates.feriale16;
+      const IND_24H_FERIALE = ccnlRates.feriale24;
+      const IND_24H_FESTIVO = ccnlRates.festivo24;
       
       // Verifica se abbiamo personalizzazioni
       const customFeriale16 = standbySettings.customFeriale16;

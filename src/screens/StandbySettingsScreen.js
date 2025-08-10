@@ -21,6 +21,7 @@ import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NotificationService from '../services/FixedNotificationService';
 import { useTheme } from '../contexts/ThemeContext';
+import { Linking } from 'react-native';
 
 // Configurazione locale italiana per il calendario
 LocaleConfig.locales['it'] = {
@@ -66,10 +67,13 @@ const StandbySettingsScreen = ({ navigation }) => {
   const [tariffa24h, setTariffa24h] = useState(true); // true = 24h, false = 16h
   const [saturdayAsRest, setSaturdayAsRest] = useState(false); // nuovo toggle
 
-  // Indennità CCNL ufficiali Confapi 2024
-  const IND_16H_FERIALE = 4.22;
-  const IND_24H_FERIALE = 7.03;
-  const IND_24H_FESTIVO = 10.63;
+  // Indennità CCNL ufficiali per livello (Unionmeccanica Confapi, 01/06/2025)
+  const { getStandbyRatesForContract } = require('../constants');
+  const contractKey = settings?.contract?.key;
+  const ccnlRates = getStandbyRatesForContract(contractKey);
+  const IND_16H_FERIALE = ccnlRates.feriale16;
+  const IND_24H_FERIALE = ccnlRates.feriale24;
+  const IND_24H_FESTIVO = ccnlRates.festivo24;
 
   // Calcolo tipo giorno e tariffa
   const today = new Date();
@@ -121,8 +125,47 @@ const StandbySettingsScreen = ({ navigation }) => {
       // Aggiorna anche i toggle locali
       setTariffa24h(settings.standbySettings.allowanceType !== '16h');
       setSaturdayAsRest(settings.standbySettings.saturdayAsRest === true);
+      // Se non valorizzati, precompila i campi custom con i valori CCNL correnti per trasparenza in UI
+      setFormData(prev => ({
+        ...prev,
+        customFeriale16: prev.customFeriale16 || IND_16H_FERIALE.toString(),
+        customFeriale24: prev.customFeriale24 || IND_24H_FERIALE.toString(),
+        customFestivo: prev.customFestivo || IND_24H_FESTIVO.toString(),
+      }));
     }
   }, [settings]);
+
+  const handleResetToCCNL = () => {
+    setFormData(prev => ({
+      ...prev,
+      customFeriale16: IND_16H_FERIALE.toString(),
+      customFeriale24: IND_24H_FERIALE.toString(),
+      customFestivo: IND_24H_FESTIVO.toString(),
+    }));
+    Alert.alert('Indennità CCNL', 'Tariffe ripristinate ai valori CCNL per il tuo livello.');
+  };
+
+  const InfoBox = () => (
+    <View style={{
+      backgroundColor: theme.name === 'dark' ? 'rgba(33,150,243,0.12)' : '#E3F2FD',
+      borderColor: '#2196F3',
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: 12,
+      marginTop: 12
+    }}>
+      <Text style={{ fontWeight: 'bold', color: theme.colors.text, marginBottom: 6 }}>Indennità di reperibilità (CCNL Unionmeccanica Confapi)</Text>
+      <Text style={{ color: theme.colors.text }}>
+        Feriale 16h: €{IND_16H_FERIALE.toFixed(2)} · Feriale 24h: €{IND_24H_FERIALE.toFixed(2)} · Festivo/Domenica 24h: €{IND_24H_FESTIVO.toFixed(2)}
+      </Text>
+      <TouchableOpacity onPress={() => Linking.openURL('https://www.consulentidellavoro.pc.it/2025/06/20/ccnl-metalmeccanica-p-i-confapi-con-ladeguamento-ipca-nuovi-minimi-da-giugno/')} style={{ marginTop: 8 }}>
+        <Text style={{ color: '#1976D2', textDecorationLine: 'underline' }}>Fonte: Consulenti del Lavoro – nuovi minimi da giugno 2025</Text>
+      </TouchableOpacity>
+      <TouchableOpacity onPress={handleResetToCCNL} style={{ marginTop: 8, alignSelf: 'flex-start', backgroundColor: '#1976D2', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}>
+        <Text style={{ color: '#fff' }}>Ripristina valori CCNL</Text>
+      </TouchableOpacity>
+    </View>
+  );
 
   useEffect(() => {
     // Programma notifica automatica per i giorni di reperibilità usando il nostro sistema Enhanced

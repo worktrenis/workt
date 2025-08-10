@@ -841,14 +841,29 @@ class MonthlyPrintService {
             <div class="contract-item">
               <div class="contract-label">Reperibilità Feriale</div>
               <div class="contract-value">
-                ${settings.standbySettings?.allowanceType === '16h' 
-                  ? `€${settings.standbySettings?.customFeriale16 || '4.22'} (16h)`
-                  : `€${settings.standbySettings?.customFeriale24 || '7.03'} (24h)`}
+                ${(() => {
+                  const { getStandbyRatesForContract } = require('../constants');
+                  const key = settings?.contract?.key;
+                  const rates = getStandbyRatesForContract(key);
+                  const v16 = settings.standbySettings?.customFeriale16 || rates.feriale16;
+                  const v24 = settings.standbySettings?.customFeriale24 || rates.feriale24;
+                  return settings.standbySettings?.allowanceType === '16h' 
+                    ? `€${v16} (16h)`
+                    : `€${v24} (24h)`;
+                })()}
               </div>
             </div>
             <div class="contract-item">
               <div class="contract-label">Reperibilità Festivo</div>
-              <div class="contract-value">€${settings.standbySettings?.customFestivo || '10.63'} (24h)</div>
+              <div class="contract-value">
+                ${(() => {
+                  const { getStandbyRatesForContract } = require('../constants');
+                  const key = settings?.contract?.key;
+                  const rates = getStandbyRatesForContract(key);
+                  const vf = settings.standbySettings?.customFestivo || rates.festivo24;
+                  return `€${vf} (24h)`;
+                })()}
+              </div>
             </div>
           </div>
         </div>
