@@ -14,8 +14,9 @@
     "preweb": "node scripts/bump-version.js",
     "web": "expo start --web",
     "bump-version": "node scripts/bump-version.js",
-    "publish-ota": "node publish-ota-update.js",
-    "publish-ota-quick": "node publish-ota-update.js \"Aggiornamento rapido - Correzioni e miglioramenti\""
+  "publish-ota": "node publish-ota-update.js",
+  "publish-ota-quick": "node publish-ota-update.js \"Aggiornamento rapido - Correzioni e miglioramenti\"",
+  "generate:icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "@expo/cli": "^0.24.20",
