@@ -16,7 +16,6 @@ import { useSettings } from '../hooks';
 import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { isWeekend } from '../utils';
 import { isItalianHoliday } from '../constants/holidays';
-import { CCNL_CONTRACTS } from '../constants';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import NotificationService from '../services/FixedNotificationService';
