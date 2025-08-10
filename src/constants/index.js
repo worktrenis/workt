@@ -293,15 +293,15 @@ export const CCNL_STANDBY_RATES = {
   // Nota: weekly6Days riporta il forfait settimanale (6 giorni) distinto per tipologia: 16h/24h feriale e 24h festivo
   GROUP_L1_3: { 
     feriale16: 5.76, feriale24: 8.67, festivo24: 9.36,
-    weekly6Days: { feriale16: 37.48, feriale24: 38.17, festivo24: 41.09 }
+    weekly6Days: { base: 37.48, withHoliday: 38.17, withHolidayAndRest: 41.09 }
   },
   GROUP_L4_5: { 
     feriale16: 6.87, feriale24: 10.77, festivo24: 11.56,
-    weekly6Days: { feriale16: 45.10, feriale24: 45.88, festivo24: 49.79 }
+    weekly6Days: { base: 45.10, withHoliday: 45.88, withHolidayAndRest: 49.79 }
   },
   GROUP_SUPER_5: { 
     feriale16: 7.89, feriale24: 12.98, festivo24: 13.66, // livelli 6-9
-    weekly6Days: { feriale16: 52.45, feriale24: 53.12, festivo24: 58.21 }
+    weekly6Days: { base: 52.45, withHoliday: 53.12, withHolidayAndRest: 58.21 }
   },
 };
 

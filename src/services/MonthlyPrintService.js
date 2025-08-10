@@ -866,6 +866,25 @@ class MonthlyPrintService {
               </div>
             </div>
             ${(() => {
+              const weekly = settings.standbySettings?.weeklyMode;
+              const { getStandbyRatesForContract } = require('../constants');
+              const key = settings?.contract?.key; const rates = getStandbyRatesForContract(key);
+              if (!weekly || !weekly.enabled || !rates.weekly6Days) return '';
+              const map = {
+                base: '6 giorni',
+                withHoliday: '6 giorni + festivo',
+                withHolidayAndRest: '6 giorni + festivo + giorno libero'
+              };
+              const label = map[weekly.option || 'base'];
+              const amount = rates.weekly6Days[weekly.option || 'base'];
+              return `
+                <div class="contract-item">
+                  <div class="contract-label">Forfait settimana (6 giorni)</div>
+                  <div class="contract-value">€${amount} – ${label}</div>
+                </div>
+              `;
+            })()}
+            ${(() => {
               const { getStandbyRatesForContract } = require('../constants');
               const key = settings?.contract?.key;
               const rates = getStandbyRatesForContract(key);

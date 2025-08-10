@@ -58,6 +58,9 @@ const StandbySettingsScreen = ({ navigation }) => {
     // Impostazioni aggiuntive
     allowanceType: '24h', // '16h' o '24h'
     saturdayAsRest: false, // se sabato è considerato giorno di riposo
+  // Forfait settimanale (6 giorni)
+  weeklyModeEnabled: false,
+  weeklyOption: 'base', // 'base' | 'withHoliday' | 'withHolidayAndRest'
   });
   const [standbyDays, setStandbyDays] = useState(settings.standbySettings?.standbyDays || {});
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -126,6 +129,8 @@ const StandbySettingsScreen = ({ navigation }) => {
         // Impostazioni aggiuntive
         allowanceType: settings.standbySettings.allowanceType || '24h',
         saturdayAsRest: settings.standbySettings.saturdayAsRest === true,
+  weeklyModeEnabled: settings.standbySettings.weeklyMode?.enabled === true,
+  weeklyOption: settings.standbySettings.weeklyMode?.option || 'base',
       });
       setStandbyDays(settings.standbySettings.standbyDays || {});
       // Aggiorna anche i toggle locali
@@ -317,8 +322,12 @@ const StandbySettingsScreen = ({ navigation }) => {
   customWeekly6Days: parseFloat(formData.customWeekly6Days) || null,
         // Impostazioni aggiuntive
         allowanceType: tariffa24h ? '24h' : '16h',
-  saturdayAsRest: saturdayMode === 'festivo', // retrocompatibilità
+        saturdayAsRest: saturdayMode === 'festivo', // retrocompatibilità
   saturdayMode,
+        weeklyMode: {
+          enabled: formData.weeklyModeEnabled === true,
+          option: formData.weeklyOption || 'base'
+        }
       };
 
       await updatePartialSettings({
@@ -453,6 +462,50 @@ const StandbySettingsScreen = ({ navigation }) => {
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                <View style={styles.optionRow}>
+                  <Text style={styles.optionLabel}>Modalità applicazione</Text>
+                  <View style={{flexDirection:'row', alignItems:'center'}}>
+                    <TouchableOpacity 
+                      style={[styles.toggleButton, !formData.weeklyModeEnabled && styles.toggleButtonActive]}
+                      onPress={() => setFormData(prev => ({...prev, weeklyModeEnabled: false}))}
+                    >
+                      <Text style={[styles.toggleButtonText, !formData.weeklyModeEnabled && styles.toggleButtonTextActive]}>Giornaliera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.toggleButton, formData.weeklyModeEnabled && styles.toggleButtonActive]}
+                      onPress={() => setFormData(prev => ({...prev, weeklyModeEnabled: true}))}
+                    >
+                      <Text style={[styles.toggleButtonText, formData.weeklyModeEnabled && styles.toggleButtonTextActive]}>Settimana (6 giorni)</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {formData.weeklyModeEnabled && IND_WEEKLY_6 ? (
+                  <View style={[styles.optionRow, {alignItems:'flex-start'}]}>
+                    <Text style={[styles.optionLabel, {marginTop:8}]}>Opzione settimana</Text>
+                    <View style={{flexDirection:'row', flexWrap:'wrap', justifyContent:'flex-end'}}>
+                      <TouchableOpacity 
+                        style={[styles.toggleButton, formData.weeklyOption==='base' && styles.toggleButtonActive]}
+                        onPress={() => setFormData(prev => ({...prev, weeklyOption:'base'}))}
+                      >
+                        <Text style={[styles.toggleButtonText, formData.weeklyOption==='base' && styles.toggleButtonTextActive]}>6 giorni</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.toggleButton, formData.weeklyOption==='withHoliday' && styles.toggleButtonActive]}
+                        onPress={() => setFormData(prev => ({...prev, weeklyOption:'withHoliday'}))}
+                      >
+                        <Text style={[styles.toggleButtonText, formData.weeklyOption==='withHoliday' && styles.toggleButtonTextActive]}>6 giorni + festivo</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity 
+                        style={[styles.toggleButton, formData.weeklyOption==='withHolidayAndRest' && styles.toggleButtonActive]}
+                        onPress={() => setFormData(prev => ({...prev, weeklyOption:'withHolidayAndRest'}))}
+                      >
+                        <Text style={[styles.toggleButtonText, formData.weeklyOption==='withHolidayAndRest' && styles.toggleButtonTextActive]}>6 giorni + festivo + giorno libero</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : null}
 
                 <View style={styles.optionRow}>
                   <Text style={[styles.optionLabel, {flexShrink: 1}]}>Sabato (reperibilità)</Text>
