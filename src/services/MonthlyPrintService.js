@@ -1958,15 +1958,25 @@ class MonthlyPrintService {
     const date = new Date(year, month - 1, 1); // Mese è 1-based
     const lastDay = new Date(year, month, 0).getDate();
     
-    // Valori CCNL di default
-    const IND_16H_FERIALE = 4.22;
-    const IND_24H_FERIALE = 7.03; 
-    const IND_24H_FESTIVO = 10.63;
+    // Valori CCNL per livello (fallback quando non ci sono personalizzazioni)
+    try {
+      const { getStandbyRatesForContract } = require('../constants');
+      const key = settings?.contract?.key;
+      const rates = getStandbyRatesForContract(key);
+      var IND_16H_FERIALE = rates.feriale16;
+      var IND_24H_FERIALE = rates.feriale24;
+      var IND_24H_FESTIVO = rates.festivo24;
+    } catch (e) {
+      // fallback di sicurezza
+      var IND_16H_FERIALE = 4.22;
+      var IND_24H_FERIALE = 7.03;
+      var IND_24H_FESTIVO = 10.63;
+    }
     
     // Personalizzazioni
-    const customFeriale16 = settings.standbySettings.customFeriale16 || IND_16H_FERIALE;
-    const customFeriale24 = settings.standbySettings.customFeriale24 || IND_24H_FERIALE;
-    const customFestivo = settings.standbySettings.customFestivo || IND_24H_FESTIVO;
+  const customFeriale16 = settings.standbySettings.customFeriale16 || IND_16H_FERIALE;
+  const customFeriale24 = settings.standbySettings.customFeriale24 || IND_24H_FERIALE;
+  const customFestivo = settings.standbySettings.customFestivo || IND_24H_FESTIVO;
     const allowanceType = settings.standbySettings.allowanceType || '24h';
     const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
     
