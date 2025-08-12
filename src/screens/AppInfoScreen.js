@@ -21,6 +21,18 @@ const AppInfoScreen = ({ navigation }) => {
   const { theme } = useTheme();
 
   const changelog = [
+    {
+      version: '1.5.1',
+      date: '12 Agosto 2025',
+      changes: [
+        'Notifiche native-first puntuali con canali Android ad alta priorità',
+        'Android: icona piccola delle notifiche con logo app (monocromatica)',
+        'TimeEntry: niente più flicker guadagni dopo il salvataggio',
+        'Impostazioni: ricarica automatica rientrando nel form senza salvare',
+        'Bozze: prompt uscita (scarta / standby / salva) con ripristino automatico',
+        'Pulizia: rimosse cancellazioni incrociate tra categorie di notifiche'
+      ]
+    },
   {
     version: '1.1.1',
     date: '10 Agosto 2025',

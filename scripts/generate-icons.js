@@ -78,6 +78,36 @@ async function generateFeatureGraphic(src) {
   return out;
 }
 
+async function generateNotificationIcon(src) {
+  // Genera icona piccola Android per notifiche (bianca su trasparente)
+  const SIZE = parseInt(process.env.NOTIF_SIZE || '96', 10); // Expo ridimensiona per densità; 96px è una base sicura
+  const out = path.join(ROOT, 'assets', 'notification-icon.png');
+
+  // 1) Ridimensiona sorgente in un canvas trasparente
+  const resizedBuf = await sharp(src)
+    .resize(SIZE, SIZE, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png()
+    .toBuffer();
+
+  // 2) Estrai il canale alpha come maschera
+  const alpha = await sharp(resizedBuf).ensureAlpha().extractChannel('alpha').toBuffer();
+
+  // 3) Crea un quadrato bianco e applica la maschera alpha per avere un glyph monocromatico bianco
+  await sharp({
+    create: {
+      width: SIZE,
+      height: SIZE,
+      channels: 3,
+      background: { r: 255, g: 255, b: 255 },
+    },
+  })
+    .joinChannel(alpha)
+    .png({ compressionLevel: 9, quality: 100 })
+    .toFile(out);
+
+  return out;
+}
+
 function getScreenshotPath() {
   if (fs.existsSync(SCREENSHOT_PNG)) return SCREENSHOT_PNG;
   if (fs.existsSync(SCREENSHOT_JPG)) return SCREENSHOT_JPG;
@@ -202,6 +232,8 @@ async function main() {
   results.push(await generateAppStoreIcon(src));
   results.push(await generatePlayIcon(src));
   results.push(await generateFeatureGraphic(src));
+  // Notifica: icona piccola Android (bianca su trasparente)
+  results.push(await generateNotificationIcon(src));
   const withScreen = await generateFeatureGraphicWithScreen();
   if (withScreen) results.push(withScreen);
   const promo = await generateFeatureGraphicPromo();

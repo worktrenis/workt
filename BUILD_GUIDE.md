@@ -166,6 +166,13 @@ jobs:
 2. **Google Play Store**: AAB upload
 3. **Distribuzione Diretta**: APK sideload
 
+## Rilascio OTA (Expo Updates)
+
+1. Aggiorna CHANGELOG e versione in `app.json` e varianti (`app-production.json` se usato)
+2. Assicurati che `updates.url` punti al projectId corretto e il canale sia `production`
+3. Pubblica l’aggiornamento OTA sul canale produzione
+4. Apri l’app su un dispositivo con build nativa: l’update verrà scaricato on-load
+5. Verifica numero versione dentro app e comportamento nuove funzionalità
 ## 🔍 Troubleshooting
 
 ### Errori Comuni

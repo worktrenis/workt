@@ -2,12 +2,12 @@
   "expo": {
     "name": "WorkT - Tracker Ore Lavoro",
     "slug": "workt",
-  "version": "1.1.1",
+  "version": "1.5.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-  "description": "WorkT v1.1.1: Dashboard Giorni Non Ordinari aggregata per percentuale (Lavoro/Viaggio separati), allineamento CCNL e fix UI minori.",
+  "description": "WorkT v1.5.1: Notifiche puntuali (native-first), icona app nelle notifiche Android, fix flicker guadagni post-salvataggio, prompt bozze non salvate e ricarica impostazioni.",
     "platforms": [
       "ios",
       "android"
@@ -59,7 +59,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/icon.png",
+          "icon": "./assets/notification-icon.png",
           "color": "#1E3A8A"
         }
       ],

@@ -1,3 +1,12 @@
+### [1.5.1] - 12 agosto 2025
+
+- Notifiche: pianificazione native-first con canali HIGH e auto-riprogrammazione in foreground
+- Android: icona piccola notifiche con logo app (bianco su trasparente)
+- TimeEntry: eliminato flicker dei guadagni dopo salvataggio (passaggio breakdown pre-calcolato)
+- Impostazioni: ricarica automatica rientrando dal form senza salvare
+- Bozze: prompt uscita con scelte (scarta, metti in standby/bozza, salva) e ripristino automatico
+- Cleanup: rimosse cancellazioni incrociate tra categorie di notifiche
+
 ### [1.5.0] - 9 agosto 2025
 
 - Coerenza riepilogo giornaliero vs TimeEntry
