@@ -23,6 +23,16 @@ const AppInfoScreen = ({ navigation }) => {
   const changelog = [
     {
       version: '1.5.1',
+      date: '12 agosto 2025',
+      changes: [
+        'Notifiche puntuali, icona logo Android, fix flicker e bozze non salvate',
+        'Aggiornamento automatico versione e documentazione',
+        'Sincronizzazione informazioni app con release OTA',
+        'Sistema auto-update changelog implementato'
+      ]
+    },
+    {
+      version: '1.5.1',
       date: '12 Agosto 2025',
       changes: [
         'Notifiche native-first puntuali con canali Android ad alta priorità',
