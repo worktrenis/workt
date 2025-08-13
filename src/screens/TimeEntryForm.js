@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import NotificationService from '../services/FixedNotificationService';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 
@@ -591,7 +592,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                 Calcolo automatico basato su fasce orarie personalizzate secondo CCNL
               </Text>
 
-              {/* Prime 8 ore cronologiche per sistema multi-fascia */}
+              {/* Prime 8 ore cronologiche per sistema multi-fascia (ripristino visualizzazione semplice) */}
               <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 4 }]}>
                 <View style={styles.breakdownRow}>
                   <Text style={[styles.breakdownLabel, { fontWeight: 'bold' }]}>Prime 8 ore cronologiche</Text>
@@ -614,34 +615,79 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                 </Text>
               </View>
               
-              {/* Dettaglio fasce orarie */}
-              {breakdown.details.hourlyRatesBreakdown.map((fascia, index) => (
-                <View key={index} style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8 }]}>
-                  <View style={styles.breakdownRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                      <View 
-                        style={{
-                          width: 12,
-                          height: 12,
-                          borderRadius: 6,
-                          backgroundColor: fascia.color || '#2196F3',
-                          marginRight: 8
-                        }}
-                      />
-                      <Text style={styles.breakdownLabel}>
-                        {fascia.name} {fascia.periodLabel ? `(${fascia.periodLabel})` : ''}
-                      </Text>
-                    </View>
-                    <Text style={styles.breakdownValue}>
-                      {formatSafeHours(fascia.hours)}
-                    </Text>
-                  </View>
-                  <Text style={styles.breakdownDetail}>
-                    €{fascia.hourlyRate?.toFixed(2).replace('.', ',')} x {formatSafeHours(fascia.hours)} = €{fascia.earnings?.toFixed(2).replace('.', ',')}
-                    {fascia.rate !== 1.0 && ` (${Math.round((fascia.rate - 1) * 100)}% maggiorazione)`}
-                  </Text>
-                </View>
-              ))}
+              {/* Dettaglio fasce orarie: aggrega per percentuale separando Lavoro/Viaggio */}
+              {(() => {
+                const list = breakdown.details.hourlyRatesBreakdown || [];
+                const valid = list.filter(f => (f.hours || 0) > 0);
+                const baseHr = settings.contract?.hourlyRate || 16.41;
+                const isTravelItem = (f) => {
+                  if (typeof f.isTravel === 'boolean') return f.isTravel;
+                  if (f.travelCalculationType) return true;
+                  if (/^travel_/i.test(f.period || '')) return true;
+                  if (/viaggio|travel/i.test(f.name || '')) return true;
+                  if (/viaggio/i.test(f.periodLabel || '')) return true;
+                  return false;
+                };
+
+                const groupMap = { work: new Map(), travel: new Map() };
+
+                valid.forEach(f => {
+                  const rate = Number.isFinite(f.rate) && f.rate > 0 ? f.rate : (Number(f.hourlyRate) / baseHr);
+                  const rKey = String(Math.round(rate * 1000) / 1000);
+                  const kind = isTravelItem(f) ? 'travel' : 'work';
+                  if (!groupMap[kind].has(rKey)) {
+                    groupMap[kind].set(rKey, { rate, hours: 0, earnings: 0, items: [] });
+                  }
+                  const g = groupMap[kind].get(rKey);
+                  g.hours += f.hours || 0;
+                  g.earnings += f.earnings || 0;
+                  g.items.push(f);
+                });
+
+                const renderGroup = (kind, groups) => {
+                  const sorted = Array.from(groups.entries())
+                    .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
+                    .map(([, g]) => g);
+                  return sorted.map((g, idx) => {
+                    const hourly = g.hours > 0 ? g.earnings / g.hours : 0;
+                    const perc = Math.round((g.rate - 1) * 100);
+                    const label = kind === 'work' ? 'Lavoro' : 'Viaggio';
+                    return (
+                      <View key={`${kind}-${idx}`} style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8 }]}> 
+                        <View style={styles.breakdownRow}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                            <View 
+                              style={{
+                                width: 12,
+                                height: 12,
+                                borderRadius: 6,
+                                backgroundColor: kind === 'work' ? '#4CAF50' : '#1976d2',
+                                marginRight: 8
+                              }}
+                            />
+                            <Text style={styles.breakdownLabel}>
+                              {label}{perc !== 0 ? ` (+${perc}%)` : ''}
+                            </Text>
+                          </View>
+                          <Text style={styles.breakdownValue}>
+                            {formatSafeHours(g.hours)}
+                          </Text>
+                        </View>
+                        <Text style={styles.breakdownDetail}>
+                          €{hourly.toFixed(2).replace('.', ',')} x {formatSafeHours(g.hours)} = €{g.earnings.toFixed(2).replace('.', ',')}
+                        </Text>
+                      </View>
+                    );
+                  });
+                };
+
+                return (
+                  <>
+                    {renderGroup('work', groupMap.work)}
+                    {renderGroup('travel', groupMap.travel)}
+                  </>
+                );
+              })()}
               
               <View style={[styles.breakdownRow, { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#e0e0e0' }]}>
                 <Text style={styles.breakdownLabel}>Totale Multi-Fascia</Text>
@@ -1205,8 +1251,9 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
             <MaterialCommunityIcons name="alarm-light" size={16} color={styles.infoText.color} />
             <Text style={styles.breakdownSubtitle}>Interventi Reperibilità per Fascia</Text>
           </View>
+          {/* Ripristino: nessuna aggregazione per sabato/festivi, mostro sempre dettaglio per fascia */}
           
-          {/* Fascia Diurna */}
+      {/* Fascia Diurna */}
           {(breakdown?.standby?.workHours?.ordinary > 0 || breakdown?.standby?.travelHours?.ordinary > 0) && (
             <View style={styles.breakdownItem}>
               {/* Header fascia con emoji e totale ore */}
@@ -1220,7 +1267,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
               </View>
               
               {/* Dettaglio Lavoro */}
-              {breakdown?.standby?.workHours?.ordinary > 0 && (
+  {breakdown?.standby?.workHours?.ordinary > 0 && (
                 <Text style={styles.breakdownDetail}>
                   {(() => {
                     // Calcola ore corrette per la fascia diurna usando la nuova logica
@@ -2076,139 +2123,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
             </View>
           )}
 
-          {/* Fascia Sabato */}
-          {(breakdown?.standby?.workHours?.saturday > 0 || breakdown?.standby?.travelHours?.saturday > 0) && (
-            <View style={styles.breakdownItem}>
-              {/* Header fascia con emoji e totale ore */}
-              <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>
-                  📅 Fascia Sabato
-                </Text>
-                <Text style={styles.breakdownValue}>
-                  {formatSafeHours((breakdown?.standby?.workHours?.saturday || 0) + (breakdown?.standby?.travelHours?.saturday || 0))}
-                </Text>
-              </View>
-              
-              {/* Dettaglio Lavoro */}
-              {breakdown?.standby?.workHours?.saturday > 0 && (
-                <Text style={styles.breakdownDetail}>
-                  {(() => {
-                    // Per il sabato, tutti gli interventi nella giornata di sabato appartengono a questa fascia
-                    // Non c'è bisogno di calcolare ore per fasce orarie specifiche
-                    const workDate = new Date(form.date);
-                    const isSaturday = workDate.getDay() === 6;
-                    
-                    if (!isSaturday) return '';
-                    
-                    const sabatoInterventions = form.interventi?.filter(intervento => {
-                      // Filtra interventi che hanno lavoro
-                      return (intervento.work_start_1 && intervento.work_end_1) || 
-                             (intervento.work_start_2 && intervento.work_end_2);
-                    }).map(intervento => {
-                      const segments = [];
-                      if (intervento.work_start_1 && intervento.work_end_1) {
-                        segments.push(`${intervento.work_start_1}-${intervento.work_end_1}`);
-                      }
-                      if (intervento.work_start_2 && intervento.work_end_2) {
-                        segments.push(`${intervento.work_start_2}-${intervento.work_end_2}`);
-                      }
-                      return segments.join(', ');
-                    }).filter(segment => segment) || [];
-                    
-                    const orari = sabatoInterventions.length > 0 
-                      ? ` (${sabatoInterventions.join(', ')})`
-                      : '';
-                    
-                    const rate = breakdown?.standby?.workEarnings?.saturday && breakdown?.standby?.workHours?.saturday > 0 
-                      ? breakdown.standby.workEarnings.saturday / breakdown.standby.workHours.saturday
-                      : (settings.contract?.hourlyRate || 16.41);
-                    const baseRate = settings.contract?.hourlyRate || 16.41;
-                    const percentage = Math.round((rate / baseRate - 1) * 100);
-                    const percentageText = percentage > 0 ? ` (+${percentage}%)` : '';
-                    const earnings = breakdown?.standby?.workEarnings?.saturday || 0;
-                    
-                    return `   Lavoro sabato${orari}${percentageText}: ${formatSafeHours(breakdown?.standby?.workHours?.saturday)} = €${earnings.toFixed(2).replace('.', ',')}`;
-                  })()}
-                </Text>
-              )}
-              
-              {/* Dettaglio Viaggio */}
-              {breakdown?.standby?.travelHours?.saturday > 0 && (
-                <Text style={styles.breakdownDetail}>
-                  {'   '}Viaggio sabato: {formatSafeHours(breakdown?.standby?.travelHours?.saturday)} = €{breakdown?.standby?.travelEarnings?.saturday?.toFixed(2)?.replace('.', ',')}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Fascia Festiva */}
-          {((breakdown?.standby?.workHours?.holiday || 0) > 0 || (breakdown?.standby?.travelHours?.holiday || 0) > 0) && (
-            <View style={styles.breakdownItem}>
-              <View style={styles.breakdownRow}>
-                <Text style={styles.breakdownLabel}>
-                  🎉 Fascia Festiva
-                </Text>
-                <Text style={styles.breakdownValue}>
-                  {formatSafeHours((breakdown?.standby?.workHours?.holiday || 0) + (breakdown?.standby?.travelHours?.holiday || 0))}
-                </Text>
-              </View>
-              
-              {/* Lavoro festivo reperibilità */}
-              {breakdown?.standby?.workHours?.holiday > 0 && (
-                <Text style={styles.breakdownDetail}>
-                  {(() => {
-                    // Per i giorni festivi, tutti gli interventi nella giornata festiva appartengono a questa fascia
-                    // Non c'è bisogno di calcolare ore per fasce orarie specifiche
-                    const workDate = new Date(form.date);
-                    const isSunday = workDate.getDay() === 0;
-                    // TODO: Qui dovresti aggiungere la logica per i giorni festivi italiani
-                    const isHoliday = isSunday; // Per ora solo domenica
-                    
-                    if (!isHoliday) return '';
-                    
-                    const festivaInterventions = form.interventi?.filter(intervento => {
-                      // Filtra interventi che hanno lavoro
-                      return (intervento.work_start_1 && intervento.work_end_1) || 
-                             (intervento.work_start_2 && intervento.work_end_2);
-                    }).map(intervento => {
-                      const segments = [];
-                      if (intervento.work_start_1 && intervento.work_end_1) {
-                        segments.push(`${intervento.work_start_1}-${intervento.work_end_1}`);
-                      }
-                      if (intervento.work_start_2 && intervento.work_end_2) {
-                        segments.push(`${intervento.work_start_2}-${intervento.work_end_2}`);
-                      }
-                      return segments.join(', ');
-                    }).filter(segment => segment) || [];
-                    
-                    const orari = festivaInterventions.length > 0 
-                      ? ` (${festivaInterventions.join(', ')})`
-                      : '';
-                    
-                    const isOvertime = breakdown?.standby?.isOvertimeApplied;
-                    const rate = breakdown?.standby?.workEarnings?.holiday && breakdown?.standby?.workHours?.holiday > 0 
-                      ? breakdown.standby.workEarnings.holiday / breakdown.standby.workHours.holiday
-                      : (settings.contract?.hourlyRate || 16.41) * (isOvertime ? 1.35 : 1.30);
-                    const baseRate = settings.contract?.hourlyRate || 16.41;
-                    const percentage = Math.round((rate / baseRate - 1) * 100);
-                    const percentageText = percentage > 0 ? ` (+${percentage}%)` : '';
-                    const earnings = breakdown?.standby?.workEarnings?.holiday || 0;
-                    
-                    const labelText = isOvertime ? `Straordinario festivo` : `Lavoro festivo`;
-                    
-                    return `   ${labelText}${orari}${percentageText}: ${formatSafeHours(breakdown?.standby?.workHours?.holiday)} = €${earnings.toFixed(2).replace('.', ',')}`;
-                  })()}
-                </Text>
-              )}
-              
-              {/* Viaggio festivo reperibilità */}
-              {breakdown?.standby?.travelHours?.holiday > 0 && (
-                <Text style={styles.breakdownDetail}>
-                  {'   '}Viaggio festivo: {formatSafeHours(breakdown?.standby?.travelHours?.holiday)} = €{breakdown?.standby?.travelEarnings?.holiday?.toFixed(2)?.replace('.', ',')}
-                </Text>
-              )}
-            </View>
-          )}
+          {/* Rimosse sezioni aggregate sabato/festivo: le ore sono già riportate nelle tre fasce sopra */}
           
 
           
@@ -2497,7 +2412,7 @@ const categoryLabels = {
 
 const TimeEntryForm = ({ route, navigation }) => {
   const { theme } = useTheme();
-  const { settings } = useSettings();
+  const { settings, reloadSettings } = useSettings();
   const calculationService = useCalculationService();
   
   // 🔍 DEBUG: Log delle impostazioni ricevute
@@ -2587,6 +2502,11 @@ const TimeEntryForm = ({ route, navigation }) => {
   const [interventoIndex, setInterventoIndex] = useState(0);
   const [dayType, setDayType] = useState('lavorativa');
   const [mealCash, setMealCash] = useState({ pranzo: '', cena: '' });
+  const [initialized, setInitialized] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const initialSnapshotRef = useRef('');
+  const allowLeaveRef = useRef(false);
+  const promptingRef = useRef(false);
   
   // Hook per auto-compilazione ferie/malattia/riposo
   const vacationAutoCompile = useVacationAutoCompile(form.date, dayType, settings);
@@ -2623,7 +2543,7 @@ const TimeEntryForm = ({ route, navigation }) => {
       console.log("Rispetto override manuale trasferta:", hasManualOverride);
       
       // Mappa i dati DB -> form
-      setForm(prev => ({
+  setForm(prev => ({
         ...prev,
         date: entryToEdit.date ? (() => {
           // accetta sia yyyy-mm-dd che dd/MM/yyyy
@@ -2660,6 +2580,7 @@ const TimeEntryForm = ({ route, navigation }) => {
           });
           
           // 🚀 Parse viaggi dal database (può essere stringa JSON o array)
+          
           let additionalShifts = [];
           if (entryToEdit.viaggi) {
             if (typeof entryToEdit.viaggi === 'string') {
@@ -2721,6 +2642,45 @@ const TimeEntryForm = ({ route, navigation }) => {
       });
     }
   }, [isEdit, entryToEdit]);
+
+  // Inizializza snapshot iniziale per nuovi inserimenti e prova a ripristinare draft
+  useEffect(() => {
+    let cancelled = false;
+    const init = async () => {
+      try {
+        if (!isEdit) {
+          const draftRaw = await AsyncStorage.getItem('timeEntryDraft');
+          if (!cancelled && draftRaw) {
+            const draft = JSON.parse(draftRaw);
+            // Ripristina solo se il draft non è per una entry in modifica
+            if (!draft.entryId) {
+              if (draft.form) setForm(draft.form);
+              if (draft.dayType) setDayType(draft.dayType);
+            }
+          }
+        }
+      } catch {}
+      if (!cancelled) setInitialized(true);
+    };
+    init();
+    return () => { cancelled = true; };
+  }, [isEdit]);
+
+  // Snapshot iniziale quando inizializzato
+  useEffect(() => {
+    if (initialized) {
+      initialSnapshotRef.current = JSON.stringify({ form, dayType });
+      setHasChanges(false);
+    }
+  }, [initialized]);
+
+  // Rileva modifiche
+  useEffect(() => {
+    if (initialized) {
+      const current = JSON.stringify({ form, dayType });
+      setHasChanges(current !== initialSnapshotRef.current);
+    }
+  }, [form, dayType, initialized]);
 
   // Auto-compilazione per ferie/malattia/riposo
   useEffect(() => {
@@ -3336,6 +3296,233 @@ const TimeEntryForm = ({ route, navigation }) => {
       ]
     );
   };
+
+  // 🔄 Aggiorna le impostazioni quando si torna sul form (es. rientro da schermata Settings)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      try {
+        reloadSettings && reloadSettings();
+      } catch (e) {
+        console.log('Info: reloadSettings on focus non critico:', e?.message);
+      }
+    });
+    return unsubscribe;
+  }, [navigation, reloadSettings]);
+
+  // Helper: salva bozza (standby)
+  const saveDraft = useCallback(async () => {
+    try {
+      const draft = { form, dayType, entryId: isEdit ? entryId : null, ts: Date.now() };
+      await AsyncStorage.setItem('timeEntryDraft', JSON.stringify(draft));
+    } catch (e) {
+      console.log('Info: errore salvataggio bozza (non critico):', e?.message);
+    }
+  }, [form, dayType, isEdit, entryId]);
+
+  // Helper: cancella bozza
+  const clearDraft = useCallback(async () => {
+    try { await AsyncStorage.removeItem('timeEntryDraft'); } catch {}
+  }, []);
+
+  // Estrae la logica di salvataggio per riuso (bottone Salva e conferma uscita)
+  const handleSavePress = useCallback(async (navigateAfter = true, dispatchAction = null) => {
+    try {
+      // ...estratto dalla logica del bottone Salva...
+      // Usa lo stesso blocco già presente (qui si richiama tramite copia controllata)
+      // Inizialmente ricomponiamo "entry" come nella logica originale
+      const viaggi = form.viaggi[0] || {};
+      const additionalShifts = form.viaggi.slice(1) || [];
+      const entry = {
+        date: (() => { const [d,m,y] = form.date.split('/'); return `${y}-${m}-${d}`; })(),
+        siteName: form.site_name || '',
+        vehicleDriven: form.veicolo || '',
+        targaVeicolo: form.targa_veicolo || '',
+        departureCompany: viaggi.departure_company || '',
+        arrivalSite: viaggi.arrival_site || '',
+        workStart1: viaggi.work_start_1 || '',
+        workEnd1: viaggi.work_end_1 || '',
+        workStart2: viaggi.work_start_2 || '',
+        workEnd2: viaggi.work_end_2 || '',
+        departureReturn: viaggi.departure_return || '',
+        arrivalCompany: viaggi.arrival_company || '',
+        viaggi: additionalShifts,
+        interventi: form.interventi || [],
+        mealLunchVoucher: form.pasti.pranzo && !(mealCash.pranzo && parseFloat(mealCash.pranzo) > 0) ? 1 : 0,
+        mealLunchCash: mealCash.pranzo && parseFloat(mealCash.pranzo) > 0 ? parseFloat(String(mealCash.pranzo).replace(',','.')) : 0,
+        mealDinnerVoucher: form.pasti.cena && !(mealCash.cena && parseFloat(mealCash.cena) > 0) ? 1 : 0,
+        mealDinnerCash: mealCash.cena && parseFloat(mealCash.cena) > 0 ? parseFloat(String(mealCash.cena).replace(',','.')) : 0,
+        travelAllowance: form.trasferta ? 1 : 0,
+        travelAllowancePercent: form.trasfertaPercent || 1.0,
+        trasfertaManualOverride: form.trasfertaManualOverride || false,
+        standbyAllowance: form.reperibilita ? 1 : 0,
+        isStandbyDay: form.reperibilita ? 1 : 0,
+        reperibilityManualOverride: form.reperibilityManualOverride || false,
+        completamentoGiornata: form.completamentoGiornata || 'nessuno',
+        totalEarnings: 0,
+        notes: form.note || '',
+        dayType,
+        isFixedDay: form.isFixedDay || ['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType),
+        fixedEarnings: form.fixedEarnings || ((['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType)) ? (settings?.contract?.dailyRate || 109.19) : 0)
+      };
+
+      const settingsObj = settings || {};
+
+      let result = null;
+      if (entry.isFixedDay) {
+        entry.totalEarnings = entry.fixedEarnings;
+        result = {
+          ordinary: { total: entry.totalEarnings, hours: {}, earnings: { giornaliera: entry.totalEarnings } },
+          standby: null,
+          allowances: { travel: 0, meal: 0, standby: 0 },
+          totalEarnings: entry.totalEarnings,
+          details: { isFixedDay: true }
+        };
+      } else {
+        const calc = await calculationService.calculateEarningsBreakdown(entry, settingsObj);
+        result = calc;
+        entry.totalEarnings = calc.totalEarnings || 0;
+      }
+
+      const { validateWorkEntry } = require('../utils');
+      const { isValid, errors } = validateWorkEntry(entry);
+      if (!isValid) {
+        const firstError = Object.values(errors)[0];
+        Alert.alert('Errore', firstError || 'Dati non validi');
+        return false;
+      }
+
+      let savedId = entryId;
+      if (isEdit) {
+        await DatabaseService.updateWorkEntry(entryId, entry);
+      } else {
+        const insertResult = await DatabaseService.insertWorkEntry(entry);
+        savedId = insertResult?.lastInsertRowId || insertResult?.insertId || savedId;
+      }
+
+      // pulisci bozza dopo salvataggio
+      await clearDraft();
+
+      // Navigazione post-salvataggio
+      if (navigateAfter) {
+        allowLeaveRef.current = true; // evita prompt su blur
+        navigation.navigate('TimeEntryScreen', { 
+          refreshFromForm: true,
+          savedId,
+          savedDate: entry.date,
+          precomputedTotal: entry.totalEarnings,
+          precomputedBreakdown: result
+        });
+      } else if (dispatchAction) {
+        allowLeaveRef.current = true; // consenti uscita intercettata
+        // consenti navigazione originale intercettata
+        navigation.dispatch(dispatchAction);
+      }
+
+      try { await AutoBackupService.performAutoBackupIfEnabled(); } catch {}
+      return true;
+    } catch (e) {
+      console.error('Save Error:', e);
+      Alert.alert('Errore', `Errore durante il salvataggio su database: ${e.message}`);
+      return false;
+    }
+  }, [form, mealCash, dayType, settings, isEdit, entryId, calculationService, navigation, clearDraft]);
+
+  // Conferma uscita con tre scelte quando ci sono modifiche non salvate
+  useEffect(() => {
+    const beforeRemoveSub = navigation.addListener('beforeRemove', (e) => {
+      if (!hasChanges) return; // niente da fare
+      e.preventDefault();
+      const action = e.data.action;
+
+      Alert.alert(
+        'Uscire senza salvare?',
+        'Hai modifiche non salvate. Cosa vuoi fare?',
+        [
+          {
+            text: 'Annulla inserimento',
+            style: 'destructive',
+            onPress: async () => {
+              await clearDraft();
+              // consenti l'uscita
+              navigation.dispatch(action);
+            }
+          },
+          {
+            text: 'Lascia in standby',
+            onPress: async () => {
+              await saveDraft();
+              navigation.dispatch(action);
+            }
+          },
+          {
+            text: 'Salva inserimento',
+            style: 'default',
+            onPress: async () => {
+              const ok = await handleSavePress(false, action);
+              if (!ok) {
+                // resta sulla pagina in caso di errore
+              }
+            }
+          },
+          { text: 'Continua qui', style: 'cancel' }
+        ]
+      );
+    });
+    return beforeRemoveSub;
+  }, [navigation, hasChanges, saveDraft, clearDraft, handleSavePress]);
+
+  // Prompt anche su blur (quando NAVIGATE aggiunge una nuova schermata e questo form perde focus)
+  useEffect(() => {
+    const onBlur = () => {
+      if (!hasChanges || allowLeaveRef.current || promptingRef.current) return;
+      promptingRef.current = true;
+      Alert.alert(
+        'Uscire senza salvare?',
+        'Hai modifiche non salvate. Cosa vuoi fare?',
+        [
+          {
+            text: 'Annulla inserimento',
+            style: 'destructive',
+            onPress: async () => {
+              await clearDraft();
+              allowLeaveRef.current = true; // lascia uscire
+              promptingRef.current = false;
+            }
+          },
+          {
+            text: 'Lascia in standby',
+            onPress: async () => {
+              await saveDraft();
+              allowLeaveRef.current = true; // lascia uscire
+              promptingRef.current = false;
+            }
+          },
+          {
+            text: 'Salva inserimento',
+            onPress: async () => {
+              const ok = await handleSavePress(true);
+              if (!ok) {
+                allowLeaveRef.current = false;
+              }
+              promptingRef.current = false;
+            }
+          },
+          {
+            text: 'Resta qui',
+            style: 'cancel',
+            onPress: () => {
+              // prova a riportare il focus su questo form
+              allowLeaveRef.current = false;
+              promptingRef.current = false;
+              try { navigation.navigate(route.name); } catch {}
+            }
+          }
+        ]
+      );
+    };
+    const sub = navigation.addListener('blur', onBlur);
+    return sub;
+  }, [navigation, route?.name, hasChanges, saveDraft, clearDraft, handleSavePress]);
 
   // Auto-regole basate sugli orari inseriti dall'utente
   useEffect(() => {
@@ -5504,6 +5691,27 @@ const TimeEntryForm = ({ route, navigation }) => {
                 return;
               }
               
+              let savedId = entryId;
+              let precomputedTotal = entry.totalEarnings || 0;
+              let precomputedBreakdown = null;
+
+              if (!entry.isFixedDay) {
+                try {
+                  // Se abbiamo già calcolato il breakdown sopra, riusalo
+                  // Nota: result è disponibile solo nel ramo non-fixed; in quello fixed creiamo un breakdown minimale
+                  precomputedBreakdown = result || null;
+                } catch {}
+              } else {
+                // Breakdown minimale per giorno fisso
+                precomputedBreakdown = {
+                  ordinary: { total: precomputedTotal, hours: {}, earnings: { giornaliera: precomputedTotal } },
+                  standby: null,
+                  allowances: { travel: 0, meal: 0, standby: 0 },
+                  totalEarnings: precomputedTotal,
+                  details: { isFixedDay: true }
+                };
+              }
+
               if (isEdit) {
                 console.log('🔥 FORM: Aggiornando entry esistente ID:', entryId);
                 await DatabaseService.updateWorkEntry(entryId, entry);
@@ -5517,6 +5725,10 @@ const TimeEntryForm = ({ route, navigation }) => {
                 });
                 const insertResult = await DatabaseService.insertWorkEntry(entry);
                 console.log('🔥 FORM: Risultato inserimento:', insertResult);
+                // Recupera l'ID della nuova entry per un update immediato della lista
+                if (insertResult && (insertResult.lastInsertRowId || insertResult.insertId)) {
+                  savedId = insertResult.lastInsertRowId || insertResult.insertId;
+                }
                 Alert.alert('Salvataggio', 'Inserimento salvato su database!');
               }
               
@@ -5546,8 +5758,14 @@ const TimeEntryForm = ({ route, navigation }) => {
                 console.log('Info: Errore backup automatico (non critico):', backupError.message);
               }
               
-              // Torna alla schermata precedente con refresh
-              navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+              // Torna alla schermata precedente passando anche i dati precomputati per evitare valori "di default"
+              navigation.navigate('TimeEntryScreen', { 
+                refreshFromForm: true,
+                savedId,
+                savedDate: entry.date,
+                precomputedTotal,
+                precomputedBreakdown
+              });
             } catch (e) {
               console.error('Save Error:', e);
               Alert.alert('Errore', `Errore durante il salvataggio su database: ${e.message}`)

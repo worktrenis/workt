@@ -1270,20 +1270,13 @@ class CalculationService {
       // 2. Reperibilità nel calendario E settings.enabled = true
       console.log(`[CalculationService] Breakdown - Applicazione indennità reperibilità per ${workEntry.date} (standbyDay: ${isStandbyDay})`);
       
-      // CORREZIONE: Usa il calcolo CCNL corretto invece del generico dailyAllowance
-      // Valori CCNL di default
-      // Tariffe CCNL per livello
-      let IND_16H_FERIALE, IND_24H_FERIALE, IND_24H_FESTIVO;
-      try {
-        const { getStandbyRatesForContract } = require('../constants');
-        const cKey = settings?.contract?.key;
-        const r = getStandbyRatesForContract(cKey);
-        IND_16H_FERIALE = r.feriale16;
-        IND_24H_FERIALE = r.feriale24;
-        IND_24H_FESTIVO = r.festivo24;
-      } catch(e) {
-        IND_16H_FERIALE = 4.22; IND_24H_FERIALE = 7.03; IND_24H_FESTIVO = 10.63;
-      }
+  // CORREZIONE: Usa tariffe CCNL per livello dal contratto
+  const { getStandbyRatesForContract } = require('../constants');
+  const cKey = settings?.contract?.key;
+  const r = getStandbyRatesForContract(cKey);
+  const IND_16H_FERIALE = r.feriale16;
+  const IND_24H_FERIALE = r.feriale24;
+  const IND_24H_FESTIVO = r.festivo24;
       
       // Verifica se abbiamo personalizzazioni
       const customFeriale16 = settings.standbySettings.customFeriale16;
@@ -1839,36 +1832,38 @@ class CalculationService {
     // Se la reperibilità è disattivata manualmente, non consideriamo l'indennità
     const isStandbyActive = isManuallyActivated || (!isManuallyDeactivated && isInCalendar);
     
-    // CORREZIONE: Calcola l'indennità CCNL corretta invece di usare il generico dailyAllowance
+    // CORREZIONE: Calcola l'indennità CCNL corretta con tariffe per livello e saturdayMode
     let correctDailyAllowance = 0;
     if (isStandbyActive) {
-      // Valori CCNL di default
-      const IND_16H_FERIALE = 4.22;
-      const IND_24H_FERIALE = 7.03;
-      const IND_24H_FESTIVO = 10.63;
-      
-      // Verifica se abbiamo personalizzazioni
+      const { getStandbyRatesForContract } = require('../constants');
+      const cKey = settings?.contract?.key;
+      const rates = getStandbyRatesForContract(cKey);
+      const IND_16H_FERIALE = rates.feriale16;
+      const IND_24H_FERIALE = rates.feriale24;
+      const IND_24H_FESTIVO = rates.festivo24;
+
+      // Personalizzazioni
       const customFeriale16 = standbySettings.customFeriale16;
       const customFeriale24 = standbySettings.customFeriale24;
       const customFestivo = standbySettings.customFestivo;
       const allowanceType = standbySettings.allowanceType || '24h';
-      const saturdayAsRest = standbySettings.saturdayAsRest === true;
-      
-      // Determina il tipo di giorno considerando le impostazioni personalizzate
-      const isRestDay = isSunday || isHoliday || (isSaturday && saturdayAsRest);
-      
+      const saturdayMode = standbySettings.saturdayMode || (standbySettings.saturdayAsRest ? 'festivo' : 'feriale');
+
+      // Tipo giorno con saturdayMode
+      const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
+
       if (isRestDay) {
-        // Giorni di riposo (domenica, festivi, sabato se configurato come riposo)
         correctDailyAllowance = customFestivo || IND_24H_FESTIVO;
         console.log(`[CalculationService] StandbyBreakdown - Indennità reperibilità giorno di riposo per ${dateStr}: ${correctDailyAllowance}€ (personalizzata: ${!!customFestivo})`);
       } else {
-        // Giorni feriali (incluso sabato se non è giorno di riposo)
-        if (allowanceType === '16h') {
+        if (isSaturday && saturdayMode === 'feriale24') {
+          correctDailyAllowance = customFeriale24 || IND_24H_FERIALE;
+        } else if (allowanceType === '16h') {
           correctDailyAllowance = customFeriale16 || IND_16H_FERIALE;
         } else {
           correctDailyAllowance = customFeriale24 || IND_24H_FERIALE;
         }
-        console.log(`[CalculationService] StandbyBreakdown - Indennità reperibilità feriale ${allowanceType} per ${dateStr}: ${correctDailyAllowance}€ (personalizzata: ${!!(allowanceType === '16h' ? customFeriale16 : customFeriale24)})`);
+        console.log(`[CalculationService] StandbyBreakdown - Indennità reperibilità feriale (${isSaturday && saturdayMode==='feriale24' ? 'sabato 24h' : allowanceType}) per ${dateStr}: ${correctDailyAllowance}€`);
       }
     }
     
@@ -1977,11 +1972,13 @@ class CalculationService {
       const isStandbyDay = isManuallyActivated || (!isManuallyDeactivated && isInCalendar);
       
       if (isStandbyDay) {
-          // CORREZIONE: Calcola l'indennità CCNL corretta invece di usare il generico dailyAllowance
-          // Valori CCNL di default
-          const IND_16H_FERIALE = 4.22;
-          const IND_24H_FERIALE = 7.03;
-          const IND_24H_FESTIVO = 10.63;
+          // CORREZIONE: Calcola l'indennità CCNL corretta con tariffe per livello
+          const { getStandbyRatesForContract } = require('../constants');
+          const cKey = settings?.contract?.key;
+          const rates = getStandbyRatesForContract(cKey);
+          const IND_16H_FERIALE = rates.feriale16;
+          const IND_24H_FERIALE = rates.feriale24;
+          const IND_24H_FESTIVO = rates.festivo24;
           
           // Verifica se abbiamo personalizzazioni
           const customFeriale16 = standbySettings.customFeriale16;
@@ -1989,13 +1986,14 @@ class CalculationService {
           const customFestivo = standbySettings.customFestivo;
           const allowanceType = standbySettings.allowanceType || '24h';
           const saturdayAsRest = standbySettings.saturdayAsRest === true;
+          const saturdayMode = standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
           
           // Determina il tipo di giorno considerando le impostazioni personalizzate
           const dateObj = new Date(dateStr);
           const isSaturday = dateObj.getDay() === 6;
           const isSunday = dateObj.getDay() === 0;
           const isHoliday = false; // Assumiamo non festivo per semplicità, andrebbe verificato
-          const isRestDay = isSunday || isHoliday || (isSaturday && saturdayAsRest);
+          const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
           
           let correctStandbyAllowance;
           if (isRestDay) {
@@ -2004,7 +2002,9 @@ class CalculationService {
             console.log(`[CalculationService] Allowances - Indennità reperibilità giorno di riposo per ${dateStr}: ${correctStandbyAllowance}€ (personalizzata: ${!!customFestivo})`);
           } else {
             // Giorni feriali (incluso sabato se non è giorno di riposo)
-            if (allowanceType === '16h') {
+            if (isSaturday && saturdayMode === 'feriale24') {
+              correctStandbyAllowance = customFeriale24 || IND_24H_FERIALE;
+            } else if (allowanceType === '16h') {
               correctStandbyAllowance = customFeriale16 || IND_16H_FERIALE;
             } else {
               correctStandbyAllowance = customFeriale24 || IND_24H_FERIALE;
@@ -2403,19 +2403,24 @@ class CalculationService {
       let dailyAllowance = parseFloat(settings.standbySettings.dailyAllowance) || 0;
       
       if (dailyAllowance === 0) {
-        // Valori CCNL automatici
-        const IND_16H_FERIALE = 4.22;
-        const IND_24H_FERIALE = 7.03;
-        const IND_24H_FESTIVO = 10.63;
-        
+        // Tariffe CCNL automatiche per livello
+        const { getStandbyRatesForContract } = require('../constants');
+        const cKey = settings?.contract?.key;
+        const rates = getStandbyRatesForContract(cKey);
+        const IND_16H_FERIALE = rates.feriale16;
+        const IND_24H_FERIALE = rates.feriale24;
+        const IND_24H_FESTIVO = rates.festivo24;
+
         const allowanceType = settings.standbySettings.allowanceType || '24h';
-        const saturdayAsRest = settings.standbySettings.saturdayAsRest || false;
-        
+        const saturdayMode = settings.standbySettings.saturdayMode || (settings.standbySettings.saturdayAsRest ? 'festivo' : 'feriale');
+
         const isSunday = dateObj.getDay() === 0;
         const isSaturday = dateObj.getDay() === 6;
-        
-        if (isHoliday || isSunday || (isSaturday && saturdayAsRest)) {
+
+        if (isHoliday || isSunday || (isSaturday && saturdayMode === 'festivo')) {
           dailyAllowance = IND_24H_FESTIVO;
+        } else if (isSaturday && saturdayMode === 'feriale24') {
+          dailyAllowance = IND_24H_FERIALE;
         } else {
           dailyAllowance = allowanceType === '24h' ? IND_24H_FERIALE : IND_16H_FERIALE;
         }
@@ -2502,20 +2507,24 @@ class CalculationService {
       };
     }
     
-    // Valori CCNL di default
-    const IND_16H_FERIALE = 4.22;
-    const IND_24H_FERIALE = 7.03;
-    const IND_24H_FESTIVO = 10.63;
+  // Tariffe CCNL per livello
+  const { getStandbyRatesForContract } = require('../constants');
+  const cKey = settings?.contract?.key;
+  const rates = getStandbyRatesForContract(cKey);
+  const IND_16H_FERIALE = rates.feriale16;
+  const IND_24H_FERIALE = rates.feriale24;
+  const IND_24H_FESTIVO = rates.festivo24;
     
     // Verifica personalizzazioni
     const customFeriale16 = settings.standbySettings.customFeriale16;
     const customFeriale24 = settings.standbySettings.customFeriale24;
     const customFestivo = settings.standbySettings.customFestivo;
     const allowanceType = settings.standbySettings.allowanceType || '24h';
-    const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+  const saturdayAsRest = settings.standbySettings.saturdayAsRest === true;
+  const saturdayMode = settings.standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
     
     // Determina il tipo di giorno
-    const isRestDay = isSunday || isHoliday || (isSaturday && saturdayAsRest);
+  const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
     
     let standbyAllowance;
     let dayType;
@@ -2528,7 +2537,11 @@ class CalculationService {
       isCustom = !!customFestivo;
       defaultValue = IND_24H_FESTIVO;
     } else {
-      if (allowanceType === '16h') {
+      if (isSaturday && saturdayMode === 'feriale24') {
+        standbyAllowance = customFeriale24 || IND_24H_FERIALE;
+        isCustom = !!customFeriale24;
+        defaultValue = IND_24H_FERIALE;
+      } else if (allowanceType === '16h') {
         standbyAllowance = customFeriale16 || IND_16H_FERIALE;
         isCustom = !!customFeriale16;
         defaultValue = IND_16H_FERIALE;

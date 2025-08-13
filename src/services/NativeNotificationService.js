@@ -36,6 +36,23 @@ class NativeNotificationService {
         }),
       });
 
+      // Configura canale Android ad alta priorità
+      try {
+        if (Platform.OS === 'android') {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'WorkT - Promemoria',
+            importance: Notifications.AndroidImportance.HIGH,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#1E3A8A',
+            sound: 'default',
+            showBadge: true,
+          });
+          console.log('📱 [NATIVE] Canale notifiche Android configurato (HIGH)');
+        }
+      } catch (channelError) {
+        console.warn('⚠️ [NATIVE] Errore configurazione canale Android:', channelError.message);
+      }
+
       // Richiedi permessi
       const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
@@ -88,6 +105,7 @@ class NativeNotificationService {
           sound: true,
           priority: this.notificationsModule.AndroidNotificationPriority.HIGH,
           vibrate: [0, 250, 250, 250],
+          channelId: Platform.OS === 'android' ? 'default' : undefined,
         },
         trigger: null, // Immediata
       });
@@ -150,6 +168,7 @@ class NativeNotificationService {
           sound: true,
           priority: this.notificationsModule.AndroidNotificationPriority.HIGH,
           vibrate: [0, 250, 250, 250],
+          channelId: Platform.OS === 'android' ? 'default' : undefined,
         },
         trigger: { date: trigger },
       });
@@ -214,6 +233,7 @@ class NativeNotificationService {
           sound: true,
           priority: this.notificationsModule.AndroidNotificationPriority.HIGH,
           vibrate: [0, 250, 250, 250],
+          channelId: Platform.OS === 'android' ? 'default' : undefined,
         },
         trigger: {
           hour,

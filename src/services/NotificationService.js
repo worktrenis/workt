@@ -227,8 +227,8 @@ class NotificationService {
       this.schedulingInProgress = true;
       this.lastScheduleTime = now;
 
-      console.log('🚀 === PROGRAMMAZIONE SISTEMA ENHANCED ===');
-      console.log('📱 JavaScript Timers (app aperta) + Background Timers (persistenza)');
+  console.log('🚀 === PROGRAMMAZIONE NOTIFICHE ===');
+  console.log('📱 Preferenza: Native (se disponibile) > Enhanced (JS + background) > JavaScript (foreground)');
 
       // Inizializza sistema enhanced se necessario
       await this.initialize();
@@ -242,9 +242,13 @@ class NotificationService {
       
       console.log('📋 Impostazioni correnti per programmazione:', JSON.stringify(settings, null, 2));
 
-      // Cancella notifiche esistenti (entrambi i sistemi)
-      console.log('🗑️ Cancellazione notifiche esistenti (JavaScript + Enhanced)...');
+      // Cancella notifiche esistenti (Native + Enhanced + JavaScript)
+      console.log('🗑️ Cancellazione notifiche esistenti (Native + Enhanced + JavaScript)...');
+      // 1) Native
+      await this.nativeService.cancelAllNotifications();
+      // 2) JavaScript timers
       this.alternativeService.clearAllTimers();
+      // 3) Enhanced (JS + background)
       if (this.enhancedInitialized) {
         await this.enhancedService.cancelAllNotifications();
       }
@@ -260,22 +264,215 @@ class NotificationService {
 
       let totalJSScheduled = 0;
       let totalEnhancedScheduled = 0;
+      let totalNativeScheduled = 0;
+
+      const nativeStatus = this.nativeService.getSystemStatus();
+      const isNativeReady = !!nativeStatus.isNativeReady;
+      console.log(`🔎 Stato nativo: ${isNativeReady ? 'Disponibile (expo-notifications)' : 'Non disponibile'}`);
       
-      // ⏰ PROMEMORIA LAVORO
-      if (settings.workReminders?.enabled) {
-        console.log('📱 ⏰ Programmando promemoria lavoro...');
-        
-        // JavaScript per app attiva
-        const jsWorkCount = await this.alternativeService.scheduleAlternativeWorkReminders(settings.workReminders);
-        totalJSScheduled += jsWorkCount;
-        
-        // Enhanced per background persistence
-        if (this.enhancedInitialized) {
-          const enhancedWorkCount = await this.enhancedService.scheduleWorkReminders(settings.workReminders);
-          totalEnhancedScheduled += enhancedWorkCount;
+      // Se nativo disponibile, preferisci schedulazione nativa per TUTTE le categorie
+      if (isNativeReady) {
+        // ⏰ PROMEMORIA LAVORO (mattina/sera, esclusi weekend se configurato)
+        if (settings.workReminders?.enabled) {
+          console.log('📱 ⏰ [NATIVE] Programmando promemoria lavoro...');
+          // Programma per i prossimi 30 giorni con filtro weekend
+          const { morningTime = '08:00', eveningTime = '17:00', weekendsEnabled = false } = settings.workReminders;
+          const nowDate = new Date();
+          for (let i = 0; i < 30; i++) {
+            const baseDate = new Date(nowDate);
+            baseDate.setDate(nowDate.getDate() + i);
+            const day = baseDate.getDay();
+            const isWeekend = day === 0 || day === 6;
+            if (isWeekend && !weekendsEnabled) continue;
+
+            // Mattina
+            if (morningTime) {
+              const [mh, mm] = morningTime.split(':');
+              const target = new Date(baseDate);
+              target.setHours(parseInt(mh), parseInt(mm), 0, 0);
+              if (target > nowDate) {
+                await this.nativeService.scheduleNotification(
+                  '🌅 Buongiorno!',
+                  'Inizia una nuova giornata di lavoro. Buona fortuna!',
+                  target.getTime(),
+                  { type: 'work_morning', date: baseDate.toISOString().split('T')[0] }
+                );
+                totalNativeScheduled++;
+              }
+            }
+
+            // Sera
+            if (eveningTime) {
+              const [eh, em] = eveningTime.split(':');
+              const target = new Date(baseDate);
+              target.setHours(parseInt(eh), parseInt(em), 0, 0);
+              if (target > nowDate) {
+                await this.nativeService.scheduleNotification(
+                  '🌇 Fine Giornata',
+                  'Ricordati di segnare la fine del lavoro e inserire le ore!',
+                  target.getTime(),
+                  { type: 'work_evening', date: baseDate.toISOString().split('T')[0] }
+                );
+                totalNativeScheduled++;
+              }
+            }
+          }
         }
-        
-        console.log(`✅ Promemoria lavoro: ${jsWorkCount} JS + ${this.enhancedInitialized ? 'Enhanced attivo' : 'Enhanced non disponibile'}`);
+
+        // ✍️ PROMEMORIA INSERIMENTO ORARIO (giornaliero, esclusi weekend)
+        if (settings.timeEntryReminders?.enabled) {
+          console.log('📱 ✍️ [NATIVE] Programmando promemoria inserimento orario...');
+          const { time = '18:00', weekendsEnabled = false } = settings.timeEntryReminders;
+          const nowDate = new Date();
+          for (let i = 0; i < 30; i++) {
+            const baseDate = new Date(nowDate);
+            baseDate.setDate(nowDate.getDate() + i);
+            const day = baseDate.getDay();
+            const isWeekend = day === 0 || day === 6;
+            if (isWeekend && !weekendsEnabled) continue;
+
+            const [h, m] = time.split(':');
+            const target = new Date(baseDate);
+            target.setHours(parseInt(h), parseInt(m), 0, 0);
+            if (target > nowDate) {
+              await this.nativeService.scheduleNotification(
+                '⏰ Promemoria Inserimento Orario',
+                'Ricordati di inserire le ore lavorate oggi nel sistema!',
+                target.getTime(),
+                { type: 'time_entry', date: baseDate.toISOString().split('T')[0] }
+              );
+              totalNativeScheduled++;
+            }
+          }
+        }
+
+        // 📊 RIEPILOGO GIORNALIERO
+        if (settings.dailySummary?.enabled) {
+          console.log('📱 📊 [NATIVE] Programmando riepilogo giornaliero...');
+          const { time = '19:00' } = settings.dailySummary;
+          const nowDate = new Date();
+          for (let i = 0; i < 30; i++) {
+            const baseDate = new Date(nowDate);
+            baseDate.setDate(nowDate.getDate() + i);
+            const [h, m] = time.split(':');
+            const target = new Date(baseDate);
+            target.setHours(parseInt(h), parseInt(m), 0, 0);
+            if (target > nowDate) {
+              await this.nativeService.scheduleNotification(
+                '📊 Riepilogo Giornaliero',
+                'Controlla il riepilogo delle tue ore e attività di oggi.',
+                target.getTime(),
+                { type: 'daily_summary', date: baseDate.toISOString().split('T')[0] }
+              );
+              totalNativeScheduled++;
+            }
+          }
+        }
+
+        // 📞 PROMEMORIA REPERIBILITÀ (date specifiche)
+        if (settings.standbyReminders?.enabled) {
+          console.log('📱 📞 [NATIVE] Programmando promemoria reperibilità...');
+          try {
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + 2);
+            let standbyDates;
+            if (this.enhancedInitialized) {
+              standbyDates = await this.enhancedService.getStandbyDates(new Date(), endDate);
+            } else {
+              standbyDates = await this.getStandbyDatesFromSettings(new Date(), endDate);
+            }
+            if (standbyDates.length > 0) {
+              const activeNotifications = settings.standbyReminders.notifications?.filter(n => n.enabled) || [];
+              const nowDate = new Date();
+              for (const dateStr of standbyDates) {
+                const standbyDate = new Date(dateStr + 'T00:00:00');
+                const friendly = standbyDate.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+                for (const notif of activeNotifications) {
+                  const [h, m] = (notif.time || '20:00').split(':');
+                  const reminderDate = new Date(standbyDate);
+                  reminderDate.setDate(reminderDate.getDate() - (notif.daysInAdvance || 0));
+                  reminderDate.setHours(parseInt(h), parseInt(m), 0, 0);
+                  if (reminderDate > nowDate) {
+                    await this.nativeService.scheduleNotification(
+                      `📞 Reperibilità: ${friendly}`,
+                      notif.message || 'Ricordati che sei in reperibilità!',
+                      reminderDate.getTime(),
+                      { type: 'standby_reminder', standbyDate: dateStr, daysInAdvance: notif.daysInAdvance || 0 }
+                    );
+                    totalNativeScheduled++;
+                  }
+                }
+              }
+            } else {
+              console.log('📞 Nessuna data di reperibilità trovata');
+            }
+          } catch (error) {
+            console.error('❌ Errore programmazione reperibilità (native):', error);
+          }
+        }
+
+      } else {
+        // Fallback ENHANCED/JS come in precedenza
+        // ⏰ PROMEMORIA LAVORO
+        if (settings.workReminders?.enabled) {
+          console.log('📱 ⏰ Programmando promemoria lavoro...');
+          const jsWorkCount = await this.alternativeService.scheduleAlternativeWorkReminders(settings.workReminders);
+          totalJSScheduled += jsWorkCount;
+          if (this.enhancedInitialized) {
+            const enhancedWorkCount = await this.enhancedService.scheduleWorkReminders(settings.workReminders);
+            totalEnhancedScheduled += enhancedWorkCount;
+          }
+          console.log(`✅ Promemoria lavoro: ${jsWorkCount} JS + ${this.enhancedInitialized ? 'Enhanced attivo' : 'Enhanced non disponibile'}`);
+        }
+
+        // ✍️ PROMEMORIA INSERIMENTO ORARIO
+        if (settings.timeEntryReminders?.enabled) {
+          console.log('📱 ✍️ Programmando promemoria inserimento orario...');
+          const jsEntryCount = await this.alternativeService.scheduleAlternativeTimeEntryReminders(settings.timeEntryReminders);
+          totalJSScheduled += jsEntryCount;
+          if (this.enhancedInitialized) {
+            const enhancedEntryCount = await this.enhancedService.scheduleTimeEntryReminders(settings.timeEntryReminders);
+            totalEnhancedScheduled += enhancedEntryCount;
+          }
+          console.log(`✅ Promemoria inserimento: ${jsEntryCount} JS + ${this.enhancedInitialized ? 'Enhanced attivo' : 'Enhanced non disponibile'}`);
+        }
+
+        // 📊 RIEPILOGO GIORNALIERO
+        if (settings.dailySummary?.enabled) {
+          console.log('📱 📊 Programmando riepilogo giornaliero...');
+          const jsSummaryCount = await this.alternativeService.scheduleAlternativeDailySummary(settings.dailySummary);
+          totalJSScheduled += jsSummaryCount;
+          console.log(`✅ ${jsSummaryCount} timer JavaScript riepilogo attivati`);
+        }
+
+        // 📞 PROMEMORIA REPERIBILITÀ
+        if (settings.standbyReminders?.enabled) {
+          console.log('📱 📞 Programmando promemoria reperibilità...');
+          try {
+            const endDate = new Date();
+            endDate.setMonth(endDate.getMonth() + 2);
+            let standbyDates;
+            if (this.enhancedInitialized) {
+              standbyDates = await this.enhancedService.getStandbyDates(new Date(), endDate);
+            } else {
+              standbyDates = await this.getStandbyDatesFromSettings(new Date(), endDate);
+            }
+            if (standbyDates.length > 0) {
+              const jsStandbyCount = await this.alternativeService.scheduleAlternativeStandbyReminders(standbyDates, settings.standbyReminders);
+              totalJSScheduled += jsStandbyCount;
+              if (this.enhancedInitialized) {
+                const enhancedStandbyCount = await this.enhancedService.scheduleStandbyReminders(standbyDates, settings.standbyReminders);
+                totalEnhancedScheduled += enhancedStandbyCount;
+              }
+              console.log(`✅ Reperibilità: ${jsStandbyCount} JS + ${this.enhancedInitialized ? 'Enhanced attivo' : 'Enhanced non disponibile'}`);
+              console.log(`📞 Date trovate: ${standbyDates.slice(0, 3).join(', ')}${standbyDates.length > 3 ? ' e altre...' : ''}`);
+            } else {
+              console.log('📞 Nessuna data di reperibilità trovata');
+            }
+          } catch (error) {
+            console.error('❌ Errore programmazione reperibilità:', error);
+          }
+        }
       }
       
       // ✍️ PROMEMORIA INSERIMENTO ORARIO
@@ -343,13 +540,14 @@ class NotificationService {
       }
 
       // Verifica finale
-      const jsStats = this.alternativeService.getActiveTimersStats();
-      const enhancedCount = this.enhancedInitialized ? this.enhancedService.getScheduledCount() : 0;
+  const jsStats = this.alternativeService.getActiveTimersStats();
+  const enhancedCount = this.enhancedInitialized ? this.enhancedService.getScheduledCount() : 0;
       
       console.log(`✅ 🎯 PROGRAMMAZIONE ENHANCED COMPLETATA!`);
-      console.log(`   🚀 Timer JavaScript (app aperta): ${jsStats.total}`);
-      console.log(`   � Enhanced Background Timers: ${enhancedCount}`);
-      console.log(`   🔄 Sistema: ${this.enhancedInitialized ? 'ENHANCED COMPLETO' : 'Solo JavaScript'}`);
+  console.log(`   🚀 Timer JavaScript (app aperta): ${jsStats.total}`);
+  console.log(`   📱 Enhanced Background Timers: ${enhancedCount}`);
+  console.log(`   🧿 Native schedulate: ${totalNativeScheduled}`);
+  console.log(`   🔄 Sistema: ${isNativeReady ? 'Nativo' : (this.enhancedInitialized ? 'ENHANCED' : 'Solo JavaScript')}`);
       
       if (jsStats.total > 0) {
         console.log('🚀 TIMER JAVASCRIPT ATTIVI:');
@@ -361,14 +559,16 @@ class NotificationService {
       }
 
       if (enhancedCount > 0) {
-        console.log(`� BACKGROUND TIMERS ATTIVI: ${enhancedCount} (maggiore persistenza in background!)`);
+        console.log(`📱 BACKGROUND TIMERS ATTIVI: ${enhancedCount} (maggiore persistenza in background!)`);
       }
 
-      if (!this.enhancedInitialized) {
+      if (isNativeReady) {
+        console.log('✅ SISTEMA COMPLETO: Notifiche programmate a livello OS (puntuali anche in background)!');
+      } else if (!this.enhancedInitialized) {
         console.warn('⚠️ ATTENZIONE: Enhanced system non disponibile - solo JavaScript timers attivi');
         console.warn('   Le notifiche funzioneranno SOLO con app aperta');
       } else {
-        console.log('✅ SISTEMA COMPLETO: Notifiche garantite sia ad app aperta che con maggiore persistenza!');
+        console.log('✅ SISTEMA ENHANCED: Notifiche con maggiore persistenza tramite background timers');
       }
 
     } catch (error) {
@@ -700,8 +900,7 @@ class NotificationService {
   // ✅ METODI AGGIUNTIVI per compatibilità con API esistente
   async scheduleWorkReminders(settings) {
     console.log('📱 scheduleWorkReminders: usando sistema Nativo (expo-notifications)');
-    // Cancella tutte le notifiche lavoro precedenti
-    await this.nativeService.cancelAllNotifications();
+  // Non cancellare globalmente qui per evitare conflitti con altre categorie
     if (!settings.enabled) return 0;
     const [hours, minutes] = settings.morningTime.split(':');
     let scheduledCount = 0;
@@ -730,7 +929,7 @@ class NotificationService {
 
   async scheduleTimeEntryReminders(settings) {
     console.log('📱 scheduleTimeEntryReminders: usando sistema Nativo (expo-notifications)');
-    await this.nativeService.cancelAllNotifications();
+  // Non cancellare globalmente qui per evitare conflitti con altre categorie
     if (!settings.enabled) return 0;
     const [hours, minutes] = settings.time.split(':');
     let scheduledCount = 0;
@@ -758,7 +957,7 @@ class NotificationService {
 
   async scheduleDailySummary(settings) {
     console.log('📱 scheduleDailySummary: usando sistema Nativo (expo-notifications)');
-    await this.nativeService.cancelAllNotifications();
+  // Non cancellare globalmente qui per evitare conflitti con altre categorie
     if (!settings.enabled) return 0;
     const [hours, minutes] = settings.time.split(':');
     let scheduledCount = 0;
@@ -782,7 +981,7 @@ class NotificationService {
 
   async scheduleStandbyReminders(standbyDates, settings) {
     console.log('📞 scheduleStandbyReminders: usando sistema Nativo (expo-notifications)');
-    await this.nativeService.cancelAllNotifications();
+  // Non cancellare globalmente qui per evitare conflitti con altre categorie
     if (!settings.enabled) return 0;
     const activeNotifications = settings.notifications?.filter(n => n.enabled) || [];
     let scheduledCount = 0;

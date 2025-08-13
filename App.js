@@ -329,7 +329,7 @@ async function setupAndroidNotificationChannels() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: true,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#1E3A8A',
+                lightColor: '#1E3A8A', // Ensure consistent color
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
       await Notifications.setNotificationChannelAsync('reminder', {
@@ -337,7 +337,7 @@ async function setupAndroidNotificationChannels() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: true,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#1E3A8A',
+                lightColor: '#1E3A8A', // Ensure consistent color
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
       await Notifications.setNotificationChannelAsync('standby', {
@@ -345,7 +345,7 @@ async function setupAndroidNotificationChannels() {
         importance: Notifications.AndroidImportance.HIGH,
         sound: true,
         vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#1E3A8A',
+                lightColor: '#1E3A8A', // Ensure consistent color
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
       });
       console.log('✅ Canali di notifica Android configurati');

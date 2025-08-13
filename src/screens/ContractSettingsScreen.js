@@ -74,14 +74,13 @@ const ContractSettingsScreen = ({ navigation }) => {
       : CCNL_CONTRACTS.METALMECCANICO_PMI_L5.monthlySalary;
   };
 
-  // Sincronizza selectedContractKey con le impostazioni del contratto
+  // Sincronizza selectedContractKey con le impostazioni del contratto SOLO quando cambiano le impostazioni
+  // Evita di sovrascrivere la selezione locale dell'utente prima del salvataggio
   useEffect(() => {
-    if (settings.contract?.key && settings.contract.key !== selectedContractKey) {
-      console.log('🔄 [ContractSettings] Sincronizzando selectedContractKey:', settings.contract.key);
-      console.log('🔄 [ContractSettings] Valore precedente:', selectedContractKey);
+    if (settings.contract?.key) {
       setSelectedContractKey(settings.contract.key);
     }
-  }, [settings.contract?.key, selectedContractKey]);
+  }, [settings.contract?.key]);
 
   // In fase di inizializzazione, normalizza sempre e fallback sicuro
   useEffect(() => {

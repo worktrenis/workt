@@ -870,13 +870,14 @@ class MonthlyPrintService {
               const { getStandbyRatesForContract } = require('../constants');
               const key = settings?.contract?.key; const rates = getStandbyRatesForContract(key);
               if (!weekly || !weekly.enabled || !rates.weekly6Days) return '';
-              const map = {
+              const labelMap = {
                 base: '6 giorni',
                 withHoliday: '6 giorni + festivo',
                 withHolidayAndRest: '6 giorni + festivo + giorno libero'
               };
-              const label = map[weekly.option || 'base'];
-              const amount = rates.weekly6Days[weekly.option || 'base'];
+              const keyMap = { base: 'six', withHoliday: 'sixWithHoliday', withHolidayAndRest: 'sixWithHolidayAndRest' };
+              const label = labelMap[weekly.option || 'base'];
+              const amount = rates.weekly6Days[keyMap[weekly.option || 'base']];
               return `
                 <div class="contract-item">
                   <div class="contract-label">Forfait settimana (6 giorni)</div>
@@ -885,15 +886,20 @@ class MonthlyPrintService {
               `;
             })()}
             ${(() => {
-              const { getStandbyRatesForContract } = require('../constants');
-              const key = settings?.contract?.key;
-              const rates = getStandbyRatesForContract(key);
-              const w6 = settings.standbySettings?.customWeekly6Days || rates.weekly6Days;
-              if (!w6) return '';
+              // Se è valorizzato un importo personalizzato per il forfait settimanale, mostrane l'override accanto all'opzione scelta
+              const weekly = settings.standbySettings?.weeklyMode;
+              const customW = settings.standbySettings?.customWeekly6Days;
+              if (!weekly || !weekly.enabled || !customW) return '';
+              const labelMap = {
+                base: '6 giorni',
+                withHoliday: '6 giorni + festivo',
+                withHolidayAndRest: '6 giorni + festivo + giorno libero'
+              };
+              const label = labelMap[weekly.option || 'base'];
               return `
                 <div class="contract-item">
-                  <div class="contract-label">Reperibilità Settimana (6 giorni)</div>
-                  <div class="contract-value">€${w6}</div>
+                  <div class="contract-label">Forfait settimana personalizzato</div>
+                  <div class="contract-value">€${customW} – ${label}</div>
                 </div>
               `;
             })()}
@@ -1415,13 +1421,21 @@ class MonthlyPrintService {
             const isHoliday = entry.day_type === 'festivo';
             const allowanceType = settings.standbySettings.allowanceType || '24h';
             
+            // Tariffe CCNL per livello
+            const { getStandbyRatesForContract } = require('../constants');
+            const cKey = settings?.contract?.key;
+            const rates = getStandbyRatesForContract(cKey);
+            const saturdayMode = settings.standbySettings.saturdayMode || (settings.standbySettings.saturdayAsRest ? 'festivo' : 'feriale');
+
             let standbyAmount = 0;
-            if (isHoliday || isSunday) {
-              standbyAmount = parseFloat(settings.standbySettings.customFestivo || 10.63);
+            if (isHoliday || isSunday || (isSaturday && saturdayMode === 'festivo')) {
+              standbyAmount = parseFloat(settings.standbySettings.customFestivo || rates.festivo24);
+            } else if (isSaturday && saturdayMode === 'feriale24') {
+              standbyAmount = parseFloat(settings.standbySettings.customFeriale24 || rates.feriale24);
             } else if (allowanceType === '16h') {
-              standbyAmount = parseFloat(settings.standbySettings.customFeriale16 || 4.22);
+              standbyAmount = parseFloat(settings.standbySettings.customFeriale16 || rates.feriale16);
             } else {
-              standbyAmount = parseFloat(settings.standbySettings.customFeriale24 || 7.03);
+              standbyAmount = parseFloat(settings.standbySettings.customFeriale24 || rates.feriale24);
             }
             realStandbyAllowance = formatCurrency(standbyAmount);
           } else if (entry.standby_allowance > 0) {
@@ -1990,20 +2004,13 @@ class MonthlyPrintService {
     const date = new Date(year, month - 1, 1); // Mese è 1-based
     const lastDay = new Date(year, month, 0).getDate();
     
-    // Valori CCNL per livello (fallback quando non ci sono personalizzazioni)
-    try {
-      const { getStandbyRatesForContract } = require('../constants');
-      const key = settings?.contract?.key;
-      const rates = getStandbyRatesForContract(key);
-      var IND_16H_FERIALE = rates.feriale16;
-      var IND_24H_FERIALE = rates.feriale24;
-      var IND_24H_FESTIVO = rates.festivo24;
-    } catch (e) {
-      // fallback di sicurezza
-      var IND_16H_FERIALE = 4.22;
-      var IND_24H_FERIALE = 7.03;
-      var IND_24H_FESTIVO = 10.63;
-    }
+  // Tariffe CCNL per livello
+  const { getStandbyRatesForContract } = require('../constants');
+  const key = settings?.contract?.key;
+  const rates = getStandbyRatesForContract(key);
+  const IND_16H_FERIALE = rates.feriale16;
+  const IND_24H_FERIALE = rates.feriale24;
+  const IND_24H_FESTIVO = rates.festivo24;
     
     // Personalizzazioni
   const customFeriale16 = settings.standbySettings.customFeriale16 || IND_16H_FERIALE;

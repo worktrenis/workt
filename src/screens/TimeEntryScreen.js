@@ -570,6 +570,21 @@ const TimeEntryScreen = () => {
       
       if (currentRoute.params?.refreshFromForm) {
         console.log('🔄 TimeEntryScreen: Parametro refresh dal form trovato');
+        // Se arrivano dati precomputati, applicali subito per evitare flash con valori di default
+        const { savedId, savedDate, precomputedTotal, precomputedBreakdown } = currentRoute.params || {};
+        if (savedId && (precomputedTotal !== undefined || precomputedBreakdown)) {
+          setBreakdowns(prev => ({
+            ...prev,
+            [savedId]: precomputedBreakdown || {
+              ordinary: { total: precomputedTotal || 0, hours: {}, earnings: {} },
+              standby: null,
+              allowances: { travel: 0, meal: 0, standby: 0 },
+              totalEarnings: precomputedTotal || 0,
+              details: { prePrimed: true, date: savedDate }
+            }
+          }));
+        }
+        // In ogni caso, ricarica i dati dal DB (debounced) per allineare la lista
         handleManualRefresh();
         navigation.setParams({ refreshFromForm: undefined });
         return;
@@ -778,7 +793,7 @@ const TimeEntryScreen = () => {
       const newBreakdowns = { ...breakdowns };
       
       // Calcola solo quelli mancanti usando SEMPRE il metodo asincrono
-      for (const item of missingEntries) {
+  for (const item of missingEntries) {
         try {
           const workEntry = createWorkEntryFromData(item, calculationService);
           const breakdown = await calculationService.calculateEarningsBreakdown(workEntry, settings);
@@ -801,7 +816,7 @@ const TimeEntryScreen = () => {
     };
     
     calculateMissingBreakdowns();
-  }, [entries]); // Solo quando cambiano le entries, ma calcola solo i mancanti
+  }, [entries, settings, calculationService]); // ricalcola mancanti anche se cambiano le impostazioni
 
   // Sistema di auto-recovery per i calcoli falliti  
   useEffect(() => {
@@ -956,6 +971,7 @@ const TimeEntryScreen = () => {
     }
 
     // Card dettagliata simile al form per inserimenti normali
+    const dbTotal = item.totalEarnings || item.total_earnings || 0;
     const breakdown = breakdowns[item.id] || {
       ordinary: { total: 0, hours: {}, earnings: {} },
       overtime: { total: 0, hours: {}, earnings: {} },
@@ -964,7 +980,8 @@ const TimeEntryScreen = () => {
       standby: { total: 0, totalEarnings: 0, earnings: {}, workHours: {}, travelHours: {} },
       mealAllowances: { total: 0, count: 0, details: [] },
       allowances: { standby: 0, travel: 0 },
-      totalEarnings: item.totalEarnings || 0, // Usa il totale salvato nel DB
+      // Usa il totale salvato nel DB come fallback per evitare flicker iniziale
+      totalEarnings: dbTotal,
       details: {}
     };
     

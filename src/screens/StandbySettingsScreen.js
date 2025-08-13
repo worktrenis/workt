@@ -61,6 +61,8 @@ const StandbySettingsScreen = ({ navigation }) => {
   // Forfait settimanale (6 giorni)
   weeklyModeEnabled: false,
   weeklyOption: 'base', // 'base' | 'withHoliday' | 'withHolidayAndRest'
+  // Dashboard
+  showInterventionsCard: true,
   });
   const [standbyDays, setStandbyDays] = useState(settings.standbySettings?.standbyDays || {});
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -131,6 +133,7 @@ const StandbySettingsScreen = ({ navigation }) => {
         saturdayAsRest: settings.standbySettings.saturdayAsRest === true,
   weeklyModeEnabled: settings.standbySettings.weeklyMode?.enabled === true,
   weeklyOption: settings.standbySettings.weeklyMode?.option || 'base',
+  showInterventionsCard: settings.standbySettings.showInterventionsCard !== false,
       });
       setStandbyDays(settings.standbySettings.standbyDays || {});
       // Aggiorna anche i toggle locali
@@ -165,15 +168,18 @@ const StandbySettingsScreen = ({ navigation }) => {
         Feriale 16h: €{IND_16H_FERIALE.toFixed(2)} · Feriale 24h: €{IND_24H_FERIALE.toFixed(2)} · Festivo/Domenica 24h: €{IND_24H_FESTIVO.toFixed(2)}
       </Text>
       {IND_WEEKLY_6 ? (
-        typeof IND_WEEKLY_6 === 'object' ? (
-          <Text style={{ color: theme.colors.text }}>
-            Settimana (6 giorni): 16h €{Number(IND_WEEKLY_6.feriale16).toFixed(2)} · 24h €{Number(IND_WEEKLY_6.feriale24).toFixed(2)} · Festivo 24h €{Number(IND_WEEKLY_6.festivo24).toFixed(2)}
+        <View style={{ marginTop: 4 }}>
+          <Text style={{ color: theme.colors.text }}>Settimana (6 giorni):</Text>
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+            • 6 giorni: €{Number(IND_WEEKLY_6.six).toFixed(2)}
           </Text>
-        ) : (
-          <Text style={{ color: theme.colors.text }}>
-            Settimana (6 giorni): €{Number(IND_WEEKLY_6).toFixed(2)}
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+            • 6 giorni + festivo: €{Number(IND_WEEKLY_6.sixWithHoliday).toFixed(2)}
           </Text>
-        )
+          <Text style={{ color: theme.colors.textSecondary, fontSize: 13 }}>
+            • 6 giorni + festivo + giorno libero: €{Number(IND_WEEKLY_6.sixWithHolidayAndRest).toFixed(2)}
+          </Text>
+        </View>
       ) : null}
       <TouchableOpacity onPress={() => Linking.openURL('https://www.consulentidellavoro.pc.it/2025/06/20/ccnl-metalmeccanica-p-i-confapi-con-ladeguamento-ipca-nuovi-minimi-da-giugno/')} style={{ marginTop: 8 }}>
         <Text style={{ color: '#1976D2', textDecorationLine: 'underline' }}>Fonte: Consulenti del Lavoro – nuovi minimi da giugno 2025</Text>
@@ -327,7 +333,9 @@ const StandbySettingsScreen = ({ navigation }) => {
         weeklyMode: {
           enabled: formData.weeklyModeEnabled === true,
           option: formData.weeklyOption || 'base'
-        }
+        },
+        // Preferenza Dashboard
+        showInterventionsCard: formData.showInterventionsCard === true
       };
 
       await updatePartialSettings({
@@ -463,9 +471,9 @@ const StandbySettingsScreen = ({ navigation }) => {
                   </View>
                 </View>
 
-                <View style={styles.optionRow}>
+                <View style={[styles.optionRow, {flexDirection:'column', alignItems:'flex-start'}]}>
                   <Text style={styles.optionLabel}>Modalità applicazione</Text>
-                  <View style={{flexDirection:'row', alignItems:'center'}}>
+                  <View style={{flexDirection:'row', alignItems:'center', marginTop: 8}}>
                     <TouchableOpacity 
                       style={[styles.toggleButton, !formData.weeklyModeEnabled && styles.toggleButtonActive]}
                       onPress={() => setFormData(prev => ({...prev, weeklyModeEnabled: false}))}
@@ -507,9 +515,9 @@ const StandbySettingsScreen = ({ navigation }) => {
                   </View>
                 ) : null}
 
-                <View style={styles.optionRow}>
-                  <Text style={[styles.optionLabel, {flexShrink: 1}]}>Sabato (reperibilità)</Text>
-                  <View style={{flexDirection:'row', alignItems:'center'}}>
+                <View style={[styles.optionRow, {flexDirection:'column', alignItems:'flex-start'}]}>
+                  <Text style={styles.optionLabel}>Sabato (reperibilità)</Text>
+                  <View style={{flexDirection:'row', alignItems:'center', marginTop: 8}}>
                     <TouchableOpacity 
                       style={[styles.toggleButton, saturdayMode==='feriale' && styles.toggleButtonActive]}
                       onPress={() => setSaturdayMode('feriale')}
@@ -644,6 +652,23 @@ const StandbySettingsScreen = ({ navigation }) => {
 
               <InfoBox />
 
+              {/* Preferenze Dashboard */}
+              <View style={[styles.panel, { marginTop: 12 }]}> 
+                <Text style={styles.sectionTitle}>Dashboard</Text>
+                <View style={{ marginTop: 8 }}>
+                  <Text style={styles.inputLabel}>Interventi Reperibilità</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 }}>
+                    <Text style={{ color: theme.colors.textSecondary, flex: 1, marginRight: 12 }}>
+                      Mostra la card “Interventi Reperibilità” nella Dashboard
+                    </Text>
+                    <Switch
+                      value={formData.showInterventionsCard}
+                      onValueChange={(v) => setFormData(prev => ({ ...prev, showInterventionsCard: v }))}
+                    />
+                  </View>
+                </View>
+              </View>
+
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Indennità Personalizzata</Text>
                 <View style={{marginBottom:8}}>
@@ -702,7 +727,14 @@ const StandbySettingsScreen = ({ navigation }) => {
                       value={formData.customWeekly6Days}
                       onChangeText={(value) => setFormData(prev => ({ ...prev, customWeekly6Days: value }))
                       }
-                      placeholder={IND_WEEKLY_6 ? Number(IND_WEEKLY_6).toFixed(2) : ''}
+                      placeholder={(function(){
+                        if (!IND_WEEKLY_6) return '';
+                        if (!formData.weeklyModeEnabled) return '';
+                        const map = { base: 'six', withHoliday: 'sixWithHoliday', withHolidayAndRest: 'sixWithHolidayAndRest' };
+                        const key = map[formData.weeklyOption || 'base'];
+                        const val = IND_WEEKLY_6[key];
+                        return typeof val === 'number' ? val.toFixed(2) : '';
+                      })()}
                       placeholderTextColor={theme.colors.textSecondary}
                       keyboardType="numeric"
                       returnKeyType="done"
@@ -872,7 +904,7 @@ const createStyles = (theme) => StyleSheet.create({
   optionLabel: {
     fontSize: 16,
     color: theme.colors.text,
-    flex: 1,
+  flex: 1,
   },
   toggleButton: {
     paddingHorizontal: 16,

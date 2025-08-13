@@ -469,10 +469,13 @@ export const useSettings = () => {
     }
   };
 
+  const reloadSettings = () => loadSettings(true);
+
   return {
     settings,
     isLoading,
     error,
+    reloadSettings,
     updateSettings,
     updatePartialSettings,
     refreshSettings: () => {

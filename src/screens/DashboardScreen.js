@@ -167,7 +167,7 @@ const DashboardScreen = ({ navigation, route }) => {
   const [completionLoading, setCompletionLoading] = useState(true);
   const [isDailyBreakdownExpanded, setIsDailyBreakdownExpanded] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false); // Flag per evitare calcoli multipli
-  const [standbyRates, setStandbyRates] = useState({ feriale: 7.03, sabato: 7.03, festivo: 10.63 }); // Tariffe reperibilità
+  const [standbyRates, setStandbyRates] = useState({ feriale: 0, sabato: 0, festivo: 0 }); // Tariffe reperibilità (calcolate)
 
   // � Debug: monitora cambiamenti selectedDate
   useEffect(() => {
@@ -306,6 +306,17 @@ const DashboardScreen = ({ navigation, route }) => {
     
     doAggregation();
   }, [settingsLoading, settings, workEntries]);
+
+  // Ricarica i dati dei giorni fissi quando cambia il toggle di visualizzazione dei giorni speciali senza ore
+  useEffect(() => {
+    try {
+      if (!settingsLoading && settings) {
+        loadFixedDaysData();
+      }
+    } catch (e) {
+      console.warn('⚠️ Reload fixed days on toggle change failed:', e?.message);
+    }
+  }, [settings?.showEffectiveEarningsOnSpecialNoWorkDays, loadFixedDaysData, settingsLoading]);
 
   // Carica dati dei giorni fissi (ferie, permessi, malattia, riposo, festivi)
   const loadFixedDaysData = useCallback(async () => {
@@ -2134,9 +2145,15 @@ const DashboardScreen = ({ navigation, route }) => {
   };
 
   const renderStandbySection = () => {
+    // Rispetta la preferenza utente per nascondere la card
+    if (settings && settings.standbySettings && settings.standbySettings.showInterventionsCard === false) {
+      return null;
+    }
     const standby = monthlyAggregated?.standby || {};
-    // Mostra la card solo se ci sono guadagni di reperibilità
-    if (!hasStandbyData || (standby.totalEarnings || 0) <= 0) return null;
+  // Calcola i guadagni SOLO degli interventi (lavoro + viaggio) senza indennità giornaliere
+  const sumValues = (obj) => Object.values(obj || {}).reduce((a, b) => a + (b || 0), 0);
+  const interventionsAmount = sumValues(standby.workEarnings) + sumValues(standby.travelEarnings);
+  // Mostra sempre la card se abilitata dalle impostazioni, anche con 0 interventi
 
     // Debug log per vedere i dati standby
     console.log('🔍 STANDBY DEBUG - Dati standby ricevuti:', {
@@ -2167,7 +2184,7 @@ const DashboardScreen = ({ navigation, route }) => {
             ⏰ Totale ore: {formatSafeHours((standby.workHours?.ordinary || 0) + (standby.workHours?.evening || 0) + (standby.workHours?.night || 0) + (standby.workHours?.holiday || 0) + (standby.workHours?.saturday || 0) + (standby.workHours?.saturday_night || 0) + (standby.workHours?.night_holiday || 0) + (standby.travelHours?.ordinary || 0) + (standby.travelHours?.evening || 0) + (standby.travelHours?.night || 0) + (standby.travelHours?.saturday || 0) + (standby.travelHours?.saturday_night || 0) + (standby.travelHours?.holiday || 0) + (standby.travelHours?.night_holiday || 0))}
           </Text>
           <Text style={[styles.breakdownAmount, { color: theme.colors.overtime, fontWeight: 'bold', fontSize: 16 }]}>
-            {formatSafeAmount(standby.totalEarnings - (monthlyAggregated?.allowances?.standby || 0))}
+            {formatSafeAmount(interventionsAmount)}
           </Text>
         </View>
 
@@ -2396,7 +2413,7 @@ const DashboardScreen = ({ navigation, route }) => {
               {monthlyAggregated?.analytics?.standbyInterventions || 0} interventi • {formatSafeHours((standby.workHours?.ordinary || 0) + (standby.workHours?.evening || 0) + (standby.workHours?.night || 0) + (standby.workHours?.holiday || 0) + (standby.workHours?.saturday || 0) + (standby.workHours?.saturday_night || 0) + (standby.workHours?.night_holiday || 0) + (standby.travelHours?.ordinary || 0) + (standby.travelHours?.evening || 0) + (standby.travelHours?.night || 0) + (standby.travelHours?.saturday || 0) + (standby.travelHours?.saturday_night || 0) + (standby.travelHours?.holiday || 0) + (standby.travelHours?.night_holiday || 0))} ore totali
             </Text>
             <Text style={[styles.breakdownTotal, { fontSize: 20, fontWeight: 'bold', color: theme.colors.overtime }]}>
-              {formatSafeAmount(standby.totalEarnings - (monthlyAggregated?.allowances?.standby || 0))}
+              {formatSafeAmount(interventionsAmount)}
             </Text>
           </View>
         </View>
@@ -2512,6 +2529,78 @@ const DashboardScreen = ({ navigation, route }) => {
           </View>
         )}
 
+        {/* Rimborsi pasti */}
+        {allowances.meal > 0 && (
+          <View style={styles.breakdownItem}>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Rimborsi pasti</Text>
+              <Text style={styles.breakdownValue}>{formatSafeAmount(allowances.meal)}</Text>
+            </View>
+            <Text style={styles.breakdownDetail}>
+              {allowances.mealDays || 0} giorni con rimborsi pasti
+            </Text>
+
+            {/* Suddivisione per tipologia (buoni, cash standard, cash specifico) */}
+            <View style={styles.mealDetail}>
+              <Text style={styles.breakdownDetail}>Suddivisione:</Text>
+              {((meals?.byType?.vouchers?.total || 0) > 0) && (
+                <Text style={styles.breakdownSubDetail}>
+                  • Buoni pasto: {formatSafeAmount(meals.byType.vouchers.total)} ({meals.byType.vouchers.count || 0} pezzi{(meals.byType.vouchers.days || 0) > 0 ? `, ${meals.byType.vouchers.days} gg` : ''})
+                </Text>
+              )}
+              {((meals?.byType?.cashStandard?.total || 0) > 0) && (
+                <Text style={styles.breakdownSubDetail}>
+                  • Cash standard: {formatSafeAmount(meals.byType.cashStandard.total)} ({meals.byType.cashStandard.count || 0} pasti{(meals.byType.cashStandard.days || 0) > 0 ? `, ${meals.byType.cashStandard.days} gg` : ''})
+                </Text>
+              )}
+              {((meals?.byType?.cashSpecific?.total || 0) > 0) && (
+                <Text style={styles.breakdownSubDetail}>
+                  • Cash specifico: {formatSafeAmount(meals.byType.cashSpecific.total)} ({meals.byType.cashSpecific.count || 0} pasti{(meals.byType.cashSpecific.days || 0) > 0 ? `, ${meals.byType.cashSpecific.days} gg` : ''})
+                </Text>
+              )}
+            </View>
+
+            {/* Dettaglio pranzo/cena */}
+            <View style={styles.mealDetail}>
+              <Text style={styles.breakdownDetail}>Dettaglio pranzo/cena:</Text>
+              <View style={styles.mealSubSection}>
+                {(meals?.lunch?.voucher || 0) > 0 && (
+                  <Text style={styles.breakdownSubDetail}>
+                    • Pranzo - buoni: {formatSafeAmount(meals.lunch.voucher)} ({meals.lunch.voucherDays || 0} gg)
+                  </Text>
+                )}
+                {(meals?.lunch?.cash || 0) > 0 && (
+                  <Text style={styles.breakdownSubDetail}>
+                    • Pranzo - cash: {formatSafeAmount(meals.lunch.cash)} ({meals.lunch.cashDays || 0} gg)
+                  </Text>
+                )}
+                {(meals?.lunch?.specific || 0) > 0 && (
+                  <Text style={styles.breakdownSubDetail}>
+                    • Pranzo - cash specifico: {formatSafeAmount(meals.lunch.specific)} ({meals.lunch.specificDays || 0} gg)
+                  </Text>
+                )}
+              </View>
+              <View style={styles.mealSubSection}>
+                {(meals?.dinner?.voucher || 0) > 0 && (
+                  <Text style={styles.breakdownSubDetail}>
+                    • Cena - buoni: {formatSafeAmount(meals.dinner.voucher)} ({meals.dinner.voucherDays || 0} gg)
+                  </Text>
+                )}
+                {(meals?.dinner?.cash || 0) > 0 && (
+                  <Text style={styles.breakdownSubDetail}>
+                    • Cena - cash: {formatSafeAmount(meals.dinner.cash)} ({meals.dinner.cashDays || 0} gg)
+                  </Text>
+                )}
+                {(meals?.dinner?.specific || 0) > 0 && (
+                  <Text style={styles.breakdownSubDetail}>
+                    • Cena - cash specifico: {formatSafeAmount(meals.dinner.specific)} ({meals.dinner.specificDays || 0} gg)
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+        )}
+
         {/* Ore lavoro senza viaggio extra */}
         {monthlyAggregated?.totalHours && monthlyAggregated?.ordinary?.hours?.viaggio_extra && 
          ((monthlyAggregated.totalHours - (monthlyAggregated.ordinary.hours.viaggio_extra || 0)) > 0) && (
@@ -2547,21 +2636,22 @@ const DashboardScreen = ({ navigation, route }) => {
   const renderSummaryStats = () => {
     // Escludi i guadagni dei giorni fissi dalla sezione "Retribuzione" per evitare doppio conteggio con lo stipendio CCNL
     const showEffective = (settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false);
-    const fixedSum = (() => {
-      if (!showEffective) return 0;
-      try {
-        const getNum = (v) => (typeof v === 'number' ? v : (parseFloat(v) || 0));
-        return (
-          getNum(fixedDaysData?.vacation?.earnings) +
-          getNum(fixedDaysData?.sick?.earnings) +
-          getNum(fixedDaysData?.permit?.earnings) +
-          getNum(fixedDaysData?.compensatory?.earnings) +
-          getNum(fixedDaysData?.holiday?.earnings)
-        );
-      } catch {
-        return 0;
-      }
+    // Calcolo deterministico: usa dailyRate * numero di giorni fissi per evitare flicker al cambio toggle
+    const dailyRateForFixed = (() => {
+      const contractDaily = settings?.contract?.dailyRate;
+      if (typeof contractDaily === 'number' && contractDaily > 0) return contractDaily;
+      const monthly = settings?.contract?.monthlySalary;
+      const wd = settings?.contract?.workingDaysPerMonth || 26;
+      return (monthly && wd) ? (monthly / wd) : 0;
     })();
+    const fixedDaysCount = (
+      (fixedDaysData?.vacation?.days || 0) +
+      (fixedDaysData?.sick?.days || 0) +
+      (fixedDaysData?.permit?.days || 0) +
+      (fixedDaysData?.compensatory?.days || 0) +
+      (fixedDaysData?.holiday?.days || 0)
+    );
+    const fixedSum = showEffective ? (dailyRateForFixed * fixedDaysCount) : 0;
     const adjustedTotalEarnings = Math.max(0, (monthlyAggregated?.totalEarnings || 0) - (fixedSum || 0));
 
     return (
@@ -2628,7 +2718,8 @@ const DashboardScreen = ({ navigation, route }) => {
 
           {/* Compensi aggiuntivi - SOLO TOTALE EXTRA PURI */}
           {(() => {
-            const totalEarnings = monthlyAggregated?.totalEarnings || 0;
+            // Usa gli incassi aggiustati: escludono i giorni speciali senza ore quando il toggle è attivo
+            const totalEarnings = adjustedTotalEarnings;
             const daysWorked = monthlyAggregated?.daysWorked || 0;
             const baseSalary = settings?.contract?.monthlySalary || 2866.96;
             const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
@@ -2665,6 +2756,12 @@ const DashboardScreen = ({ navigation, route }) => {
                   <Text style={[styles.extraNote, { color: theme.colors.textSecondary }]}> 
                     ↳ Esclusa retribuzione base CCNL (feriali lun-ven): {formatSafeAmount(baseEarningsForWorkedDays)}
                   </Text>
+                  {/* Nota su giorni speciali senza ore: esclusi dagli extra */}
+                  {settings?.showEffectiveEarningsOnSpecialNoWorkDays && (
+                    <Text style={[styles.extraNote, { color: theme.colors.textSecondary }]}> 
+                      Nota: la retribuzione dei giorni speciali senza ore è già coperta dallo stipendio CCNL (26gg) ed è esclusa dai compensi extra.
+                    </Text>
+                  )}
                 </View>
               );
             }
@@ -3390,46 +3487,64 @@ const DashboardScreen = ({ navigation, route }) => {
       return combined;
     };
 
-    // Funzione helper per unire viaggi con stessa percentuale
-    const mergeIdenticalTravelEntries = (breakdown) => {
-      if (!breakdown || breakdown.length === 0) return breakdown;
-      
-      const merged = [];
-      const travelGroups = {};
-      
-      breakdown.forEach(entry => {
-        if (entry.period && (entry.period.includes('travel_') || entry.name?.includes('Viaggio'))) {
-          // Crea una chiave basata su tariffa e tipo di calcolo
-          const key = `${entry.rate || 1}_${entry.travelCalculationType || 'standard'}_${entry.totalBonus || 0}`;
-          
-          if (!travelGroups[key]) {
-            travelGroups[key] = {
-              ...entry,
-              hours: 0,
-              earnings: 0,
-              periods: []
-            };
-          }
-          
-          travelGroups[key].hours += entry.hours || 0;
-          travelGroups[key].earnings += entry.earnings || 0;
-          travelGroups[key].periods.push(entry.periodLabel || entry.period);
-        } else {
-          merged.push(entry);
+    // Funzione helper: raggruppa per percentuale separando Lavoro/Viaggio
+    const groupByPercentageWorkTravel = (breakdown) => {
+      if (!breakdown || breakdown.length === 0) return [];
+      const groups = {};
+
+      const getIsTravel = (entry) => entry?.period?.includes('travel_') || entry?.name?.includes('Viaggio');
+      const getPercentKey = (entry) => {
+        if (entry?.travelCalculationType === 'FIXED_RATE') return { key: 'fixed', label: 'tariffa fissa', percent: null };
+        if (typeof entry?.totalBonus === 'number') {
+          const p = Math.round(entry.totalBonus);
+          return { key: `p${p}`, label: `+${p}%`, percent: p };
+        }
+        if (entry?.rate && entry.rate !== 1) {
+          const p = Math.round((entry.rate - 1) * 100);
+          return { key: `p${p}`, label: `+${p}%`, percent: p };
+        }
+        return { key: 'p0', label: 'standard', percent: 0 };
+      };
+
+      breakdown.forEach((entry) => {
+        const isTravel = !!getIsTravel(entry);
+        const { key, label, percent } = getPercentKey(entry);
+        const type = isTravel ? 'travel' : 'work';
+        const groupKey = `${type}_${key}`;
+
+        if (!groups[groupKey]) {
+          groups[groupKey] = {
+            type,
+            key,
+            label,
+            percent,
+            hours: 0,
+            earnings: 0,
+            hourlyRate: entry?.hourlyRate, // prendi la prima disponibile
+          };
+        }
+        groups[groupKey].hours += entry?.hours || 0;
+        groups[groupKey].earnings += entry?.earnings || 0;
+        // se non c'è hourlyRate, prova a valorizzare da entry
+        if (!groups[groupKey].hourlyRate && entry?.hourlyRate) {
+          groups[groupKey].hourlyRate = entry.hourlyRate;
         }
       });
-      
-      // Aggiungi i viaggi uniti
-      Object.values(travelGroups).forEach(group => {
-        // Aggiorna il nome per riflettere l'unione
-        if (group.periods.length > 1) {
-          group.name = group.name.replace('Viaggio andata', 'Viaggio').replace('Viaggio ritorno', 'Viaggio');
-          group.periodLabel = `${group.periods.join(' + ')}`;
-        }
-        merged.push(group);
+
+      // Ordina: prima Lavoro poi Viaggio; all'interno ordina per percentuale decrescente (fixed alla fine)
+      const sorted = Object.values(groups).sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'work' ? -1 : 1;
+        // metti 'fixed' alla fine
+        const aIsFixed = a.key === 'fixed';
+        const bIsFixed = b.key === 'fixed';
+        if (aIsFixed !== bIsFixed) return aIsFixed ? 1 : -1;
+        // percentuale decrescente (null trattata come -Infinity)
+        const ap = typeof a.percent === 'number' ? a.percent : -Infinity;
+        const bp = typeof b.percent === 'number' ? b.percent : -Infinity;
+        return bp - ap;
       });
-      
-      return merged;
+
+      return sorted;
     };
 
     // Funzione helper per renderizzare i dettagli del breakdown
@@ -3439,38 +3554,29 @@ const DashboardScreen = ({ navigation, route }) => {
         return <Text style={styles.breakdownDetail}>{fallbackText}</Text>;
       }
       
-      // Unisci viaggi identici
-      const mergedBreakdown = mergeIdenticalTravelEntries(breakdownInfo.hourlyRatesBreakdown);
-      
-      return mergedBreakdown.map((fascia, index) => {
-        const isTravel = fascia.period && (fascia.period.includes('travel_') || fascia.name?.includes('Viaggio'));
+      // Aggrega per percentuale separando Lavoro e Viaggio
+      const aggregated = groupByPercentageWorkTravel(breakdownInfo.hourlyRatesBreakdown);
+
+      return aggregated.map((group, index) => {
+        const isTravel = group.type === 'travel';
         const backgroundColor = isTravel ? theme.colors.card : theme.colors.surface;
         const icon = isTravel ? '🚗' : '💼';
-        
-        // Calcola la percentuale di bonus
-        let bonusText = '';
-        if (fascia.travelCalculationType === 'FIXED_RATE') {
-          bonusText = 'tariffa fissa';
-        } else if (fascia.totalBonus !== undefined) {
-          bonusText = `+${fascia.totalBonus}%`;
-        } else if (fascia.rate && fascia.rate !== 1) {
-          bonusText = `+${Math.round((fascia.rate - 1) * 100)}%`;
-        } else {
-          bonusText = 'standard';
-        }
-        
+        const labelPrefix = isTravel ? 'Viaggio' : 'Lavoro';
+        const labelSuffix = group.key === 'fixed' ? 'tariffa fissa' : group.label; // standard / +X%
+        const hr = group.hourlyRate || hourlyRate || 0;
+
         return (
           <View key={index} style={[styles.breakdownItem, { marginLeft: 10, backgroundColor, padding: 8, borderRadius: 4, marginBottom: 4 }]}>
             <View style={styles.breakdownRow}>
               <Text style={styles.breakdownLabel}>
-                {icon} {fascia.name || 'Lavoro'}
+                {icon} {labelPrefix} {labelSuffix !== 'standard' ? `(${labelSuffix})` : ''}
               </Text>
               <Text style={[styles.breakdownValue, { fontWeight: 'bold', color: isTravel ? '#0277bd' : '#2e7d32' }]}>
-                {formatSafeHours(fascia.hours)}
+                {formatSafeHours(group.hours)}
               </Text>
             </View>
             <Text style={styles.breakdownDetail}>
-              €{(fascia.hourlyRate || 0).toFixed(2)} × {formatSafeHours(fascia.hours)} × {bonusText} = €{(fascia.earnings || 0).toFixed(2)}
+              €{hr.toFixed(2)} × {formatSafeHours(group.hours)} × {labelSuffix} = €{(group.earnings || 0).toFixed(2)}
             </Text>
           </View>
         );

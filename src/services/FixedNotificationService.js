@@ -165,11 +165,26 @@ class FixedNotificationService {
         this.initialized = true;
         return true;
       }
+      // Configura canale Android ad alta priorità
+      try {
+        if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
+          await Notifications.setNotificationChannelAsync('default', {
+            name: 'WorkT - Promemoria',
+            importance: Notifications.AndroidImportance ? Notifications.AndroidImportance.HIGH : 5,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: '#1E3A8A',
+            sound: 'default',
+            showBadge: true,
+          });
+          console.log('📱 Canale notifiche Android configurato (HIGH)');
+        }
+      } catch (channelError) {
+        console.warn('⚠️ Errore configurazione canale Android:', channelError.message);
+      }
       
-      // Pulisci tutte le notifiche di sistema all'avvio
-      await Notifications.dismissAllNotificationsAsync();
-      // Cancella tutte le notifiche programmate all'avvio
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // Evita cancellazioni globali all'avvio per non perdere notifiche già programmate
+      // await Notifications.dismissAllNotificationsAsync();
+      // await Notifications.cancelAllScheduledNotificationsAsync();
       
       // Configura handler notifiche
       Notifications.setNotificationHandler({
@@ -202,6 +217,20 @@ class FixedNotificationService {
       
       this.initialized = true;
       console.log(`✅ Sistema notifiche inizializzato: ${this.hasPermission ? 'Permessi concessi' : 'Permessi negati'}`);
+
+      // Riprogramma automaticamente se non ci sono notifiche in coda
+      try {
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        if ((scheduled?.length || 0) === 0) {
+          const storedSettings = await this.getSettings();
+          if (storedSettings?.enabled) {
+            console.log('🔄 Nessuna notifica programmata: riprogrammo automaticamente da impostazioni salvate');
+            await this.scheduleNotifications(storedSettings, true);
+          }
+        }
+      } catch (initSchedErr) {
+        console.warn('⚠️ Errore verifica/riprogrammazione iniziale:', initSchedErr.message);
+      }
       return true;
     } catch (error) {
       console.error('❌ Errore inizializzazione notifiche:', error);
@@ -394,9 +423,12 @@ class FixedNotificationService {
             title,
             body,
             data,
+            sound: true,
+            priority: Platform.OS === 'android' ? 'high' : undefined,
+            ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
           },
           trigger: {
-            seconds: Math.floor(delay / 1000),
+            date: new Date(scheduledTime),
           },
         });
         
@@ -454,7 +486,7 @@ class FixedNotificationService {
         
         await this.savePendingNotifications();
         
-        // In JS timer funziona solo con app aperta
+  // In JS timer funziona solo con app aperta
         const timer = setTimeout(() => {
           if (AppState.currentState === 'active') {
             Alert.alert(
@@ -620,16 +652,6 @@ class FixedNotificationService {
       // Ottieni notifiche già gestite
       const handledNotifications = await this.getHandledNotifications();
       
-      // Cancella tutte le notifiche correnti (visibili e programmate)
-      // per evitare notifiche duplicate
-      try {
-        await Notifications.dismissAllNotificationsAsync();
-        await Notifications.cancelAllScheduledNotificationsAsync();
-      } catch (notifError) {
-        console.error('❌ Errore cancellazione notifiche:', notifError);
-        // Continua comunque con il resto della funzione
-      }
-      
       // Pulisci la lista di notifiche pendenti rimuovendo quelle già gestite
       await this.cleanPendingNotifications();
       
@@ -661,9 +683,12 @@ class FixedNotificationService {
                 title: notification.title,
                 body: notification.body,
                 data: notification.data,
+                sound: true,
+                priority: Platform.OS === 'android' ? 'high' : undefined,
+                ...(Platform.OS === 'android' ? { channelId: 'default' } : {}),
               },
               trigger: {
-                seconds: Math.max(1, Math.floor((notification.scheduledTime - now) / 1000)),
+                date: new Date(notification.scheduledTime),
               },
             });
             
@@ -672,6 +697,20 @@ class FixedNotificationService {
         }
       } else {
         console.log('✅ Nessuna notifica futura da riprogrammare');
+      }
+      
+      // Se dopo la riprogrammazione non risultano notifiche di sistema programmate, riprogramma da impostazioni salvate
+      try {
+        const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+        if ((scheduled?.length || 0) === 0) {
+          const storedSettings = await this.getSettings();
+          if (storedSettings?.enabled) {
+            console.log('🔄 Nessuna notifica di sistema attiva dopo il foreground: riprogrammo da impostazioni');
+            await this.scheduleNotifications(storedSettings, true);
+          }
+        }
+      } catch (fgErr) {
+        console.warn('⚠️ Errore verifica notifiche in foreground:', fgErr.message);
       }
       
       return pendingFutureNotifications.length > 0;
