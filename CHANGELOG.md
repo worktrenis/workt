@@ -1,3 +1,10 @@
+### [1.5.2] - 14 agosto 2025
+
+- Festivo lavorato: calcolo con maggiorazioni corrette (non giorno fisso quando presenti ore)
+- Banner festivo: mostra il nome della festività senza riempire il campo cantiere
+- Salvataggio: controllo duplicati per data con scelta modifica/conferma/annulla
+- Rifiniture UI e stabilità del riepilogo post-salvataggio
+
 ### [1.5.1] - 12 agosto 2025
 
 - Notifiche: pianificazione native-first con canali HIGH e auto-riprogrammazione in foreground

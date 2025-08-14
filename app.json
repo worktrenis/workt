@@ -2,12 +2,12 @@
   "expo": {
     "name": "WorkT - Tracker Ore Lavoro",
     "slug": "workt",
-  "version": "1.5.1",
+  "version": "1.5.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
-  "description": "WorkT v1.5.1: Notifiche puntuali (native-first), icona app nelle notifiche Android, fix flicker guadagni post-salvataggio, prompt bozze non salvate e ricarica impostazioni.",
+  "description": "WorkT v1.5.2: Festivo lavorato con maggiorazioni corrette (non giorno fisso), banner festività con nome, controllo duplicati data su salvataggio e rifiniture UI.",
     "platforms": [
       "ios",
       "android"
@@ -20,7 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.workt.production",
-      "buildNumber": "13",
+  "buildNumber": "15",
       "infoPlist": {
         "UIBackgroundModes": [
           "background-processing",
@@ -38,7 +38,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.workt.production",
-      "versionCode": 13,
+  "versionCode": 15,
       "permissions": [
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE",

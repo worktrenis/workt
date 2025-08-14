@@ -22,6 +22,16 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.5.2',
+      date: '14 agosto 2025',
+      changes: [
+        'Festivo lavorato: calcolo con maggiorazioni (non giorno fisso)',
+        'Banner festivo: mostra il nome della festività',
+        'Controllo duplicati data su salvataggio (modifica o conferma)',
+        'Rifiniture UI e stabilità riepilogo guadagni'
+      ]
+    },
+    {
       version: '1.5.1',
       date: '12 agosto 2025',
       changes: [
