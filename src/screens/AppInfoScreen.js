@@ -25,6 +25,16 @@ const AppInfoScreen = ({ navigation }) => {
       version: '1.5.2',
       date: '14 agosto 2025',
       changes: [
+        'v1.5.2: Festivo lavorato; banner festività; controllo duplicati',
+        'Aggiornamento automatico versione e documentazione',
+        'Sincronizzazione informazioni app con release OTA',
+        'Sistema auto-update changelog implementato'
+      ]
+    },
+    {
+      version: '1.5.2',
+      date: '14 agosto 2025',
+      changes: [
         'Festivo lavorato: calcolo con maggiorazioni (non giorno fisso)',
         'Banner festivo: mostra il nome della festività',
         'Controllo duplicati data su salvataggio (modifica o conferma)',
