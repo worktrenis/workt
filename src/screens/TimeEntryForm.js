@@ -2775,7 +2775,8 @@ const TimeEntryForm = ({ route, navigation }) => {
           trasferta: false,
           reperibilita: false,
           completamentoGiornata: 'nessuno',
-          site_name: prev.site_name || holidayInfo.name,
+          // Mantieni il campo cantiere invariato: il nome della festività va solo nella casella informativa
+          site_name: prev.site_name,
           note: `${holidayInfo.name} - Giorno festivo retribuito secondo CCNL (€${holidayPay.toFixed(2)})`,
           isFixedDay: true,
           fixedEarnings: holidayPay,
@@ -2828,7 +2829,8 @@ const TimeEntryForm = ({ route, navigation }) => {
           trasferta: false,
           reperibilita: false,
           completamentoGiornata: 'nessuno',
-          site_name: holidayInfo.name,
+          // Non sovrascrivere il campo cantiere con il nome della festività
+          site_name: prev.site_name,
           note: `${holidayInfo.name} - Giorno festivo retribuito secondo CCNL (€${holidayPay.toFixed(2)})`,
           isFixedDay: true,
           fixedEarnings: holidayPay,
@@ -5057,6 +5059,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                 {dayType === 'permesso' && 'Permesso retribuito - Retribuzione fissa secondo CCNL'}
                 {dayType === 'malattia' && 'Giornata di malattia - Gestione secondo normativa'}
                 {dayType === 'riposo' && 'Riposo compensativo - Recupero ore straordinarie'}
+                {dayType === 'festivo' && 'Giorno festivo: senza ore → retribuzione fissa; con ore → maggiorazioni da festivo lavorato'}
               </Text>
             </View>
           )}
