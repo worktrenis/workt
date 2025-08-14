@@ -3287,6 +3287,8 @@ const TimeEntryForm = ({ route, navigation }) => {
               await DatabaseService.deleteWorkEntry(entryId);
               Alert.alert('Eliminato', 'Inserimento eliminato con successo.');
               // Torna alla schermata precedente con refresh
+              try { await clearDraft(); } catch {}
+              allowLeaveRef.current = true;
               navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
             } catch (e) {
               Alert.alert('Errore', 'Errore durante la cancellazione dal database.');
@@ -3305,9 +3307,18 @@ const TimeEntryForm = ({ route, navigation }) => {
       } catch (e) {
         console.log('Info: reloadSettings on focus non critico:', e?.message);
       }
+      // Pulisci eventuali parametri di route residui quando NON sei in modifica
+      try {
+        const p = route?.params;
+        if (p && !p?.isEdit && (p.entry || p.enableDelete)) {
+          navigation.setParams({ isEdit: undefined, entry: undefined, enableDelete: undefined });
+        }
+      } catch (e) {
+        // non critico
+      }
     });
     return unsubscribe;
-  }, [navigation, reloadSettings]);
+  }, [navigation, reloadSettings, route?.params]);
 
   // Helper: salva bozza (standby)
   const saveDraft = useCallback(async () => {
@@ -3323,6 +3334,51 @@ const TimeEntryForm = ({ route, navigation }) => {
   const clearDraft = useCallback(async () => {
     try { await AsyncStorage.removeItem('timeEntryDraft'); } catch {}
   }, []);
+
+  // Controllo duplicati per la stessa data con prompt utente
+  const checkDuplicateAndPrompt = useCallback(async (dateISO) => {
+    try {
+      // Recupera eventuali entry nella stessa data
+      const sameDayEntries = await DatabaseService.getWorkEntriesByDateRange(dateISO, dateISO);
+      // Escludi l'entry corrente se in modifica
+      const others = (sameDayEntries || []).filter(e => !(isEdit && e.id === entryId));
+      if (!others || others.length === 0) {
+        return { action: 'proceed' };
+      }
+
+      // Prendi l'ultima (più recente) per la data
+      const existing = [...others].sort((a, b) => (b.id || 0) - (a.id || 0))[0];
+
+      // Mostra scelta all'utente
+      return await new Promise((resolve) => {
+        Alert.alert(
+          'Inserimento già presente',
+          `Esiste già un inserimento per il ${formatDate(dateISO)}. Vuoi modificare quello esistente o salvare comunque?`,
+          [
+            {
+              text: 'Modifica esistente',
+              onPress: () => resolve({ action: 'edit', entry: existing })
+            },
+            {
+              text: 'Conferma salvataggio',
+              style: 'destructive',
+              onPress: () => resolve({ action: 'proceed' })
+            },
+            {
+              text: 'Annulla',
+              style: 'cancel',
+              onPress: () => resolve({ action: 'cancel' })
+            }
+          ],
+          { cancelable: true }
+        );
+      });
+    } catch (e) {
+      console.log('Info: errore controllo duplicati (non critico):', e?.message);
+      // In caso di errore nel controllo, permette comunque di procedere
+      return { action: 'proceed' };
+    }
+  }, [isEdit, entryId]);
 
   // Estrae la logica di salvataggio per riuso (bottone Salva e conferma uscita)
   const handleSavePress = useCallback(async (navigateAfter = true, dispatchAction = null) => {
@@ -3367,6 +3423,35 @@ const TimeEntryForm = ({ route, navigation }) => {
 
       const settingsObj = settings || {};
 
+      // Prima di procedere, controlla duplicati per la data
+      const dupDecision = await checkDuplicateAndPrompt(entry.date);
+      if (dupDecision?.action === 'cancel') {
+        return false; // annulla salvataggio
+      }
+      if (dupDecision?.action === 'edit' && dupDecision.entry) {
+        // Naviga all'entry esistente in modifica senza prompt di uscita
+        try {
+          const normalized = dupDecision.entry?.id
+            ? await DatabaseService.getWorkEntryById(dupDecision.entry.id)
+            : dupDecision.entry;
+          allowLeaveRef.current = true;
+          navigation.navigate('TimeEntryForm', {
+            entry: normalized,
+            isEdit: true,
+            enableDelete: true
+          });
+        } catch (_) {
+          // fallback con l'oggetto già presente
+          allowLeaveRef.current = true;
+          navigation.navigate('TimeEntryForm', {
+            entry: dupDecision.entry,
+            isEdit: true,
+            enableDelete: true
+          });
+        }
+        return false;
+      }
+
       let result = null;
       if (entry.isFixedDay) {
         entry.totalEarnings = entry.fixedEarnings;
@@ -3391,7 +3476,7 @@ const TimeEntryForm = ({ route, navigation }) => {
         return false;
       }
 
-      let savedId = entryId;
+  let savedId = entryId;
       if (isEdit) {
         await DatabaseService.updateWorkEntry(entryId, entry);
       } else {
@@ -3401,6 +3486,12 @@ const TimeEntryForm = ({ route, navigation }) => {
 
       // pulisci bozza dopo salvataggio
       await clearDraft();
+
+      // Aggiorna snapshot e stato modifiche: dopo salvataggio non ci sono più cambi non salvati
+      try {
+        initialSnapshotRef.current = JSON.stringify({ form, dayType });
+        setHasChanges(false);
+      } catch {}
 
       // Navigazione post-salvataggio
       if (navigateAfter) {
@@ -3425,12 +3516,13 @@ const TimeEntryForm = ({ route, navigation }) => {
       Alert.alert('Errore', `Errore durante il salvataggio su database: ${e.message}`);
       return false;
     }
-  }, [form, mealCash, dayType, settings, isEdit, entryId, calculationService, navigation, clearDraft]);
+  }, [form, mealCash, dayType, settings, isEdit, entryId, calculationService, navigation, clearDraft, checkDuplicateAndPrompt]);
 
   // Conferma uscita con tre scelte quando ci sono modifiche non salvate
   useEffect(() => {
     const beforeRemoveSub = navigation.addListener('beforeRemove', (e) => {
-      if (!hasChanges) return; // niente da fare
+      // Se non ci sono modifiche o è stato esplicitamente consentito uscire, non intercettare
+      if (!hasChanges || allowLeaveRef.current) return;
       e.preventDefault();
       const action = e.data.action;
 
@@ -3443,15 +3535,17 @@ const TimeEntryForm = ({ route, navigation }) => {
             style: 'destructive',
             onPress: async () => {
               await clearDraft();
-              // consenti l'uscita
-              navigation.dispatch(action);
+              // consenti l'uscita senza ulteriori prompt
+              allowLeaveRef.current = true;
+              navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
             }
           },
           {
             text: 'Lascia in standby',
             onPress: async () => {
               await saveDraft();
-              navigation.dispatch(action);
+              allowLeaveRef.current = true; // consenti uscita senza riprompt
+              navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
             }
           },
           {
@@ -5605,7 +5699,32 @@ const TimeEntryForm = ({ route, navigation }) => {
       <View style={styles.floatingButtons}>
         <TouchableOpacity
           style={[styles.floatingButton, styles.cancelButton]}
-          onPress={() => navigation.goBack()}
+          onPress={async () => {
+            try {
+              if (!hasChanges) {
+                // Nessuna modifica: torna subito alla lista
+                allowLeaveRef.current = true;
+                navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+                return;
+              }
+              Alert.alert(
+                'Annullare le modifiche?',
+                'Le modifiche non salvate andranno perse.',
+                [
+                  { text: 'No', style: 'cancel' },
+                  {
+                    text: 'Sì, annulla',
+                    style: 'destructive',
+                    onPress: async () => {
+                      try { await clearDraft(); } catch {}
+                      allowLeaveRef.current = true;
+                      navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+                    }
+                  }
+                ]
+              );
+            } catch {}
+          }}
         >
           <MaterialCommunityIcons name="arrow-left" size={24} color="white" />
           <Text style={styles.floatingButtonText}>Annulla</Text>
@@ -5674,6 +5793,25 @@ const TimeEntryForm = ({ route, navigation }) => {
               };
               
               const settingsObj = settings || {};
+
+              // ⛔️ Controllo duplicati prima di calcolo/salvataggio
+              const dupDecision = await checkDuplicateAndPrompt(entry.date);
+              if (dupDecision?.action === 'cancel') {
+                return; // interrompi
+              }
+              if (dupDecision?.action === 'edit' && dupDecision.entry) {
+                try {
+                  const normalized = dupDecision.entry?.id
+                    ? await DatabaseService.getWorkEntryById(dupDecision.entry.id)
+                    : dupDecision.entry;
+                  allowLeaveRef.current = true;
+                  navigation.navigate('TimeEntryForm', { entry: normalized, isEdit: true, enableDelete: true });
+                } catch (_) {
+                  allowLeaveRef.current = true;
+                  navigation.navigate('TimeEntryForm', { entry: dupDecision.entry, isEdit: true, enableDelete: true });
+                }
+                return;
+              }
               
               // Se è un giorno fisso, usa la retribuzione fissa
               if (entry.isFixedDay) {
@@ -5757,7 +5895,12 @@ const TimeEntryForm = ({ route, navigation }) => {
               } catch (backupError) {
                 console.log('Info: Errore backup automatico (non critico):', backupError.message);
               }
-              
+
+              // Dopo salvataggio: pulisci bozza e impedisci prompt uscita
+              try { await clearDraft(); } catch {}
+              try { initialSnapshotRef.current = JSON.stringify({ form, dayType }); setHasChanges(false); } catch {}
+              allowLeaveRef.current = true;
+
               // Torna alla schermata precedente passando anche i dati precomputati per evitare valori "di default"
               navigation.navigate('TimeEntryScreen', { 
                 refreshFromForm: true,
