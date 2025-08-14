@@ -5055,11 +5055,11 @@ const TimeEntryForm = ({ route, navigation }) => {
                 color={dayTypes.find(dt => dt.value === dayType)?.color || styles.iconSecondary.color} 
               />
               <Text style={styles.dayTypeInfoText}>
-                {dayType === 'ferie' && 'Giornata di ferie - Retribuzione fissa secondo CCNL'}
-                {dayType === 'permesso' && 'Permesso retribuito - Retribuzione fissa secondo CCNL'}
-                {dayType === 'malattia' && 'Giornata di malattia - Gestione secondo normativa'}
-                {dayType === 'riposo' && 'Riposo compensativo - Recupero ore straordinarie'}
-                {dayType === 'festivo' && 'Giorno festivo: senza ore → retribuzione fissa; con ore → maggiorazioni da festivo lavorato'}
+                {dayType === 'ferie' && 'Giornata di ferie'}
+                {dayType === 'permesso' && 'Permesso retribuito'}
+                {dayType === 'malattia' && 'Giornata di malattia'}
+                {dayType === 'riposo' && 'Riposo compensativo'}
+                {dayType === 'festivo' && (HolidayService.isWeekdayHoliday(form.date)?.name || 'Giorno festivo')}
               </Text>
             </View>
           )}
