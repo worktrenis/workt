@@ -849,10 +849,13 @@ class CalculationService {
 
     // Gestione giorni fissi (ferie, permessi, malattia, riposo compensativo, festivo)
     // Usando il nuovo campo dayType invece dei campi obsoleti ferie/permesso
-    const dayType = workEntry.dayType || 'lavorativa';
-    const isFixedDay = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType);
+  const dayType = workEntry.dayType || 'lavorativa';
+  const isFixedDayBase = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType);
+  // Considera ‘festivo’ giorno fisso SOLO se non ci sono ore (lavoro/viaggio/interventi)
+  const hasAnyHours = this.calculateWorkHours(workEntry) > 0 || this.calculateTravelHours(workEntry) > 0 || this.calculateStandbyWorkHours(workEntry) > 0;
+  const isFixedDay = isFixedDayBase && (dayType !== 'festivo' || !hasAnyHours);
     
-    if (isFixedDay && dayType !== 'lavorativa') {
+  if (isFixedDay && dayType !== 'lavorativa') {
       console.log(`[CalculationService] Giorno fisso rilevato (${dayType}) per ${workEntry.date}, applicazione retribuzione giornaliera standard`);
       
       // Per i giorni fissi, applica la preferenza: se disattiva la visualizzazione, non calcolare il guadagno (totale=0)
@@ -980,10 +983,12 @@ class CalculationService {
     
     // Gestione giorni fissi (ferie, permessi, malattia, riposo compensativo, festivo)
     // Per questi giorni, viene corrisposta la retribuzione giornaliera standard
-    const dayType = workEntry.dayType || 'lavorativa';
-    const isFixedDay = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType);
+  const dayType = workEntry.dayType || 'lavorativa';
+  const isFixedDayBase = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType);
+  const hasAnyHours = this.calculateWorkHours(workEntry) > 0 || this.calculateTravelHours(workEntry) > 0 || this.calculateStandbyWorkHours(workEntry) > 0;
+  const isFixedDay = isFixedDayBase && (dayType !== 'festivo' || !hasAnyHours);
     
-    if (isFixedDay && dayType !== 'lavorativa') {
+  if (isFixedDay && dayType !== 'lavorativa') {
       console.log(`[CalculationService] Giorno fisso rilevato (${dayType}) per ${workEntry.date}, applicazione retribuzione giornaliera standard`);
       
       // Per i giorni fissi, applica la preferenza: se disattiva la visualizzazione, non calcolare il guadagno (totale=0)

@@ -214,8 +214,19 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
     // Log per debug
     console.log("Form reperibilità:", form.reperibilita);
     
-    // Controlla se è un giorno di ferie/malattia/riposo/permesso/festivo
-    const isFixedDay = form.isFixedDay || dayType === 'ferie' || dayType === 'malattia' || dayType === 'riposo' || dayType === 'permesso' || dayType === 'festivo';
+    // Verifica se ci sono ore inserite (lavoro o interventi), per gestire correttamente i festivi lavorati
+    const hasAnyHours = (
+      (primaryShift.work_start_1 && primaryShift.work_end_1) ||
+      (primaryShift.work_start_2 && primaryShift.work_end_2) ||
+      (additionalShifts || []).some(s => (s.work_start_1 && s.work_end_1) || (s.work_start_2 && s.work_end_2)) ||
+      (Array.isArray(form.interventi) && form.interventi.some(iv => (iv.work_start_1 && iv.work_end_1) || (iv.work_start_2 && iv.work_end_2)))
+    );
+
+    // Controlla se è un giorno fisso (ferie/malattia/riposo/permesso). Per i festivi: fisso SOLO se non ci sono ore
+    let isFixedDay = form.isFixedDay || ['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType);
+    if (dayType === 'festivo') {
+      isFixedDay = !hasAnyHours; // Se sto lavorando nel festivo, NON è giorno fisso
+    }
     
     return {
       date: (() => {
@@ -224,7 +235,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
       })(),
       siteName: form.site_name || '',
       vehicleDriven: form.veicolo || '',
-      // 🔥 TURNO PRINCIPALE - da form.viaggi[0]
+  // 🔥 TURNO PRINCIPALE - da form.viaggi[0]
       departureCompany: primaryShift.departure_company || '',
       arrivalSite: primaryShift.arrival_site || '',
       workStart1: primaryShift.work_start_1 || '',
@@ -246,9 +257,9 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
       isStandbyDay: form.reperibilita ? 1 : 0, // Flag per indicare giorno di reperibilità
       standbyAllowance: form.reperibilita ? 1 : 0, // Flag per calcolare indennità di reperibilità
       completamentoGiornata: form.completamentoGiornata || 'nessuno', // Modalità di completamento giornata
-      // Nuovi campi per gestione giorni fissi
-      isFixedDay: isFixedDay,
-      fixedEarnings: form.fixedEarnings || (isFixedDay ? (settings?.contract?.dailyRate || 109.19) : 0),
+  // Nuovi campi per gestione giorni fissi
+  isFixedDay: isFixedDay,
+  fixedEarnings: form.fixedEarnings || (isFixedDay ? (settings?.contract?.dailyRate || 109.19) : 0),
       dayType: form.dayType || dayType
     };
   }, [form, dayType]);
@@ -312,8 +323,15 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
       specialDayTravelSettings: settings?.specialDayTravelSettings || defaultSettings.specialDayTravelSettings
     };
     
-    // Se è un giorno di ferie/malattia/riposo, calcola la retribuzione fissa
-    if (workEntry.isFixedDay) {
+    // Se è un giorno fisso (tranne festivo lavorato), calcola la retribuzione fissa
+    const hasAnyHours = (
+      (workEntry.workStart1 && workEntry.workEnd1) ||
+      (workEntry.workStart2 && workEntry.workEnd2) ||
+      (Array.isArray(workEntry.viaggi) && workEntry.viaggi.some(s => (s.work_start_1 && s.work_end_1) || (s.work_start_2 && s.work_end_2))) ||
+      (Array.isArray(workEntry.interventi) && workEntry.interventi.some(iv => (iv.work_start_1 && iv.work_end_1) || (iv.work_start_2 && iv.work_end_2)))
+    );
+    const isFixedNonWorking = workEntry.isFixedDay && (workEntry.dayType !== 'festivo' || !hasAnyHours);
+    if (isFixedNonWorking) {
       const fixedEarnings = workEntry.fixedEarnings || safeSettings.contract.dailyRate;
       setBreakdown({
         isFixedDay: true,
