@@ -2,10 +2,13 @@ import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import UpdateNotificationService from './UpdateNotificationService';
 import SystemNotificationPersistence from './SystemNotificationPersistenceService';
+// Versione reale dell'app (bumpata dagli script) — evita desync con valore hardcoded
+import { version as appPkgVersion } from '../../package.json';
 
 class ManualUpdateService {
   constructor() {
-  this.currentVersion = '1.1.0';
+    // Inizializza a package.json; verrà eventualmente sovrascritto da valore persistito
+    this.currentVersion = appPkgVersion || '1.0.0';
     this.isChecking = false;
     this.isUpdating = false;
     
@@ -55,6 +58,26 @@ class ManualUpdateService {
         minRequiredVersion: '1.3.0'
       }
     };
+  }
+  
+  /**
+   * Assicura che la versione corrente sia sincronizzata con AsyncStorage (se presente)
+   * e con package.json (che ha priorità all'avvio dopo un update OTA scaricato).
+   */
+  async syncVersionFromStorage() {
+    try {
+      const stored = await AsyncStorage.getItem('app_version_current');
+      // Se stored manca o diversa dal package.json, aggiorna stored con la versione del bundle corrente
+      if (!stored || stored !== appPkgVersion) {
+        this.currentVersion = appPkgVersion;
+        await AsyncStorage.setItem('app_version_current', this.currentVersion);
+      } else {
+        this.currentVersion = stored;
+      }
+    } catch (e) {
+      // Fallback silenzioso
+      this.currentVersion = appPkgVersion || this.currentVersion;
+    }
   }
 
   /**
@@ -453,7 +476,7 @@ class ManualUpdateService {
    * Ottiene la versione corrente
    */
   getCurrentVersion() {
-    return this.currentVersion;
+  return this.currentVersion || appPkgVersion;
   }
 
   /**

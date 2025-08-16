@@ -35,6 +35,10 @@ const AppUpdateScreen = ({ navigation }) => {
 
   const loadInitialData = async () => {
     try {
+      // Sincronizza versione reale (AsyncStorage + package.json)
+      if (ManualUpdateService.syncVersionFromStorage) {
+        await ManualUpdateService.syncVersionFromStorage();
+      }
       setCurrentVersion(ManualUpdateService.getCurrentVersion());
       await loadPendingUpdates();
       await loadUpdateHistory();
