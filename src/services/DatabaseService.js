@@ -1543,9 +1543,9 @@ class DatabaseService {
       if (syncCount > 0) {
         console.log('📞 FORCE SYNC: Aggiornamento notifiche dopo sincronizzazione...');
         
-        // Importa NotificationService dinamicamente per evitare dipendenze circolari
-        const { default: NotificationService } = await import('./FixedNotificationService');
-        await NotificationService.updateStandbyNotifications();
+  // Usa solo SuperNotificationService per la riprogrammazione notifiche
+  const SuperNotificationService = require('./SuperNotificationService');
+  await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
         
         console.log('✅ FORCE SYNC: Sincronizzazione e aggiornamento notifiche completati');
       } else {

@@ -18,7 +18,7 @@ import { isWeekend } from '../utils';
 import { isItalianHoliday } from '../constants/holidays';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import NotificationService from '../services/FixedNotificationService';
+const SuperNotificationService = require('../services/SuperNotificationService');
 import { useTheme } from '../contexts/ThemeContext';
 import { Linking } from 'react-native';
 
@@ -341,7 +341,8 @@ const StandbySettingsScreen = ({ navigation }) => {
       await updatePartialSettings({
         standbySettings: updatedStandbySettings
       });
-
+      // Aggiorna notifiche SOLO tramite SuperNotificationService
+      await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
       Alert.alert('Successo', 'Impostazioni reperibilità salvate correttamente', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
@@ -577,9 +578,9 @@ const StandbySettingsScreen = ({ navigation }) => {
                         standbySettings: updatedStandbySettings
                       });
                       
-                      // Aggiorna notifiche
-                      await NotificationService.updateStandbyNotifications();
-                      console.log('✅ Calendario reperibilità aggiornato e notifiche sincronizzate');
+                      // Aggiorna notifiche SOLO tramite SuperNotificationService
+                      await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
+                      console.log('✅ Calendario reperibilità aggiornato e notifiche sincronizzate (SuperNotificationService)');
                     } catch (error) {
                       console.error('❌ Errore salvando calendario reperibilità:', error);
                     }

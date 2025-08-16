@@ -520,9 +520,9 @@ export const useStandbyCalendar = (year, month) => {
       await DatabaseService.setStandbyDay(date, newStandbyStatus);
       await loadStandbyDays(); // Reload standby days
       
-      // Aggiorna le notifiche di reperibilità quando il calendario cambia
-      const NotificationService = (await import('../services/NotificationService')).default;
-      await NotificationService.updateStandbyNotifications();
+  // Aggiorna le notifiche di reperibilità quando il calendario cambia
+  const SuperNotificationService = require('../services/SuperNotificationService');
+  await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
       
     } catch (err) {
       console.error('Error toggling standby day:', err);
