@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -71,6 +71,37 @@ const StandbySettingsScreen = ({ navigation }) => {
   });
   const [tariffa24h, setTariffa24h] = useState(true); // true = 24h, false = 16h
   const [saturdayMode, setSaturdayMode] = useState('feriale'); // 'feriale' | 'feriale24' | 'festivo'
+  // Ref per evitare salvataggi duplicati a raffica
+  const lastEnabledRef = useRef(settings?.standbySettings?.enabled);
+
+  // Costruisce l'oggetto standbySettings coerente con lo stato form + giorni
+  const buildStandbySettings = (fd = formData, sd = standbyDays) => {
+    const dailyAllowance = parseFloat(fd.dailyAllowance) || 0;
+    const startHour = parseInt(fd.startHour) || 18;
+    const endHour = parseInt(fd.endHour) || 8;
+    return {
+      enabled: fd.enabled,
+      dailyAllowance,
+      startHour,
+      endHour,
+      includeWeekends: fd.includeWeekends,
+      includeHolidays: fd.includeHolidays,
+      travelWithBonus: fd.travelWithBonus === true,
+      standbyDays: sd,
+      customFeriale16: parseFloat(fd.customFeriale16) || null,
+      customFeriale24: parseFloat(fd.customFeriale24) || null,
+      customFestivo: parseFloat(fd.customFestivo) || null,
+      customWeekly6Days: parseFloat(fd.customWeekly6Days) || null,
+      allowanceType: tariffa24h ? '24h' : '16h',
+      saturdayAsRest: saturdayMode === 'festivo',
+      saturdayMode,
+      weeklyMode: {
+        enabled: fd.weeklyModeEnabled === true,
+        option: fd.weeklyOption || 'base'
+      },
+      showInterventionsCard: fd.showInterventionsCard === true
+    };
+  };
 
   // Indennità CCNL ufficiali per livello (Unionmeccanica Confapi, 01/06/2025)
   const { getStandbyRatesForContract } = require('../constants');
@@ -143,6 +174,39 @@ const StandbySettingsScreen = ({ navigation }) => {
       setSaturdayMode(mode);
     }
   }, [settings]);
+
+  // Inizializza automaticamente le impostazioni se mancanti (prima apertura / install pulita)
+  useEffect(() => {
+    if (!isLoading && !settings.standbySettings) {
+      (async () => {
+        try {
+          const init = buildStandbySettings();
+          await updatePartialSettings({ standbySettings: init });
+          console.log('🔄 Inizializzazione standbySettings salvata automaticamente');
+        } catch (e) {
+          console.warn('Impossibile inizializzare standbySettings:', e);
+        }
+      })();
+    }
+  }, [isLoading, settings.standbySettings]);
+
+  // Auto-salvataggio quando si cambia lo switch enabled (richiesta utente)
+  useEffect(() => {
+    if (isLoading) return;
+    if (lastEnabledRef.current !== formData.enabled) {
+      lastEnabledRef.current = formData.enabled;
+      (async () => {
+        try {
+          const data = buildStandbySettings();
+          await updatePartialSettings({ standbySettings: data });
+          await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
+          console.log('💾 Auto-salvataggio reperibilità (toggle enabled)');
+        } catch (e) {
+          console.error('Errore auto-salvataggio toggle reperibilità:', e);
+        }
+      })();
+    }
+  }, [formData.enabled, isLoading]);
 
   const handleResetToCCNL = () => {
     setFormData(prev => ({
@@ -301,47 +365,16 @@ const StandbySettingsScreen = ({ navigation }) => {
       const dailyAllowance = parseFloat(formData.dailyAllowance) || 0;
       const startHour = parseInt(formData.startHour) || 18;
       const endHour = parseInt(formData.endHour) || 8;
-
       if (dailyAllowance < 0) {
-        Alert.alert('Errore', 'L\'indennità giornaliera non può essere negativa');
+        Alert.alert('Errore', "L'indennità giornaliera non può essere negativa");
         return;
       }
-
       if (startHour < 0 || startHour > 23 || endHour < 0 || endHour > 23) {
         Alert.alert('Errore', 'Gli orari devono essere compresi tra 0 e 23');
         return;
       }
-
-      const updatedStandbySettings = {
-        enabled: formData.enabled,
-        dailyAllowance,
-        startHour,
-        endHour,
-        includeWeekends: formData.includeWeekends,
-        includeHolidays: formData.includeHolidays,
-        travelWithBonus: formData.travelWithBonus === true, // salva la nuova opzione
-        standbyDays, // aggiungo i giorni selezionati
-        // Personalizzazioni indennità CCNL
-        customFeriale16: parseFloat(formData.customFeriale16) || null,
-        customFeriale24: parseFloat(formData.customFeriale24) || null,
-        customFestivo: parseFloat(formData.customFestivo) || null,
-  customWeekly6Days: parseFloat(formData.customWeekly6Days) || null,
-        // Impostazioni aggiuntive
-        allowanceType: tariffa24h ? '24h' : '16h',
-        saturdayAsRest: saturdayMode === 'festivo', // retrocompatibilità
-  saturdayMode,
-        weeklyMode: {
-          enabled: formData.weeklyModeEnabled === true,
-          option: formData.weeklyOption || 'base'
-        },
-        // Preferenza Dashboard
-        showInterventionsCard: formData.showInterventionsCard === true
-      };
-
-      await updatePartialSettings({
-        standbySettings: updatedStandbySettings
-      });
-      // Aggiorna notifiche SOLO tramite SuperNotificationService
+      const updatedStandbySettings = buildStandbySettings();
+      await updatePartialSettings({ standbySettings: updatedStandbySettings });
       await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
       Alert.alert('Successo', 'Impostazioni reperibilità salvate correttamente', [
         { text: 'OK', onPress: () => navigation.goBack() }

@@ -22,6 +22,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.4',
+      date: '16 agosto 2025',
+      changes: [
+        'Aggiornamento v1.0.4'
+      ]
+    },
+    {
       version: '1.0.3',
       date: '16 agosto 2025',
       changes: [
