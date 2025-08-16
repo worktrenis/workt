@@ -467,7 +467,7 @@ export const useSettings = () => {
       // If standbySettings provided, merge its fields instead of replacing whole object
       if (partialSettings.standbySettings) {
         updatedSettings.standbySettings = {
-          ...(settings.standbySettings || {}),
+          ...(settings.standbySettings || DEFAULT_SETTINGS.standbySettings), // Usa i default se non esiste
           ...(partialSettings.standbySettings || {})
         };
       }
