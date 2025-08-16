@@ -461,7 +461,23 @@ export const useSettings = () => {
 
   const updatePartialSettings = async (partialSettings) => {
     try {
-      const updatedSettings = { ...settings, ...partialSettings };
+      // Perform deep merge for nested settings we know can be partially updated
+      const updatedSettings = { ...settings };
+
+      // If standbySettings provided, merge its fields instead of replacing whole object
+      if (partialSettings.standbySettings) {
+        updatedSettings.standbySettings = {
+          ...(settings.standbySettings || {}),
+          ...(partialSettings.standbySettings || {})
+        };
+      }
+
+      // Merge other top-level partials shallowly
+      const shallowKeys = Object.keys(partialSettings).filter(k => k !== 'standbySettings');
+      for (const k of shallowKeys) {
+        updatedSettings[k] = partialSettings[k];
+      }
+
       await updateSettings(updatedSettings);
     } catch (err) {
       console.error('Error updating partial settings:', err);
