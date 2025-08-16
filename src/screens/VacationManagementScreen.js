@@ -14,18 +14,24 @@ import { useTheme, lightTheme } from '../contexts/ThemeContext';
 import VacationService from '../services/VacationService';
 
 // Componenti riutilizzati dal TimeEntryForm per mantenere coerenza visiva
-const ModernCard = ({ children, style, theme }) => (
-  <View style={[createStyles(theme).modernCard, style]}>
-    {children}
-  </View>
-);
+const ModernCard = ({ children, style, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <View style={[createStyles(safeTheme).modernCard, style]}>
+      {children}
+    </View>
+  );
+};
 
-const SectionHeader = ({ title, icon, iconColor, theme }) => (
-  <View style={createStyles(theme).sectionHeader}>
-    <MaterialCommunityIcons name={icon} size={24} color={iconColor} />
-    <Text style={createStyles(theme).sectionHeaderTitle}>{title}</Text>
-  </View>
-);
+const SectionHeader = ({ title, icon, iconColor, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <View style={createStyles(safeTheme).sectionHeader}>
+      <MaterialCommunityIcons name={icon} size={24} color={iconColor} />
+      <Text style={createStyles(safeTheme).sectionHeaderTitle}>{title}</Text>
+    </View>
+  );
+};
 
 const VacationCard = ({ request, onEdit, onDelete, theme }) => {
   const getStatusColor = (status) => {

@@ -16,32 +16,41 @@ import VacationService from '../services/VacationService';
 import { useTheme, lightTheme } from '../contexts/ThemeContext';
 
 // Componenti riutilizzati dal TimeEntryForm per mantenere coerenza visiva
-const ModernCard = ({ children, style, theme }) => (
-  <View style={[createStyles(theme).modernCard, style]}>
-    {children}
-  </View>
-);
-
-const SectionHeader = ({ title, icon, iconColor, theme }) => (
-  <View style={createStyles(theme).sectionHeader}>
-    <MaterialCommunityIcons name={icon} size={24} color={iconColor} />
-    <Text style={createStyles(theme).sectionHeaderTitle}>{title}</Text>
-  </View>
-);
-
-const InputRow = ({ label, children, icon, required = false, theme }) => (
-  <View style={createStyles(theme).inputRow}>
-    <View style={createStyles(theme).inputLabelContainer}>
-      {icon && <MaterialCommunityIcons name={icon} size={20} color={theme.colors.textSecondary} style={createStyles(theme).inputIcon} />}
-      <Text style={createStyles(theme).inputLabel}>
-        {label} {required && <Text style={createStyles(theme).requiredMark}>*</Text>}
-      </Text>
-    </View>
-    <View style={createStyles(theme).inputContainer}>
+const ModernCard = ({ children, style, theme }) => {
+  const safeTheme = theme || lightTheme; // fallback
+  return (
+    <View style={[createStyles(safeTheme).modernCard, style]}>
       {children}
     </View>
-  </View>
-);
+  );
+};
+
+const SectionHeader = ({ title, icon, iconColor, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <View style={createStyles(safeTheme).sectionHeader}>
+      <MaterialCommunityIcons name={icon} size={24} color={iconColor} />
+      <Text style={createStyles(safeTheme).sectionHeaderTitle}>{title}</Text>
+    </View>
+  );
+};
+
+const InputRow = ({ label, children, icon, required = false, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <View style={createStyles(safeTheme).inputRow}>
+      <View style={createStyles(safeTheme).inputLabelContainer}>
+        {icon && <MaterialCommunityIcons name={icon} size={20} color={safeTheme.colors.textSecondary} style={createStyles(safeTheme).inputIcon} />}
+        <Text style={createStyles(safeTheme).inputLabel}>
+          {label} {required && <Text style={createStyles(safeTheme).requiredMark}>*</Text>}
+        </Text>
+      </View>
+      <View style={createStyles(safeTheme).inputContainer}>
+        {children}
+      </View>
+    </View>
+  );
+};
 
 const VacationSettingsScreen = ({ navigation }) => {
   const themeContext = useTheme();

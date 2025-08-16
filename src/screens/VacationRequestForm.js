@@ -19,62 +19,51 @@ import VacationService from '../services/VacationService';
 import { formatDate } from '../utils';
 
 // Componenti moderni identici al TimeEntryForm
-const ModernCard = ({ children, style, theme }) => (
-  <View style={[createStyles(theme).modernCard, style]}>
-    {children}
-  </View>
-);
-
-const SectionHeader = ({ title, icon, iconColor = '#666', onPress, expandable = false, expanded = false, theme }) => (
-  <TouchableOpacity
-    style={createStyles(theme).sectionHeader}
-    onPress={onPress}
-    activeOpacity={expandable ? 0.7 : 1}
-    disabled={!expandable}
-  >
-    <MaterialCommunityIcons name={icon} size={20} color={iconColor} />
-    <Text style={createStyles(theme).sectionTitle}>{title}</Text>
-    {expandable && (
-      <MaterialCommunityIcons 
-        name={expanded ? 'chevron-up' : 'chevron-down'} 
-        size={20} 
-        color={theme.colors.textSecondary} 
-      />
-    )}
-  </TouchableOpacity>
-);
-
-const InputRow = ({ label, children, required = false, theme }) => (
-  <View style={createStyles(theme).inputRow}>
-    <Text style={createStyles(theme).inputLabel}>
-      {label}
-      {required && <Text style={createStyles(theme).requiredMark}> *</Text>}
-    </Text>
-    {children}
-  </View>
-);
-
-const ModernSwitch = ({ label, value, onValueChange, description }) => (
-  <View style={styles.switchRow}>
-    <View style={styles.switchContent}>
-      <Text style={styles.switchLabel}>{label}</Text>
-      {description && <Text style={styles.switchDescription}>{description}</Text>}
+const ModernCard = ({ children, style, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <View style={[createStyles(safeTheme).modernCard, style]}>
+      {children}
     </View>
-    <Switch
-      value={value}
-      onValueChange={onValueChange}
-      trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-      thumbColor={value ? '#4CAF50' : '#f4f3f4'}
-    />
-  </View>
-);
+  );
+};
 
-const InfoBadge = ({ label, value, color = '#4CAF50', backgroundColor = '#E8F5E9' }) => (
-  <View style={[styles.infoBadge, { backgroundColor }]}>
-    <Text style={[styles.infoBadgeLabel, { color }]}>{label}</Text>
-    {value && <Text style={[styles.infoBadgeValue, { color }]}>{value}</Text>}
-  </View>
-);
+const SectionHeader = ({ title, icon, iconColor = '#666', onPress, expandable = false, expanded = false, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <TouchableOpacity
+      style={createStyles(safeTheme).sectionHeader}
+      onPress={onPress}
+      activeOpacity={expandable ? 0.7 : 1}
+      disabled={!expandable}
+    >
+      <MaterialCommunityIcons name={icon} size={20} color={iconColor} />
+      <Text style={createStyles(safeTheme).sectionTitle}>{title}</Text>
+      {expandable && (
+        <MaterialCommunityIcons 
+          name={expanded ? 'chevron-up' : 'chevron-down'} 
+          size={20} 
+          color={safeTheme.colors.textSecondary} 
+        />
+      )}
+    </TouchableOpacity>
+  );
+};
+
+const InputRow = ({ label, children, required = false, theme }) => {
+  const safeTheme = theme || lightTheme;
+  return (
+    <View style={createStyles(safeTheme).inputRow}>
+      <Text style={createStyles(safeTheme).inputLabel}>
+        {label}
+        {required && <Text style={createStyles(safeTheme).requiredMark}> *</Text>}
+      </Text>
+      {children}
+    </View>
+  );
+};
+
+// NOTE: ModernSwitch e InfoBadge spostati dentro il componente principale
 
 const requestTypes = [
   { label: 'Ferie', value: 'vacation', color: '#4CAF50', icon: 'beach' },
@@ -93,6 +82,26 @@ const VacationRequestForm = ({ route, navigation }) => {
   const themeContext = useTheme();
   const theme = themeContext?.theme || lightTheme; // Fallback di sicurezza
   const styles = createStyles(theme);
+  const ModernSwitch = ({ label, value, onValueChange, description }) => (
+    <View style={styles.switchRow}>
+      <View style={styles.switchContent}>
+        <Text style={styles.switchLabel}>{label}</Text>
+        {description && <Text style={styles.switchDescription}>{description}</Text>}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
+        thumbColor={value ? '#4CAF50' : '#f4f3f4'}
+      />
+    </View>
+  );
+  const InfoBadge = ({ label, value, color = '#4CAF50', backgroundColor = '#E8F5E9' }) => (
+    <View style={[styles.infoBadge, { backgroundColor }]}>
+      <Text style={[styles.infoBadgeLabel, { color }]}>{label}</Text>
+      {value && <Text style={[styles.infoBadgeValue, { color }]}>{value}</Text>}
+    </View>
+  );
   const today = new Date();
   const [form, setForm] = useState({
     type: 'vacation',
