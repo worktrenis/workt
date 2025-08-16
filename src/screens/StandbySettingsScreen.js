@@ -602,14 +602,9 @@ const StandbySettingsScreen = ({ navigation }) => {
                     
                     // Salva immediatamente in settings
                     try {
-                      const updatedStandbySettings = {
-                        ...settings.standbySettings,
-                        standbyDays: newStandbyDays
-                      };
-                      
-                      await updatePartialSettings({
-                        standbySettings: updatedStandbySettings
-                      });
+                      // Costruisce l'oggetto completo partendo dai valori correnti del form
+                      const updatedStandbySettings = buildStandbySettings(undefined, newStandbyDays);
+                      await updatePartialSettings({ standbySettings: updatedStandbySettings });
                       
                       // Aggiorna notifiche SOLO tramite SuperNotificationService
                       await SuperNotificationService.scheduleNotifications(await SuperNotificationService.getSettings(), true);
