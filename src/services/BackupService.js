@@ -741,6 +741,8 @@ class BackupService {
             sizeKB: fileInfo.size ? (fileInfo.size / 1024).toFixed(2) + 'KB' : 'unknown',
             exists: fileInfo.exists
           });
+
+          const fileSize = fileInfo.size || jsonString.length; // normalizza dimensione
           
           // Condividi/Salva con expo-sharing
           if (await Sharing.isAvailableAsync()) {
@@ -754,23 +756,20 @@ class BackupService {
             
             // Salva SOLO in AsyncStorage per referenza nella lista (senza duplicare il file)
             const backupKey = `manual_backup_${timestamp.replace(/[:.]/g, '_')}`;
-            const backupMetadata = {
+            // Salva l'intero backup (non solo metadati) per consentire ripristino dalla lista
+            const fullPayload = {
+              ...backupData,
               backupInfo: {
-                name: fileName,
-                created: timestamp,
-                type: 'manual',
-                version: '1.0',
-                app: 'WorkTracker',
-                entries: data.workEntries?.length || 0,
-                size: fileSize, // 🔧 FIX: Aggiungi dimensione file
+                ...backupData.backupInfo,
+                size: fileSize,
                 destination: 'sharing',
                 path: `Salvato dall'utente`,
                 filePath: `File salvato nella destinazione scelta dall'utente`,
                 fullPath: `File condiviso: ${fileName}`
               }
             };
-            await AsyncStorage.setItem(backupKey, JSON.stringify(backupMetadata));
-            console.log('💾 Metadata salvato in AsyncStorage:', backupKey);
+            await AsyncStorage.setItem(backupKey, JSON.stringify(fullPayload));
+            console.log('💾 Backup COMPLETO salvato in AsyncStorage (sharing):', backupKey, 'size:', JSON.stringify(fullPayload).length);
             
             return { 
               success: true, 
@@ -796,25 +795,21 @@ class BackupService {
           if (shareResult.action === Share.sharedAction) {
             // Salva SOLO metadata in AsyncStorage per referenza
             const backupKey = `manual_backup_${timestamp.replace(/[:.]/g, '_')}`;
-            const backupMetadata = {
+            const fullPayload = {
+              ...backupData,
               backupInfo: {
-                name: fileName,
-                created: timestamp,
-                type: 'manual',
-                version: '1.0',
-                app: 'WorkTracker',
-                entries: data.workEntries?.length || 0,
-                size: jsonString.length, // 🔧 FIX: Aggiungi dimensione JSON
+                ...backupData.backupInfo,
+                size: jsonString.length,
                 destination: 'sharing',
                 path: 'Condiviso tramite sistema',
                 filePath: fileName,
                 fullPath: `Condiviso: ${fileName}`
               }
             };
-            await AsyncStorage.setItem(backupKey, JSON.stringify(backupMetadata));
+            await AsyncStorage.setItem(backupKey, JSON.stringify(fullPayload));
             await this.updateBackupList(fileName, backupKey, 'manual');
             
-            console.log('✅ Backup condiviso con Share API');
+            console.log('✅ Backup condiviso con Share API (salvato completo)');
             return { 
               success: true, 
               method: 'share-api', 
@@ -833,17 +828,22 @@ class BackupService {
       
       // Ultimo fallback: AsyncStorage
       const backupKey = `manual_backup_${timestamp.replace(/[:.]/g, '_')}`;
-      const backupWithAsyncMetadata = {
+      // Calcola dimensione a partire dal JSON completo
+      const tempPayload = { ...backupData }; // per calcolo size preliminare
+      const baseJsonLength = JSON.stringify(tempPayload).length;
+      const fullPayload = {
         ...backupData,
         backupInfo: {
           ...backupData.backupInfo,
-          size: JSON.stringify(backupWithAsyncMetadata).length, // 🔧 FIX: Aggiungi dimensione JSON
+          size: baseJsonLength,
           destination: 'asyncstorage',
           path: backupKey,
           filePath: `AsyncStorage: ${backupKey}`
         }
       };
-      await AsyncStorage.setItem(backupKey, JSON.stringify(backupWithAsyncMetadata));
+      // Ricalcola dimensione includendo backupInfo aggiornato
+      fullPayload.backupInfo.size = JSON.stringify(fullPayload).length;
+      await AsyncStorage.setItem(backupKey, JSON.stringify(fullPayload));
       
       // Aggiorna lista backup
       await this.updateBackupList(fileName, backupKey, 'manual');
@@ -854,7 +854,7 @@ class BackupService {
         method: 'asyncstorage', 
         fileName,
         backupKey,
-        message: 'Backup salvato nella memoria dell\'app!'
+  message: 'Backup salvato nella memoria dell\'app!'
       };
       
     } catch (error) {
@@ -930,7 +930,7 @@ class BackupService {
   async getExistingBackups() {
     try {
       const keys = await AsyncStorage.getAllKeys();
-      console.log(`🔍 [DEBUG] Tutte le chiavi AsyncStorage (${keys.length}):`, keys.slice(0, 10)); // Mostra prime 10
+  if (typeof logDebug === 'function') logDebug(`🔍 [DEBUG] Chiavi AsyncStorage (${keys.length}) prime 10:`, keys.slice(0, 10));
       
       const backupKeys = keys.filter(key => 
         key.startsWith('backup_') || 
@@ -940,10 +940,10 @@ class BackupService {
         key.startsWith('worktracker-backup-')
       );
       
-      console.log(`🔍 [DEBUG] Chiavi backup filtrate (${backupKeys.length}):`, backupKeys);
+  if (typeof logDebug === 'function') logDebug(`🔍 [DEBUG] Chiavi backup filtrate (${backupKeys.length}):`, backupKeys);
       
       if (backupKeys.length === 0) {
-        console.log('📂 Nessun backup trovato in AsyncStorage');
+  if (typeof logInfo === 'function') logInfo('📂 Nessun backup trovato in AsyncStorage');
         return [];
       }
 
@@ -955,8 +955,14 @@ class BackupService {
             const parsed = JSON.parse(backupData);
             // Supporta sia il formato nuovo (metadata) che quello vecchio (backupInfo)
             const metadata = parsed.metadata || parsed.backupInfo || {};
+
+            // Rileva caso solo metadati (manca workEntries & altre sezioni attese)
+            const hasDataSections = parsed.workEntries || parsed.data || parsed.standbyDays || parsed.settings;
+            if (!hasDataSections) {
+              if (typeof logWarn === 'function') logWarn(`⚠️ Backup ${key} solo metadati (vecchio formato)`);
+            }
             
-            console.log(`🔍 [DEBUG] Backup ${key}:`, {
+            if (typeof logDebug === 'function') logDebug(`🔍 [DEBUG] Backup ${key}:`, {
               hasMetadata: !!metadata,
               metadataKeys: Object.keys(metadata),
               type: metadata.type,
@@ -980,17 +986,17 @@ class BackupService {
             backups.push(backup);
           }
         } catch (parseError) {
-          console.warn(`⚠️ Errore parsing backup ${key}:`, parseError);
+          if (typeof logWarn === 'function') logWarn(`⚠️ Errore parsing backup ${key}:`, parseError);
         }
       }
 
       // Ordina per data di creazione (più recenti prima)
       backups.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       
-      console.log(`📂 Trovati ${backups.length} backup esistenti`);
+  if (typeof logInfo === 'function') logInfo(`📂 Trovati ${backups.length} backup esistenti`);
       return backups;
     } catch (error) {
-      console.error('❌ Errore lettura backup esistenti:', error);
+  if (typeof logError === 'function') logError('❌ Errore lettura backup esistenti:', error);
       return [];
     }
   }

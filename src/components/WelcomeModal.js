@@ -1,5 +1,6 @@
 // 🎉 WELCOME MODAL - Messaggio di benvenuto per nuovi utenti
 import React, { useState, useEffect } from 'react';
+import { CCNL_CONTRACTS } from '../constants';
 import {
   View,
   Text,
@@ -30,19 +31,15 @@ const WelcomeModal = ({ visible, onClose, onNavigateToSettings, onNavigateToTime
   const [customSalary, setCustomSalary] = useState('');
   const [isCustomSalary, setIsCustomSalary] = useState(false);
 
-  // 📋 Livelli CCNL Metalmeccanico PMI con retribuzioni (valori ufficiali)
-  const ccnlLevels = {
-    '1': { name: 'Livello 1 - Apprendista', salary: 1417 },
-    '2': { name: 'Livello 2 - Operaio generico', salary: 1565 },
-    '3': { name: 'Livello 3 - Operaio comune', salary: 1737 },
-    '4': { name: 'Livello 4 - Operaio specializzato', salary: 1812 },
-    '5': { name: 'Livello 5 - Operaio qualificato', salary: 1941 },
-    '6': { name: 'Livello 6 - Tecnico', salary: 2081 },
-    '7': { name: 'Livello 7 - Tecnico specializzato', salary: 2233 },
-    '8': { name: 'Livello 8 - Quadro tecnico', salary: 2428 },
-    '9': { name: 'Livello 9 - Responsabile', salary: 2700 },
-    'custom': { name: 'Altro contratto (personalizzabile)', salary: 0 }
-  };
+  // 📋 Livelli CCNL dinamici da CCNL_CONTRACTS
+  const ccnlLevels = {};
+  CCNL_CONTRACTS.forEach((contract, idx) => {
+    ccnlLevels[contract.livelloId || String(idx + 1)] = {
+      name: contract.livello,
+      salary: contract.retribuzioneMensile
+    };
+  });
+  ccnlLevels['custom'] = { name: 'Altro contratto (personalizzabile)', salary: 0 };
 
   const getCurrentSalary = () => {
     if (isCustomSalary || selectedLevel === 'custom') {
@@ -374,7 +371,7 @@ const WelcomeModal = ({ visible, onClose, onNavigateToSettings, onNavigateToTime
                           {Object.entries(ccnlLevels).map(([key, level]) => (
                             <Picker.Item
                               key={key}
-                              label={level.salary > 0 ? `${level.name} - €${level.salary.toLocaleString()}/mese` : level.name}
+                              label={level.salary > 0 ? `${level.name} - €${Number(level.salary).toLocaleString('it-IT')}/mese` : level.name}
                               value={key}
                             />
                           ))}

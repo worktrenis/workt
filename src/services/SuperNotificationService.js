@@ -44,7 +44,6 @@ class SuperNotificationService {
     this.hasPermission = false;
     this.databaseService = null; // Import dinamico per evitare loop
     this.isReprogramming = false; // Protezione contro chiamate multiple
-    
     // Import del DatabaseService
     try {
       this.DatabaseServiceInstance = require('./DatabaseService').default;
@@ -52,7 +51,7 @@ class SuperNotificationService {
       console.warn('⚠️ Errore import DatabaseService:', error.message);
       this.DatabaseServiceInstance = null;
     }
-    
+    this.periodicNotificationTimer = null;
     console.log('🚀 SuperNotificationService inizializzato', this.isReactNativeEnvironment ? '(React Native)' : '(Node.js Mock)');
   }
 
@@ -78,16 +77,14 @@ class SuperNotificationService {
             await Notifications.setNotificationChannelAsync('default', {
               name: 'WorkT - Promemoria',
               importance: Notifications.AndroidImportance.HIGH,
-              vibrationPattern: [0, 250, 250, 250],
-              lightColor: '#1E3A8A',
-              sound: 'default',
-              showBadge: true,
             });
             console.log('📱 Canale notifiche Android configurato');
           } catch (channelError) {
-            console.warn('⚠️ Errore configurazione canale Android:', channelError.message);
+            console.warn('⚠️ Errore configurazione canale notifiche:', channelError.message);
           }
         }
+        // Avvia il trigger periodico per la riprogrammazione notifiche ogni 2 ore
+        this.startPeriodicNotificationCheck();
         
         // Verifica permessi
         this.hasPermission = await this.hasPermissions();
@@ -104,6 +101,23 @@ class SuperNotificationService {
       console.error('❌ Errore inizializzazione SuperNotificationService:', error);
       return false;
     }
+  }
+
+  // ⏰ TIMER PERIODICO PER RIPROGRAMMAZIONE NOTIFICHE
+  startPeriodicNotificationCheck() {
+    if (this.periodicNotificationTimer) {
+      clearInterval(this.periodicNotificationTimer);
+    }
+    // Ogni 2 ore (7200000 ms)
+    this.periodicNotificationTimer = setInterval(async () => {
+      try {
+        console.log('⏰ Trigger periodico: controllo e riprogrammazione notifiche...');
+        await this.checkAndReprogramNotifications();
+      } catch (err) {
+        console.warn('⚠️ Errore trigger periodico notifiche:', err.message);
+      }
+    }, 7200000);
+    console.log('⏰ Timer periodico notifiche avviato (ogni 2 ore)');
   }
 
   // 🔄 SETUP LISTENER APPSTATE PER RIPROGRAMMAZIONE AUTOMATICA

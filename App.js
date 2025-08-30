@@ -1,3 +1,4 @@
+import './src/utils/logControl'; // 🔇 Filtro log centralizzato
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
@@ -829,8 +830,10 @@ export default function App() {
           // Ora inizializza il nuovo sistema avanzato
           const superInitialized = await SuperNotificationService.initialize();
           console.log(`🚀 App: SuperNotificationService inizializzato: ${superInitialized ? '✅ OK' : '❌ FAILED'}`);
-          
+
           if (superInitialized) {
+            // Attiva riprogrammazione notifiche ogni volta che l'app viene aperta
+            await SuperNotificationService.checkAndReprogramNotifications();
             // Verifica automaticamente notifiche mancate e ripristina
             console.log('🔄 App: Controllo recovery notifiche...');
             const recoveredCount = await SuperNotificationService.checkAndRecoverMissedNotifications();

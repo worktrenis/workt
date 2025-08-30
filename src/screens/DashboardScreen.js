@@ -4205,59 +4205,29 @@ const DashboardScreen = ({ navigation, route }) => {
             style={styles.collapsibleHeader}
             onPress={() => setIsDailyBreakdownExpanded(!isDailyBreakdownExpanded)}
             activeOpacity={0.7}
-            children={(
-              <View style={{width: '100%'}}>
-                <View style={styles.collapsibleHeaderContent}>
-                  <MaterialCommunityIcons name="calendar-today" size={20} color={theme.colors.primary} />
-                  <Text style={styles.collapsibleTitle}>Riepilogo Giornaliero</Text>
-                  <MaterialCommunityIcons 
-                    name={isDailyBreakdownExpanded ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    color={theme.colors.textSecondary} 
-                  />
-                </View>
-                
-                <View style={styles.miniSummary}>
-                  <Text style={styles.miniSummaryText}>
-                    {dailyData?.length || 0} giorni totali • {formatSafeHours(dailyData.reduce((total, day) => total + (day?.hours || 0), 0))} ore lavoro
-                  </Text>
-                  <Text style={styles.miniSummaryText}>
-                    {formatSafeAmount(dailyData.reduce((total, day) => total + (day?.earnings || 0), 0))} guadagno totale
-                  </Text>
-                  {(totalStandbyOnlyDays || 0) > 0 && (
-                    <Text style={styles.miniSummaryText}>
-                      🟡 {totalStandbyOnlyDays || 0} giorni solo reperibilità
-                    </Text>
-                  )}
-                  {(workAndStandbyDays || 0) > 0 && (
-                    <Text style={styles.miniSummaryText}>
-                      🟠 {workAndStandbyDays || 0} giorni lavoro + reperibilità
-                    </Text>
-                  )}
-                  {(workOnlyDays || 0) > 0 && (
-                    <Text style={styles.miniSummaryText}>
-                      🔵 {workOnlyDays || 0} giorni lavoro ordinario
-                    </Text>
-                  )}
-                  {(saturdayWorkDays || 0) > 0 && (
-                    <Text style={styles.miniSummaryText}>
-                      📅 {saturdayWorkDays || 0} giorni lavoro sabato
-                    </Text>
-                  )}
-                  {(sundayWorkDays || 0) > 0 && (
-                    <Text style={styles.miniSummaryText}>
-                      🌅 {sundayWorkDays || 0} giorni lavoro domenica
-                    </Text>
-                  )}
-                  {(holidayWorkDays || 0) > 0 && (
-                    <Text style={styles.miniSummaryText}>
-                      🎉 {holidayWorkDays || 0} giorni lavoro festivi
-                    </Text>
-                  )}
-                </View>
+          >
+            <View style={{width: '100%'}}>
+              <View style={styles.collapsibleHeaderContent}>
+                <MaterialCommunityIcons name="calendar-today" size={20} color={theme.colors.primary} />
+                <Text style={styles.collapsibleTitle}>Riepilogo Giornaliero</Text>
+                <MaterialCommunityIcons 
+                  name={String(isDailyBreakdownExpanded ? "chevron-up" : "chevron-down")}
+                  size={20}
+                  color={theme.colors.textSecondary}
+                />
               </View>
-            )}
-          />
+              <View style={styles.miniSummary}>
+                <Text style={styles.miniSummaryText}>{String(dailyData?.length || 0)} giorni totali • {String(formatSafeHours(dailyData.reduce((total, day) => total + (day?.hours || 0), 0)))} ore lavoro</Text>
+                <Text style={styles.miniSummaryText}>{String(formatSafeAmount(dailyData.reduce((total, day) => total + (day?.earnings || 0), 0)))} guadagno totale</Text>
+                {(totalStandbyOnlyDays || 0) > 0 && (<Text style={styles.miniSummaryText}>{`🟡 ${totalStandbyOnlyDays || 0} giorni solo reperibilità`}</Text>)}
+                {(workAndStandbyDays || 0) > 0 && (<Text style={styles.miniSummaryText}>{`🟠 ${workAndStandbyDays || 0} giorni lavoro + reperibilità`}</Text>)}
+                {(workOnlyDays || 0) > 0 && (<Text style={styles.miniSummaryText}>{`🔵 ${workOnlyDays || 0} giorni lavoro ordinario`}</Text>)}
+                {(saturdayWorkDays || 0) > 0 && (<Text style={styles.miniSummaryText}>{`📅 ${saturdayWorkDays || 0} giorni lavoro sabato`}</Text>)}
+                {(sundayWorkDays || 0) > 0 && (<Text style={styles.miniSummaryText}>{`🌅 ${sundayWorkDays || 0} giorni lavoro domenica`}</Text>)}
+                {(holidayWorkDays || 0) > 0 && (<Text style={styles.miniSummaryText}>{`🎉 ${holidayWorkDays || 0} giorni lavoro festivi`}</Text>)}
+              </View>
+            </View>
+          </TouchableOpacity>
           
           {isDailyBreakdownExpanded && (
             <View style={styles.collapsibleContent}>
@@ -4286,17 +4256,15 @@ const DashboardScreen = ({ navigation, route }) => {
                       <View style={{width: '100%'}}>
                         <View style={styles.dailyListHeader}>
                           <View style={styles.dailyListDate}>
-                            <Text style={styles.dailyListDay}>{String(day?.dayOfMonth || 1)}</Text>
-                            <Text style={styles.dailyListDateText}>
-                              {String(day?.dateObj?.toLocaleDateString?.('it-IT', { weekday: 'short' }) || 'N/A')}
-                            </Text>
+                            <Text style={styles.dailyListDay}>{String(day?.dayOfMonth || '')}</Text>
+                            <Text style={styles.dailyListDateText}>{String(day?.dateObj?.toLocaleDateString?.('it-IT', { weekday: 'short' })) || ''}</Text>
                           </View>
                           <View style={styles.dailyListType}>
-                            <Text style={styles.dailyListTypeIcon}>{String(day?.typeIcon || '⭕')}</Text>
-                            <Text style={styles.dailyListTypeText}>{String(day?.typeLabel || 'N/A')}</Text>
+                            <Text style={styles.dailyListTypeIcon}>{String(day?.typeIcon || '')}</Text>
+                            <Text style={styles.dailyListTypeText}>{String(day?.typeLabel || '')}</Text>
                           </View>
                           <View style={styles.dailyListStats}>
-                            <Text style={styles.dailyListHours}>{formatSafeHours(day?.hours || 0)}</Text>
+                            <Text style={styles.dailyListHours}>{String(formatSafeHours(day?.hours || ''))}</Text>
                             {(() => {
                               const specialTypes = ['vacation','compensatory','fixed'];
                               const isSpecialDayType = specialTypes.includes(String(day?.dayType || ''));
@@ -4305,21 +4273,14 @@ const DashboardScreen = ({ navigation, route }) => {
                               if (isSpecialDayType && noWorkHours && !showEffective) {
                                 return null;
                               }
-                              return <Text style={styles.dailyListEarnings}>{formatSafeAmount(day?.earnings || 0)}</Text>;
+                              return <Text style={styles.dailyListEarnings}>{String(formatSafeAmount(day?.earnings || ''))}</Text>;
                             })()}
                           </View>
                         </View>
-                        
                         <View style={styles.dailyListDetails}>
-                          {day?.workEntry?.isStandbyDay && (
-                            <Text style={styles.dailyListDetail}>🟡 Reperibilità</Text>
-                          )}
-                          {day?.workEntry?.completamentoGiornata && 
-                            String(day.workEntry.completamentoGiornata) !== 'nessuno' && 
-                            String(day.workEntry.completamentoGiornata).trim() !== '' && (
-                            <Text style={styles.dailyListDetail}>
-                              Giornata completata con: {String(day.workEntry.completamentoGiornata || '')}
-                            </Text>
+                          {day?.workEntry?.isStandbyDay && (<Text style={styles.dailyListDetail}>{'🟡 Reperibilità'}</Text>)}
+                          {day?.workEntry?.completamentoGiornata && String(day.workEntry.completamentoGiornata) !== 'nessuno' && String(day.workEntry.completamentoGiornata).trim() !== '' && (
+                            <Text style={styles.dailyListDetail}>{`Giornata completata con: ${String(day.workEntry.completamentoGiornata || '')}`}</Text>
                           )}
                         </View>
                       </View>

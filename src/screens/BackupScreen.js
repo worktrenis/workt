@@ -466,15 +466,21 @@ const BackupScreen = ({ navigation }) => {
       
       // Combina e ordina tutti i backup per data (più recenti per primi)
       const allBackups = [...(manualBackups || []), ...(autoBackups || [])];
-      
-      // Normalizza le proprietà e aggiungi una key unica
-      const normalizedBackups = allBackups.map((backup, index) => ({
-        ...backup,
-        key: backup.name || `backup_${index}`,
-        createdAt: backup.createdAt || backup.date || new Date(),
-        size: backup.size || 0,
-        filePath: backup.filePath || backup.path // Assicura che filePath sia sempre disponibile
-      }));
+
+      // Normalizzazione: NON perdere la chiave reale di storage (serve per AsyncStorage.getItem)
+      const normalizedBackups = allBackups.map((backup, index) => {
+        const storageKey = backup.key || backup.backupKey || `backup_${index}`; // chiave reale
+        return {
+          ...backup,
+          storageKey,              // conserva la chiave originale (per sicurezza)
+            // key usata da FlatList: usiamo la stessa chiave reale per evitare mismatch
+          key: storageKey,
+          displayName: backup.name || storageKey, // nome da mostrare (UI può usare name già esistente)
+          createdAt: backup.createdAt || backup.date || new Date(),
+          size: backup.size || 0,
+          filePath: backup.filePath || backup.path // Assicura che filePath sia sempre disponibile
+        };
+      });
       
       normalizedBackups.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
       
@@ -599,7 +605,9 @@ const BackupScreen = ({ navigation }) => {
                 backupData = JSON.stringify(parsedData.data || parsedData);
               } else {
                 // Backup manuale - leggi da AsyncStorage
-                backupData = await AsyncStorage.getItem(backup.key);
+                const storageKey = backup.storageKey || backup.key; // usa sempre la chiave reale
+                backupData = await AsyncStorage.getItem(storageKey);
+                console.log('🔎 RESTORE manuale - uso storageKey:', storageKey, 'length:', backupData?.length || 0);
                 if (!backupData) {
                   throw new Error('Dati backup non trovati');
                 }
@@ -656,7 +664,9 @@ const BackupScreen = ({ navigation }) => {
         backupContent = await FileSystem.readAsStringAsync(backup.filePath);
       } else {
         // Backup manuale - leggi da AsyncStorage
-        backupContent = await AsyncStorage.getItem(backup.key);
+  const storageKey = backup.storageKey || backup.key;
+  backupContent = await AsyncStorage.getItem(storageKey);
+  console.log('📤 EXPORT manuale - uso storageKey:', storageKey, 'length:', backupContent?.length || 0);
         if (!backupContent) {
           throw new Error('Dati backup non trovati');
         }
