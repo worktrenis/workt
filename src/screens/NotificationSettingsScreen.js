@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import TimeInput from '../components/TimeInput';
 import { useTheme } from '../contexts/ThemeContext';
 const NotificationService = require('../services/SuperNotificationService');
 
@@ -415,6 +416,15 @@ const NotificationSettingsScreen = ({ navigation }) => {
     }
   };
 
+  const getCurrentTimeString = () => {
+    const date = getCurrentTime();
+    if (!date || !(date instanceof Date)) return '08:00';
+    const hh = date.getHours();
+    const mm = date.getMinutes();
+    const pad2 = (n) => (n < 10 ? `0${n}` : `${n}`);
+    return `${pad2(hh)}:${pad2(mm)}`;
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -780,26 +790,27 @@ const NotificationSettingsScreen = ({ navigation }) => {
         </View>
       )}
 
-      {/* Time Picker */}
+      {/* Time Input replaces circular picker for numeric entry */}
       {showTimePicker && (
-        <DateTimePicker
-          value={getCurrentTime()}
-          mode="time"
-          is24Hour={true}
-          display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-          onChange={(event, selectedTime) => {
-            console.log('🔍 DEBUG DateTimePicker onChange:', { timePickerField, selectedTime });
-            if (selectedTime && timePickerField) {
-              const parts = timePickerField.split('.');
-              const section = parts[0];
-              const field = parts.slice(1).join('.');
-              console.log('🔍 DEBUG DateTimePicker - section:', section, 'field:', field);
-              handleTimeChange(section, field, selectedTime);
-            } else {
-              setShowTimePicker(false);
-            }
-          }}
-        />
+        <View style={{padding: 16}}>
+          <Text style={{marginBottom: 8}}>Inserisci orario (HH:mm)</Text>
+          <TimeInput
+            value={getCurrentTimeString()}
+            onChange={(t) => {
+              // t is string like '07:30' or partial
+              if (t && t.length === 5) {
+                const parts = timePickerField.split('.');
+                const section = parts[0];
+                const field = parts.slice(1).join('.');
+                handleTimeChange(section, field, t);
+                setShowTimePicker(false);
+              }
+            }}
+          />
+          <TouchableOpacity onPress={() => setShowTimePicker(false)} style={{marginTop:12}}>
+            <Text style={{color: theme.colors.primary}}>Chiudi</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </SafeAreaView>
   );

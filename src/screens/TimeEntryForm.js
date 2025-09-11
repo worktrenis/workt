@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import TimeInput from '../components/TimeInput';
 import { formatDate, formatTime, formatCurrency } from '../utils';
 import { useSettings, useVacationAutoCompile } from '../hooks';
 import AutoBackupService from '../services/AutoBackupService';
@@ -3266,11 +3267,59 @@ const TimeEntryForm = ({ route, navigation }) => {
       setDateField(null);
     };
     
+    const [isEditing, setIsEditing] = useState(false);
+
+    const applyValue = (newVal) => {
+      // Aggiorna il form in base a fieldId
+      if (!fieldId) return;
+      if (fieldId.startsWith('viaggio')) {
+        const [, idx, field] = fieldId.split('-');
+        const viaggi = [...form.viaggi];
+        viaggi[parseInt(idx)][field] = newVal;
+        setForm({ ...form, viaggi });
+      } else if (fieldId.startsWith('intervento')) {
+        const [, idx, field] = fieldId.split('-');
+        const interventi = form.interventi.map(i => ({...i}));
+        interventi[parseInt(idx)][field] = newVal;
+        setForm({ ...form, interventi });
+      } else if (fieldId.startsWith('time')) {
+        // Generic fallback
+        setForm({ ...form, [fieldId]: newVal });
+      }
+    };
+
+    if (isEditing) {
+      return (
+        <View style={[styles.timeField, {padding: 8}]}> 
+          <Text style={styles.timeFieldLabel}>{label}</Text>
+          <TimeInput
+            value={value}
+            onChange={(t) => {
+              if (t && t.length === 5) {
+                applyValue(t);
+                setIsEditing(false);
+              } else {
+                applyValue(t);
+              }
+            }}
+            inputStyle={{width: 100}}
+          />
+          <View style={styles.timeFieldActions}>
+            <TouchableOpacity onPress={() => { setIsEditing(false); }}>
+              <Ionicons name="close-circle" size={18} color={styles.iconError.color} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      );
+    }
+
     return (
       <TouchableOpacity 
         style={styles.timeField} 
         onPress={() => {
-          onPress();
+          // Prefer inline editing with numeric input
+          setIsEditing(true);
+          try { onPress && onPress(); } catch(e){}
         }}
       >
         <Text style={styles.timeFieldLabel}>{label}</Text>
