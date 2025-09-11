@@ -843,6 +843,15 @@ export default function App() {
           const superInitialized = await SuperNotificationService.initialize();
           console.log(`🚀 App: SuperNotificationService inizializzato: ${superInitialized ? '✅ OK' : '❌ FAILED'}`);
 
+          // Registra task di background per riprogrammare notifiche (se compatibile)
+          try {
+            const BackgroundReprogramService = require('./src/services/BackgroundReprogramService');
+            const registered = await BackgroundReprogramService.ensureRegistered();
+            console.log('🔁 App: BackgroundReprogramService registered:', registered);
+          } catch (bgErr) {
+            console.warn('⚠️ App: BackgroundReprogramService non disponibile:', bgErr.message);
+          }
+
           if (superInitialized) {
             // Attiva riprogrammazione notifiche ogni volta che l'app viene aperta
             await SuperNotificationService.checkAndReprogramNotifications();
