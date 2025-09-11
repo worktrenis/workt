@@ -5,18 +5,22 @@
 let TaskManager, BackgroundFetch, SuperNotificationService;
 const TASK_NAME = 'WORKT_REPROGRAM_NOTIFS';
 
-function safeRequire(name) {
-  try {
-    return require(name);
-  } catch (e) {
-    console.warn(`⚠️ Modulo ${name} non disponibile:`, e.message);
-    return null;
-  }
+SuperNotificationService = require('./SuperNotificationService');
+
+// Metro non permette require dinamici (require(name)). Usiamo require statici
+try {
+  TaskManager = require('expo-task-manager');
+} catch (e) {
+  console.warn('⚠️ Modulo expo-task-manager non disponibile:', e.message);
+  TaskManager = null;
 }
 
-SuperNotificationService = require('./SuperNotificationService');
-TaskManager = safeRequire('expo-task-manager');
-BackgroundFetch = safeRequire('expo-background-fetch');
+try {
+  BackgroundFetch = require('expo-background-fetch');
+} catch (e) {
+  console.warn('⚠️ Modulo expo-background-fetch non disponibile:', e.message);
+  BackgroundFetch = null;
+}
 
 async function defineTask() {
   if (!TaskManager || !BackgroundFetch) {
