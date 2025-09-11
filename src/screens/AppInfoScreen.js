@@ -22,6 +22,23 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.9',
+      date: '11 settembre 2025',
+      changes: [
+        'Aggiornamento v1.0.9'
+      ]
+    },
+    {
+      version: '1.0.8',
+      date: '30 agosto 2025',
+      changes: [
+        'Fix errore salary undefined in WelcomeModal',
+        'WelcomeModal sincronizzata con livelli e retribuzioni CCNL ufficiali',
+        'Migliorata coerenza dati tra onboarding e impostazioni contratto',
+        'Fix minori UI e localizzazione'
+      ]
+    },
+    {
       version: '1.0.7',
       date: '16 agosto 2025',
       changes: [

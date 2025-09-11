@@ -31,12 +31,12 @@ const WelcomeModal = ({ visible, onClose, onNavigateToSettings, onNavigateToTime
   const [customSalary, setCustomSalary] = useState('');
   const [isCustomSalary, setIsCustomSalary] = useState(false);
 
-  // 📋 Livelli CCNL dinamici da CCNL_CONTRACTS
+  // 📋 Livelli CCNL dinamici da CCNL_CONTRACTS (oggetto)
   const ccnlLevels = {};
-  CCNL_CONTRACTS.forEach((contract, idx) => {
-    ccnlLevels[contract.livelloId || String(idx + 1)] = {
-      name: contract.livello,
-      salary: contract.retribuzioneMensile
+  Object.entries(CCNL_CONTRACTS).forEach(([key, contract]) => {
+    ccnlLevels[key] = {
+      name: contract.name,
+      salary: contract.monthlySalary
     };
   });
   ccnlLevels['custom'] = { name: 'Altro contratto (personalizzabile)', salary: 0 };
@@ -45,13 +45,20 @@ const WelcomeModal = ({ visible, onClose, onNavigateToSettings, onNavigateToTime
     if (isCustomSalary || selectedLevel === 'custom') {
       return customSalary;
     }
-    return ccnlLevels[selectedLevel]?.salary?.toString() || '';
+    const levelObj = ccnlLevels[selectedLevel];
+    if (!levelObj || typeof levelObj.salary === 'undefined') {
+      // Fallback: prendi il primo livello disponibile
+      const firstKey = Object.keys(ccnlLevels)[0];
+      return ccnlLevels[firstKey]?.salary?.toString() || '';
+    }
+    return levelObj.salary?.toString() || '';
   };
 
   // 🔄 Inizializza il customSalary con il valore di default
   useEffect(() => {
     if (selectedLevel !== 'custom' && !isCustomSalary) {
-      setCustomSalary(ccnlLevels[selectedLevel].salary.toString());
+      const levelObj = ccnlLevels[selectedLevel];
+      setCustomSalary(levelObj && typeof levelObj.salary !== 'undefined' ? levelObj.salary.toString() : '');
     }
   }, [selectedLevel, isCustomSalary]);
 
