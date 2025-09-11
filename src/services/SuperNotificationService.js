@@ -131,20 +131,24 @@ class SuperNotificationService {
       console.log('🔄 AppState changed:', this.lastAppState, '→', nextAppState);
       
       // Quando l'app torna in foreground da background
-      if (this.lastAppState === 'background' && nextAppState === 'active') {
-        const timeSinceLastCheck = Date.now() - this.lastNotificationCheck;
-        
-        // Se è passata più di 2 ore (aumentato da 1 ora), verifica e riprogramma notifiche
-        if (timeSinceLastCheck > 2 * 60 * 60 * 1000) { // 2 ore
-          console.log('🔄 App tornata in foreground dopo 2+ ore, verifico notifiche...');
-          
-          // Aggiungi ulteriore delay per evitare conflitti con altre inizializzazioni
-          setTimeout(async () => {
-            await this.checkAndReprogramNotifications();
-            this.lastNotificationCheck = Date.now();
-          }, 2000); // 2 secondi di delay
+      if (this.lastAppState !== 'active' && nextAppState === 'active') {
+        // Ogni volta che l'app diventa active (cold start o resume) tentiamo la riprogrammazione
+        // Proteggiamo con un debounce semplice: non riprogrammare più di una volta ogni 10 secondi
+        const now = Date.now();
+        const timeSinceLast = now - (this.lastNotificationCheck || 0);
+        if (timeSinceLast < 10000) {
+          console.log(`⏭️ App attivata ma controllo recente (${Math.round(timeSinceLast/1000)}s fa), skip riprogrammazione`);
         } else {
-          console.log(`⏭️ App tornata in foreground ma controllo recente (${Math.round(timeSinceLastCheck/1000/60)} min fa)`);
+          console.log('🔄 App attivata: eseguo controllo e riprogrammazione notifiche...');
+          // Piccolo delay per evitare conflitti con altre inizializzazioni concorrenti
+          setTimeout(async () => {
+            try {
+              await this.checkAndReprogramNotifications();
+            } catch (err) {
+              console.warn('⚠️ Errore durante riprogrammazione on foreground:', err.message);
+            }
+            this.lastNotificationCheck = Date.now();
+          }, 800); // 800ms
         }
       }
       

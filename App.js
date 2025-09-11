@@ -816,6 +816,18 @@ export default function App() {
       
       // Inizializza il servizio notifiche con SuperNotificationService
       console.log('App: Preparing notification service...');
+      // Comando globale per forzare riprogrammazione notifiche (debug/diagnosi)
+      global.forceReprogramNotifications = async () => {
+        try {
+          console.log('🔧 Global: Forzo riprogrammazione notifiche (comando)');
+          const result = await SuperNotificationService.checkAndReprogramNotifications();
+          console.log('🔧 Global: Risultato riprogrammazione:', result);
+          return result;
+        } catch (err) {
+          console.error('🔧 Global: Errore forzatura riprogrammazione:', err.message);
+          return null;
+        }
+      };
       const initializeNotifications = async () => {
         try {
           console.log('🔔 App: Inizializzazione SuperNotificationService...');
