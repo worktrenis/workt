@@ -221,6 +221,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
         console.log('🔍 DEBUG - normalizedSettings finali:', JSON.stringify(normalizedSettings, null, 2));
         
         // Usa le impostazioni normalizzate
+        // Imposta anche il flag di reprogramOnOpen se presente
+        normalizedSettings.reprogramOnOpen = typeof loadedSettings.reprogramOnOpen === 'boolean' ? loadedSettings.reprogramOnOpen : true;
         setSettings(normalizedSettings);
       }
     } catch (error) {
@@ -251,6 +253,13 @@ const NotificationSettingsScreen = ({ navigation }) => {
       const success = await NotificationService.saveSettings(serviceSettings);
       if (success) {
         setSettings(newSettings);
+        // Salva anche il flag reprogramOnOpen nel servizio
+        try {
+          const svc = { ...serviceSettings, reprogramOnOpen: !!newSettings.reprogramOnOpen };
+          await NotificationService.saveSettings(svc);
+        } catch (err) {
+          console.warn('⚠️ Impossibile salvare reprogramOnOpen:', err.message);
+        }
         
         // Riprogramma automaticamente le notifiche con le nuove impostazioni
         await NotificationService.scheduleNotifications(serviceSettings, true);
@@ -465,6 +474,23 @@ const NotificationSettingsScreen = ({ navigation }) => {
           <Text style={styles.headerSubtitle}>
             Configura promemoria e avvisi per non dimenticare mai di registrare i tuoi orari di lavoro
           </Text>
+        </View>
+
+        {/* Toggle riprogrammazione all'apertura */}
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <MaterialCommunityIcons name="sync" size={24} color="#4CAF50" />
+            <Text style={styles.sectionTitle}>Riprogramma all'apertura</Text>
+            <Switch
+              value={!!normalizedSettings.reprogramOnOpen}
+              onValueChange={(value) => setSettings({ ...settings, reprogramOnOpen: value })}
+              trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
+              thumbColor={normalizedSettings.reprogramOnOpen ? '#4CAF50' : '#f4f3f4'}
+            />
+          </View>
+          <View style={styles.sectionContent}>
+            <Text style={styles.sectionSubtitle}>Quando attivo, l'app riprogramma automaticamente le notifiche ogni volta che viene aperta.</Text>
+          </View>
         </View>
 
         {/* Interruttore principale */}

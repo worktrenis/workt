@@ -170,7 +170,19 @@ class SuperNotificationService {
       }
       
       this.isReprogramming = true;
-      
+
+      // Rispetta la preferenza reprogramOnOpen se presente
+      try {
+        const userSettings = await this.getSettings();
+        if (userSettings && userSettings.reprogramOnOpen === false) {
+          console.log('⏸️ Riprogrammazione disabilitata dalle impostazioni (reprogramOnOpen=false)');
+          this.isReprogramming = false;
+          return { action: 'disabled_by_settings' };
+        }
+      } catch (settingErr) {
+        console.warn('⚠️ Impossibile leggere reprogramOnOpen:', settingErr.message);
+      }
+
       const scheduled = await this.getScheduledNotifications();
       console.log(`📅 Notifiche attualmente programmate: ${scheduled.length}`);
       
@@ -240,6 +252,7 @@ class SuperNotificationService {
     return {
       enabled: false,
       morningTime: '07:30',
+      reprogramOnOpen: true,
       eveningTime: '18:30',
       weekendsEnabled: false,
       workReminder: { enabled: false, morningTime: '07:30', weekendsEnabled: false },
