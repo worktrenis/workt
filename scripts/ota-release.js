@@ -67,6 +67,9 @@ function syncVersions(newVersion) {
 
 function main() {
   const args = parseArgs();
+  // Prefer message from environment (npm forwards --message as npm_config_message)
+  const envMessage = process.env.OTA_MESSAGE || process.env.npm_config_message;
+  if (envMessage) args.message = envMessage;
   const pkgPath = path.resolve(__dirname, '..', 'package.json');
   const pkg = readJson(pkgPath);
   const current = pkg.version;
