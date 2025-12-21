@@ -2,7 +2,7 @@
   "expo": {
     "name": "WorkT - Tracker Ore Lavoro",
     "slug": "workt",
-    "version": "1.0.11",
+    "version": "1.0.13",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,6 +20,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.workt.production",
+      "buildNumber": "12",
       "infoPlist": {
         "UIBackgroundModes": [
           "background-processing",
@@ -37,6 +38,7 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.workt.production",
+      "versionCode": 12,
       "permissions": [
         "WRITE_EXTERNAL_STORAGE",
         "READ_EXTERNAL_STORAGE",
@@ -65,7 +67,8 @@
         {
           "iCloudContainerEnvironment": "Production"
         }
-      ]
+      ],
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

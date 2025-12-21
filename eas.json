@@ -28,6 +28,18 @@
       },
       "channel": "production"
     },
+    "native": {
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "APP_CONFIG": "app-native.json",
+        "NODE_ENV": "production"
+      },
+      "channel": "production",
+      "distribution": "internal"
+    },
     "production-clean": {
       "autoIncrement": true,
       "android": {

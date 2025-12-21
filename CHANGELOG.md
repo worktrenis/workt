@@ -1,3 +1,9 @@
+### [1.0.12] - 21 dicembre 2025
+
+- Trasferta: coerenza riepilogo (mezza/intera) con importo calcolato
+- TimeEntryForm: aggiunto "Totale ore giornata (lavoro + viaggio)" nel riepilogo
+- Aggiornamento: pagina Info/Aggiornamenti mostra versione/build/runtime/canale corretti
+
 ### [1.5.2] - 14 agosto 2025
 
 - Festivo lavorato: calcolo con maggiorazioni corrette (non giorno fisso quando presenti ore)

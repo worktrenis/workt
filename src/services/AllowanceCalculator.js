@@ -35,6 +35,12 @@ export class AllowanceCalculator {
       travelAllowancePercent = workEntry.travelAllowancePercent;
     }
 
+    // In modalità HALF_ALLOWANCE_HALF_DAY la percentuale legacy del form non deve influenzare l'importo:
+    // la logica "mezza/intera" è già determinata dalle ore.
+    if (selectedOptions.includes('HALF_ALLOWANCE_HALF_DAY')) {
+      travelAllowancePercent = 1.0;
+    }
+
     if (travelAllowanceEnabled && travelAllowanceAmount > 0) {
       let attiva = false;
       

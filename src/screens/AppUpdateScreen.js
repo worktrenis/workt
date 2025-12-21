@@ -16,12 +16,19 @@ import { useTheme } from '../contexts/ThemeContext';
 import ManualUpdateService from '../services/ManualUpdateService';
 import UpdateNotificationService from '../services/UpdateNotificationService';
 import UpdateConfirmationModal from '../components/UpdateConfirmationModal';
+import Constants from 'expo-constants';
+import * as Application from 'expo-application';
+import * as Updates from 'expo-updates';
 
 const { width } = Dimensions.get('window');
 
 const AppUpdateScreen = ({ navigation }) => {
   const { theme } = useTheme();
   const [currentVersion, setCurrentVersion] = useState('');
+  const [nativeBuildVersion, setNativeBuildVersion] = useState('');
+  const [runtimeVersion, setRuntimeVersion] = useState('');
+  const [updateChannel, setUpdateChannel] = useState('');
+  const [manualUpdateVersion, setManualUpdateVersion] = useState('');
   const [isChecking, setIsChecking] = useState(false);
   const [pendingUpdates, setPendingUpdates] = useState([]);
   const [updateHistory, setUpdateHistory] = useState([]);
@@ -35,11 +42,19 @@ const AppUpdateScreen = ({ navigation }) => {
 
   const loadInitialData = async () => {
     try {
-      // Sincronizza versione reale (AsyncStorage + package.json)
+      // Versione app (config/nativa)
+      const configVersion = Constants.expoConfig?.version;
+      const nativeVersion = Application.nativeApplicationVersion;
+      setCurrentVersion(configVersion || nativeVersion || '');
+      setNativeBuildVersion(Application.nativeBuildVersion || '');
+      setRuntimeVersion(Updates.runtimeVersion || '');
+      setUpdateChannel(Updates.channel || Constants.expoConfig?.updates?.requestHeaders?.['expo-channel-name'] || '');
+
+      // Versione del sistema di aggiornamento manuale (se usata)
       if (ManualUpdateService.syncVersionFromStorage) {
         await ManualUpdateService.syncVersionFromStorage();
       }
-      setCurrentVersion(ManualUpdateService.getCurrentVersion());
+      setManualUpdateVersion(ManualUpdateService.getCurrentVersion());
       await loadPendingUpdates();
       await loadUpdateHistory();
     } catch (error) {
@@ -119,7 +134,7 @@ const AppUpdateScreen = ({ navigation }) => {
           [{ text: 'OK' }]
         );
         
-        setCurrentVersion(result.newVersion);
+        setManualUpdateVersion(result.newVersion);
         await loadPendingUpdates();
         await loadUpdateHistory();
       }
@@ -223,6 +238,21 @@ const AppUpdateScreen = ({ navigation }) => {
             <Text style={[styles.versionLabel, { color: theme.colors.textSecondary }]}>
               Versione installata
             </Text>
+            {(nativeBuildVersion || runtimeVersion || updateChannel) ? (
+              <Text style={[styles.versionLabel, { color: theme.colors.textSecondary, marginTop: 6 }]}>
+                {nativeBuildVersion ? `Build ${nativeBuildVersion}` : ''}
+                {(nativeBuildVersion && (runtimeVersion || updateChannel)) ? ' • ' : ''}
+                {runtimeVersion ? `Runtime ${runtimeVersion}` : ''}
+                {(runtimeVersion && updateChannel) ? ' • ' : ''}
+                {updateChannel ? `Canale ${updateChannel}` : ''}
+              </Text>
+            ) : null}
+
+            {manualUpdateVersion && manualUpdateVersion !== currentVersion ? (
+              <Text style={[styles.versionLabel, { color: theme.colors.textSecondary, marginTop: 6 }]}>
+                Sistema aggiornamenti: v{manualUpdateVersion}
+              </Text>
+            ) : null}
           </View>
         </View>
 

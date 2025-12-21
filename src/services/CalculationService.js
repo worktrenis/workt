@@ -770,6 +770,11 @@ class CalculationService {
     if (typeof workEntry.travelAllowancePercent === 'number') {
       travelAllowancePercent = workEntry.travelAllowancePercent;
     }
+    // In modalità HALF_ALLOWANCE_HALF_DAY la percentuale legacy del form non deve influenzare l'importo:
+    // la logica "mezza/intera" è già determinata dalle ore.
+    if (selectedOptions.includes('HALF_ALLOWANCE_HALF_DAY')) {
+      travelAllowancePercent = 1.0;
+    }
     if (travelAllowanceEnabled && travelAllowanceAmount > 0) {
       let attiva = false;
       
@@ -1325,6 +1330,15 @@ class CalculationService {
     const travelAllowanceEnabled = travelAllowanceSettings.enabled;
     const travelAllowanceAmount = parseFloat(travelAllowanceSettings.dailyAmount) || 0;
     let travelAllowancePercent = workEntry.travelAllowancePercent || 1.0;
+
+    // In modalità HALF_ALLOWANCE_HALF_DAY la percentuale legacy del form non deve influenzare l'importo.
+    // (La decisione mezza/intera è già guidata dalle ore.)
+    {
+      const selectedOptions = travelAllowanceSettings.selectedOptions || [travelAllowanceSettings.option || 'WITH_TRAVEL'];
+      if (selectedOptions.includes('HALF_ALLOWANCE_HALF_DAY')) {
+        travelAllowancePercent = 1.0;
+      }
+    }
     
     // Calcola indennità trasferta in base alle regole
     if (travelAllowanceEnabled && travelAllowanceAmount > 0 && workEntry.travelAllowance) {

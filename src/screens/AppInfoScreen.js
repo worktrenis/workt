@@ -12,15 +12,36 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { FadeInCard } from '../components/AnimatedComponents';
 import { useTheme } from '../contexts/ThemeContext';
-
-// Importa la versione dell'app dal package.json
-import { version } from '../../package.json';
-import { expo } from '../../app.json';
+import Constants from 'expo-constants';
+import * as Application from 'expo-application';
+import * as Updates from 'expo-updates';
 
 const AppInfoScreen = ({ navigation }) => {
   const { theme } = useTheme();
 
+  const appName = Constants.expoConfig?.name || 'WorkT';
+  const appVersion = Constants.expoConfig?.version || Application.nativeApplicationVersion || '—';
+  const nativeBuildVersion = Application.nativeBuildVersion || '—';
+  const runtimeVersion = Updates.runtimeVersion || '—';
+  const updateChannel = Updates.channel || Constants.expoConfig?.updates?.requestHeaders?.['expo-channel-name'] || '—';
+
   const changelog = [
+    {
+      version: '1.0.13',
+      date: '21 dicembre 2025',
+      changes: [
+        'Correzioni post-baseline'
+      ]
+    },
+    {
+      version: '1.0.12',
+      date: '21 dicembre 2025',
+      changes: [
+        'Trasferta: riepiloghi allineati al calcolo reale (mezza/intera coerente)',
+        'TimeEntryForm: aggiunto totale ore giornata (lavoro + viaggio) nel riepilogo',
+        'Correzioni e stabilità generale'
+      ]
+    },
     {
       version: '1.0.11',
       date: '11 settembre 2025',
@@ -168,10 +189,13 @@ const AppInfoScreen = ({ navigation }) => {
             />
           </View>
           <Text style={[styles.appName, { color: theme.colors.text }]}> 
-            {expo.name}
+            {appName}
           </Text>
           <Text style={[styles.appVersion, { color: theme.colors.primary }]}>
-            Versione {version} 
+            Versione {appVersion}
+          </Text>
+          <Text style={[styles.appDescription, { color: theme.colors.textSecondary, marginTop: 6 }]}>
+            Build {nativeBuildVersion} • Runtime {runtimeVersion} • Canale {updateChannel}
           </Text>
           {/* Mostra la versione solo nella sezione info, non accanto al nome app */}
           <Text style={[styles.appDescription, { color: theme.colors.textSecondary }]}> 

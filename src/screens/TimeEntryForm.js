@@ -539,6 +539,10 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
     (breakdown?.allowances?.travel > 0 || 
      breakdown?.allowances?.meal > 0 || 
      breakdown?.allowances?.standby > 0);
+
+  const totalWorkHours = (breakdown?.ordinary?.hours?.lavoro_giornaliera || 0) + (breakdown?.ordinary?.hours?.lavoro_extra || 0);
+  const totalTravelHours = (breakdown?.ordinary?.hours?.viaggio_giornaliera || 0) + (breakdown?.ordinary?.hours?.viaggio_extra || 0);
+  const totalWorkTravelHours = totalWorkHours + totalTravelHours;
   
   return (
     <ModernCard style={styles.cardSpacing} styles={styles}>
@@ -954,6 +958,13 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                   {formatSafeAmount(breakdown?.ordinary?.total || 0)}
                 </Text>
               </View>
+
+              {totalWorkTravelHours > 0 && (
+                <View style={[styles.breakdownRow, { marginTop: 6 }]}>
+                  <Text style={styles.breakdownLabel}>Totale ore giornata (lavoro + viaggio)</Text>
+                  <Text style={styles.breakdownValue}>{formatSafeHours(totalWorkTravelHours)}</Text>
+                </View>
+              )}
             </View>
           )}
 
@@ -2198,20 +2209,21 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                 {(() => {
                   const travelAllowanceSettings = settings.travelAllowance || {};
                   const selectedOptions = travelAllowanceSettings.selectedOptions || [travelAllowanceSettings.option || 'WITH_TRAVEL'];
+
+                  const workHours = (breakdown.ordinary?.hours?.lavoro_giornaliera || 0) +
+                                   (breakdown.ordinary?.hours?.lavoro_extra || 0);
+                  const travelHours = (breakdown.ordinary?.hours?.viaggio_giornaliera || 0) +
+                                     (breakdown.ordinary?.hours?.viaggio_extra || 0);
+                  const totalWorked = workHours + travelHours;
                   
                   if (selectedOptions.includes('PROPORTIONAL_CCNL')) {
-                    const workHours = (breakdown.ordinary?.hours?.lavoro_giornaliera || 0) + 
-                                     (breakdown.ordinary?.hours?.lavoro_extra || 0);
-                    const travelHours = (breakdown.ordinary?.hours?.viaggio_giornaliera || 0) + 
-                                       (breakdown.ordinary?.hours?.viaggio_extra || 0);
-                    
                     const standbyWorkHours = breakdown.standby ? 
                       Object.values(breakdown?.standby?.workHours || {}).reduce((a, b) => a + b, 0) : 0;
                     const standbyTravelHours = breakdown.standby ? 
                       Object.values(breakdown?.standby?.travelHours || {}).reduce((a, b) => a + b, 0) : 0;
                     const totalStandbyHours = standbyWorkHours + standbyTravelHours;
                     
-                    const totalHours = workHours + travelHours + totalStandbyHours;
+                    const totalHours = totalWorked + totalStandbyHours;
                     const proportion = Math.min(totalHours / 8, 1.0);
                     
                     if (totalStandbyHours > 0) {
@@ -2219,6 +2231,13 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                     } else {
                       return `Calcolo CCNL proporzionale (${(proportion * 100).toFixed(1)}%)`;
                     }
+                  }
+
+                  // Coerenza con i calcoli: in HALF_ALLOWANCE_HALF_DAY la percentuale legacy del form
+                  // non determina più la dicitura (mezza/intera), che dipende dalle ore lavoro+viaggio.
+                  if (selectedOptions.includes('HALF_ALLOWANCE_HALF_DAY')) {
+                    if (totalWorked > 0 && totalWorked < 8) return 'Mezza giornata (50%)';
+                    return 'Giornata intera';
                   }
                   
                   if (form.trasfertaPercent && form.trasfertaPercent < 1) {
