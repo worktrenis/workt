@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.15',
+      date: '21 dicembre 2025',
+      changes: [
+        'Correzioni post-baseline'
+      ]
+    },
+    {
       version: '1.0.14',
       date: '21 dicembre 2025',
       changes: [

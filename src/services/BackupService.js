@@ -724,7 +724,82 @@ class BackupService {
           preview: jsonString.substring(0, 200) + '...'
         });
         
-        // Prova expo-sharing per salvare direttamente
+        // ✅ ANDROID: Salvataggio LOCALE reale (cartella scelta dall'utente) via Storage Access Framework
+        try {
+          const fsModule = await import('expo-file-system');
+          const FileSystem = fsModule?.default || fsModule;
+          const { Platform } = require('react-native');
+
+          if (Platform.OS === 'android') {
+            const saf = FileSystem?.StorageAccessFramework;
+
+            // Se l'utente vuole un backup locale, su Android preferiamo SEMPRE SAF.
+            if (!saf?.requestDirectoryPermissionsAsync || !saf?.createFileAsync) {
+              return {
+                success: false,
+                error:
+                  'Salvataggio locale non disponibile in questo ambiente. ' +
+                  'Su Android serve la selezione cartella (SAF): prova con l\'APK nativo (EAS build) oppure con un Dev Client.'
+              };
+            }
+
+            console.log('📁 Android SAF: richiesta permessi cartella per salvataggio locale...');
+            const perm = await saf.requestDirectoryPermissionsAsync();
+
+            if (!perm?.granted || !perm?.directoryUri) {
+              return {
+                success: false,
+                error: 'Salvataggio locale annullato: non è stata selezionata alcuna cartella.'
+              };
+            }
+
+            console.log('✅ Android SAF: cartella selezionata:', perm.directoryUri);
+            const destFileUri = await saf.createFileAsync(
+              perm.directoryUri,
+              fileName,
+              'application/json'
+            );
+
+            await FileSystem.writeAsStringAsync(destFileUri, jsonString, {
+              encoding: FileSystem.EncodingType.UTF8
+            });
+
+            // Salva anche in AsyncStorage per ripristino dalla lista
+            const backupKey = `manual_backup_${timestamp.replace(/[:.]/g, '_')}`;
+            const fileSize = jsonString.length;
+            const fullPayload = {
+              ...backupData,
+              backupInfo: {
+                ...backupData.backupInfo,
+                size: fileSize,
+                destination: 'android-saf',
+                path: 'Cartella scelta dall\'utente (Android)',
+                filePath: destFileUri,
+                fullPath: destFileUri
+              }
+            };
+            await AsyncStorage.setItem(backupKey, JSON.stringify(fullPayload));
+            await this.updateBackupList(fileName, backupKey, 'manual');
+
+            console.log('✅ Backup salvato in locale (Android SAF):', destFileUri);
+            return {
+              success: true,
+              method: 'android-saf',
+              fileName,
+              path: destFileUri,
+              backupKey,
+              message: 'Backup salvato in locale nella cartella scelta!'
+            };
+          }
+        } catch (safError) {
+          console.log('📱 Android SAF errore:', safError?.message);
+          const { Platform } = require('react-native');
+          if (Platform.OS === 'android') {
+            return { success: false, error: `Errore salvataggio locale: ${safError?.message || 'sconosciuto'}` };
+          }
+        }
+
+        // Prova expo-sharing per salvare/condividere
         try {
           const Sharing = await import('expo-sharing');
           const FileSystem = await import('expo-file-system');
