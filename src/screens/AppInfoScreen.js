@@ -30,6 +30,14 @@ const AppInfoScreen = ({ navigation }) => {
       version: '1.0.14',
       date: '21 dicembre 2025',
       changes: [
+        'Fix calcolo',
+        'Migliorie UI'
+      ]
+    },
+    {
+      version: '1.0.14',
+      date: '21 dicembre 2025',
+      changes: [
         'Correzioni post-baseline'
       ]
     },
