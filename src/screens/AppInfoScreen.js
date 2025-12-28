@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.19',
+      date: '28 dicembre 2025',
+      changes: [
+        'Fix ripristino backup: expo-file-system/legacy'
+      ]
+    },
+    {
       version: '1.0.18',
       date: '28 dicembre 2025',
       changes: [

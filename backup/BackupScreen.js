@@ -530,7 +530,8 @@ const BackupScreen = ({ navigation }) => {
       console.log('📁 File selezionato:', result.assets[0].name);
       
       // Leggi il contenuto del file
-      const FileSystem = await import('expo-file-system');
+      const fsLegacyModule = await import('expo-file-system/legacy');
+      const FileSystem = fsLegacyModule?.default || fsLegacyModule;
       const fileContent = await FileSystem.readAsStringAsync(result.assets[0].uri);
       
       // Conferma ripristino
