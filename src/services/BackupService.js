@@ -729,15 +729,27 @@ class BackupService {
         // ✅ ANDROID: Cartella obbligatoria via Storage Access Framework (NO fallback a Condividi)
         if (Platform.OS === 'android') {
           try {
-            const fsModule = await import('expo-file-system');
-            const FileSystem = fsModule?.default || fsModule;
+            // Expo SDK 54: molte API legacy (incluso SAF) stanno migrando su expo-file-system/legacy.
+            // Per avere StorageAccessFramework affidabile, usiamo il modulo legacy.
+            const fsLegacyModule = await import('expo-file-system/legacy');
+            const FileSystemLegacy = fsLegacyModule?.default || fsLegacyModule;
+            const saf = FileSystemLegacy?.StorageAccessFramework;
 
-            const saf = FileSystem?.StorageAccessFramework;
-            if (!saf?.requestDirectoryPermissionsAsync || !saf?.createFileAsync) {
+            const hasRequestDir = !!saf?.requestDirectoryPermissionsAsync;
+            const hasCreateFile = !!saf?.createFileAsync;
+
+            if (!hasRequestDir || !hasCreateFile) {
+              console.log('⚠️ Android SAF non disponibile (legacy):', {
+                hasSAF: !!saf,
+                hasRequestDir,
+                hasCreateFile,
+                legacyKeys: Object.keys(fsLegacyModule || {}).slice(0, 30),
+                legacyDefaultKeys: Object.keys(fsLegacyModule?.default || {}).slice(0, 30)
+              });
               return {
                 success: false,
                 error:
-                  'Salvataggio in cartella non disponibile su questo dispositivo. ' +
+                  'Salvataggio in cartella non disponibile su questo dispositivo (SAF_MISSING). ' +
                   'Assicurati di usare una build nativa (EAS) e che sia presente un gestore file compatibile.'
               };
             }
@@ -759,8 +771,8 @@ class BackupService {
               'application/json'
             );
 
-            await FileSystem.writeAsStringAsync(destFileUri, jsonString, {
-              encoding: FileSystem.EncodingType.UTF8
+            await FileSystemLegacy.writeAsStringAsync(destFileUri, jsonString, {
+              encoding: FileSystemLegacy.EncodingType?.UTF8
             });
 
             const backupKey = `manual_backup_${timestamp.replace(/[:.]/g, '_')}`;

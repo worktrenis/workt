@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.18',
+      date: '28 dicembre 2025',
+      changes: [
+        'Fix SAF Android: usa expo-file-system/legacy'
+      ]
+    },
+    {
       version: '1.0.17',
       date: '28 dicembre 2025',
       changes: [
