@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar, Appearance, Platform } from 'react-native';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 // Definizione dei temi
 export const lightTheme = {
@@ -171,12 +172,13 @@ export const ThemeProvider = ({ children }) => {
       const currentTheme = isDark ? darkTheme : lightTheme;
 
       try {
-        const navModule = await import('expo-navigation-bar');
-        const NavigationBar = navModule?.default || navModule;
+        // Evita crash su build che non includono il modulo nativo (OTA non può aggiungere codice nativo).
+        const ExpoNavigationBar = requireOptionalNativeModule('ExpoNavigationBar');
+        if (!ExpoNavigationBar) return;
 
         // Tema chiaro -> icone scure, Tema scuro -> icone chiare
-        await NavigationBar.setButtonStyleAsync(isDark ? 'light' : 'dark');
-        await NavigationBar.setBackgroundColorAsync(currentTheme.colors.background);
+        await ExpoNavigationBar.setButtonStyleAsync(isDark ? 'light' : 'dark');
+        await ExpoNavigationBar.setBackgroundColorAsync(currentTheme.colors.background);
       } catch (error) {
         console.log('⚠️ NavigationBar non disponibile:', error?.message);
       }

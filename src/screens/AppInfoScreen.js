@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.22',
+      date: '28 dicembre 2025',
+      changes: [
+        'Hotfix crash avvio: navigation bar opzionale'
+      ]
+    },
+    {
       version: '1.0.21',
       date: '28 dicembre 2025',
       changes: [
