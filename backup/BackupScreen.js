@@ -14,6 +14,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import TimeInput from '../src/components/TimeInput';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../contexts/ThemeContext';
 import DatabaseService from '../services/DatabaseService';
@@ -161,6 +162,11 @@ const BackupScreen = ({ navigation }) => {
     const date = new Date();
     date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
     return date;
+  };
+
+  const getCurrentTimeString = () => {
+    if (!autoBackupTime || typeof autoBackupTime !== 'string') return '02:00';
+    return autoBackupTime;
   };
 
   // Gestisce il cambio di orario dal DateTimePicker
@@ -1247,15 +1253,23 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
         </View>
       )}
 
-      {/* DateTimePicker per orario backup */}
+      {/* TimeInput per orario backup (numeric keyboard) */}
       {showTimePicker && (
-        <DateTimePicker
-          value={getCurrentTimeForPicker()}
-          mode="time"
-          is24Hour={true}
-          display="default"
-          onChange={handleTimeChange}
-        />
+        <View style={{padding:16}}>
+          <Text style={{marginBottom:8}}>Orario backup (HH:mm)</Text>
+          <TimeInput
+            value={getCurrentTimeString()}
+            onChange={(t) => {
+              if (t && t.length === 5) {
+                handleTimeChange(null, t);
+                setShowTimePicker(false);
+              }
+            }}
+          />
+          <TouchableOpacity onPress={() => setShowTimePicker(false)} style={{marginTop:12}}>
+            <Text style={{color: theme.colors.primary}}>Chiudi</Text>
+          </TouchableOpacity>
+        </View>
       )}
     </SafeAreaView>
   );
