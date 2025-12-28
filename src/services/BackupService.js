@@ -670,6 +670,8 @@ class BackupService {
   async createManualBackupWithDestinationChoice() {
     try {
       console.log('💾 Creazione backup manuale con selezione destinazione...');
+
+      const { Platform } = require('react-native');
       
       // Ottieni dati dal database
       const data = await DatabaseService.getAllData();
@@ -724,30 +726,30 @@ class BackupService {
           preview: jsonString.substring(0, 200) + '...'
         });
         
-        // ✅ ANDROID: Tentativo salvataggio LOCALE reale (cartella scelta dall'utente) via Storage Access Framework
-        // Nota: in produzione alcuni device/utenti potrebbero annullare la scelta cartella.
-        // In quel caso NON consideriamo il backup fallito: facciamo fallback a expo-sharing/AsyncStorage.
-        try {
-          const fsModule = await import('expo-file-system');
-          const FileSystem = fsModule?.default || fsModule;
-          const { Platform } = require('react-native');
+        // ✅ ANDROID: Cartella obbligatoria via Storage Access Framework (NO fallback a Condividi)
+        if (Platform.OS === 'android') {
+          try {
+            const fsModule = await import('expo-file-system');
+            const FileSystem = fsModule?.default || fsModule;
 
-          if (Platform.OS === 'android') {
             const saf = FileSystem?.StorageAccessFramework;
-
-            // Se l'utente vuole un backup locale, su Android preferiamo SEMPRE SAF.
             if (!saf?.requestDirectoryPermissionsAsync || !saf?.createFileAsync) {
-              console.log('⚠️ Android SAF non disponibile: passo a expo-sharing/AsyncStorage');
-              throw new Error('SAF non disponibile');
+              return {
+                success: false,
+                error:
+                  'Salvataggio in cartella non disponibile su questo dispositivo. ' +
+                  'Assicurati di usare una build nativa (EAS) e che sia presente un gestore file compatibile.'
+              };
             }
 
             console.log('📁 Android SAF: richiesta permessi cartella per salvataggio locale...');
             const perm = await saf.requestDirectoryPermissionsAsync();
 
             if (!perm?.granted || !perm?.directoryUri) {
-              console.log('ℹ️ Android SAF: selezione cartella annullata, fallback a expo-sharing/AsyncStorage');
-              // Non interrompere: continua con i metodi di condivisione/salvataggio alternativi.
-              throw new Error('SAF annullato');
+              return {
+                success: false,
+                error: 'Operazione annullata: devi selezionare una cartella per salvare il backup.'
+              };
             }
 
             console.log('✅ Android SAF: cartella selezionata:', perm.directoryUri);
@@ -761,7 +763,6 @@ class BackupService {
               encoding: FileSystem.EncodingType.UTF8
             });
 
-            // Salva anche in AsyncStorage per ripristino dalla lista
             const backupKey = `manual_backup_${timestamp.replace(/[:.]/g, '_')}`;
             const fileSize = jsonString.length;
             const fullPayload = {
@@ -787,9 +788,13 @@ class BackupService {
               backupKey,
               message: 'Backup salvato in locale nella cartella scelta!'
             };
+          } catch (safError) {
+            console.log('📱 Android SAF errore:', safError?.message);
+            return {
+              success: false,
+              error: `Errore salvataggio in cartella: ${safError?.message || 'sconosciuto'}`
+            };
           }
-        } catch (safError) {
-          console.log('📱 Android SAF non completato (fallback attivo):', safError?.message);
         }
 
         // Prova expo-sharing per salvare/condividere

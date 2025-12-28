@@ -8,7 +8,8 @@ import {
   Alert,
   ActivityIndicator,
   TextInput,
-  Switch
+  Switch,
+  Platform
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -480,12 +481,17 @@ const BackupScreen = ({ navigation }) => {
       
       // Usa il nuovo metodo con selezione destinazione
       const result = await BackupService.createManualBackupWithDestinationChoice();
+
+      const androidFolderHint =
+        !result.success && Platform.OS === 'android'
+          ? "\n\nSu Android è obbligatorio selezionare una cartella di salvataggio. Se annulli la selezione, il backup non viene creato."
+          : '';
       
       Alert.alert(
         result.success ? '✅ Backup Creato' : '❌ Backup Fallito',
         result.success 
           ? `${result.message}${result.method ? `\n\nMetodo: ${result.method}` : ''}${result.fileName ? `\nFile: ${result.fileName}` : ''}` 
-          : `Errore durante la creazione del backup: ${result.error}`,
+          : `Errore durante la creazione del backup: ${result.error}${androidFolderHint}`,
         [{ 
           text: 'OK',
           onPress: () => {

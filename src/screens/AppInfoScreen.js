@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.17',
+      date: '28 dicembre 2025',
+      changes: [
+        'Fix backup manuale Android: cartella obbligatoria + alert'
+      ]
+    },
+    {
       version: '1.0.16',
       date: '28 dicembre 2025',
       changes: [
