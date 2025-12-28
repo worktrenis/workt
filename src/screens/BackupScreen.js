@@ -350,6 +350,8 @@ const BackupScreen = ({ navigation }) => {
     switch (destination) {
       case 'asyncstorage':
         return 'Memoria App';
+      case 'android-saf':
+        return 'Cartella locale (Android)';
       case 'filesystem':
         return 'File System';
       case 'cloud':
@@ -372,7 +374,7 @@ const BackupScreen = ({ navigation }) => {
     }
     
     // Per file system, cerca il percorso completo
-    if (backup.destination === 'filesystem') {
+    if (backup.destination === 'filesystem' || backup.destination === 'android-saf') {
       const fullPath = backup.filePath || backup.path;
       if (fullPath && fullPath !== backup.key && fullPath.includes('/')) {
         return fullPath;

@@ -37,7 +37,7 @@
         "APP_CONFIG": "app-native.json",
         "NODE_ENV": "production"
       },
-      "channel": "production",
+      "channel": "native",
       "distribution": "internal"
     },
     "production-clean": {
