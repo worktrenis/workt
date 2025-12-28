@@ -814,8 +814,8 @@ class BackupService {
           const sharingModule = await import('expo-sharing');
           const Sharing = sharingModule?.default || sharingModule;
 
-          const fsModule = await import('expo-file-system');
-          const FileSystem = fsModule?.default || fsModule;
+          const fsLegacyModule = await import('expo-file-system/legacy');
+          const FileSystem = fsLegacyModule?.default || fsLegacyModule;
           
           // Crea file temporaneo
           const fileUri = `${FileSystem.documentDirectory}${fileName}`;

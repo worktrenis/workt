@@ -1,6 +1,6 @@
 {
   "name": "workt",
-  "version": "1.0.19",
+  "version": "1.0.20",
   "main": "index.js",
   "scripts": {
     "prestart": "node scripts/bump-version.js",
