@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { StatusBar, Appearance } from 'react-native';
+import { StatusBar, Appearance, Platform } from 'react-native';
 
 // Definizione dei temi
 export const lightTheme = {
@@ -162,6 +162,27 @@ export const ThemeProvider = ({ children }) => {
     const currentTheme = isDark ? darkTheme : lightTheme;
     StatusBar.setBarStyle(currentTheme.colors.statusBarStyle);
     // StatusBar.setBackgroundColor rimosso per compatibilità edge-to-edge
+  }, [isDark]);
+
+  // Aggiorna la Navigation Bar Android quando cambia il tema
+  useEffect(() => {
+    const applyAndroidNavigationBar = async () => {
+      if (Platform.OS !== 'android') return;
+      const currentTheme = isDark ? darkTheme : lightTheme;
+
+      try {
+        const navModule = await import('expo-navigation-bar');
+        const NavigationBar = navModule?.default || navModule;
+
+        // Tema chiaro -> icone scure, Tema scuro -> icone chiare
+        await NavigationBar.setButtonStyleAsync(isDark ? 'light' : 'dark');
+        await NavigationBar.setBackgroundColorAsync(currentTheme.colors.background);
+      } catch (error) {
+        console.log('⚠️ NavigationBar non disponibile:', error?.message);
+      }
+    };
+
+    applyAndroidNavigationBar();
   }, [isDark]);
 
   // Funzione per determinare se è ora del tema scuro (basato su orario)

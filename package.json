@@ -1,6 +1,6 @@
 {
   "name": "workt",
-  "version": "1.0.20",
+  "version": "1.0.21",
   "main": "index.js",
   "scripts": {
     "prestart": "node scripts/bump-version.js",
@@ -38,6 +38,7 @@
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.21",
     "expo-linear-gradient": "~15.0.8",
+    "expo-navigation-bar": "~5.0.10",
     "expo-notifications": "~0.32.15",
     "expo-print": "~15.0.8",
     "expo-sharing": "~14.0.8",
