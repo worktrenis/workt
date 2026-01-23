@@ -42,3 +42,6 @@ test-veloce*.js
 debug-*.js
 app-diagnostic.js
 emergency-*.js
+
+# Artifacts / archives (non versionare)
+*.zip

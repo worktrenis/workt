@@ -62,13 +62,19 @@ class NativeBackupService {
       const Notifications = await import('expo-notifications');
       this.notificationsModule = Notifications;
       
-      // Tenta di importare expo-file-system
+      // Tenta di importare expo-file-system (preferisci legacy per SDK 54)
       try {
-        const FileSystem = await import('expo-file-system');
+        const FileSystem = await import('expo-file-system/legacy');
         this.fileSystemModule = FileSystem;
-        console.log('✅ FileSystem module caricato per backup su file');
-      } catch (fsError) {
-        console.log('📱 FileSystem non disponibile - solo AsyncStorage');
+        console.log('✅ FileSystem legacy caricato per backup su file');
+      } catch (fsLegacyError) {
+        try {
+          const FileSystem = await import('expo-file-system');
+          this.fileSystemModule = FileSystem;
+          console.log('✅ FileSystem module caricato per backup su file');
+        } catch (fsError) {
+          console.log('📱 FileSystem non disponibile - solo AsyncStorage');
+        }
       }
       
       // Tenta di importare expo-sharing
@@ -145,7 +151,7 @@ class NativeBackupService {
       const customPath = await AsyncStorage.getItem('auto_backup_custom_path');
       
       return {
-        enabled: enabled ? JSON.parse(enabled) : false,
+        enabled: enabled === 'true' || (enabled ? JSON.parse(enabled) : false),
         time: time || '02:00',
         destination: destination || 'asyncstorage', // asyncstorage, filesystem, cloud
         customPath: customPath || null

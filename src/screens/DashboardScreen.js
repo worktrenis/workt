@@ -5,6 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
   ActivityIndicator,
   RefreshControl,
   Alert,
@@ -41,11 +44,48 @@ const formatSafeHours = (hours) => {
   return `${wholeHours}:${minutes.toString().padStart(2, '0')}`;
 };
 
+// Log di debug: attivi solo in sviluppo (in produzione restano silenziosi)
+const DASHBOARD_DEBUG = __DEV__ === true;
+const debugLog = (...args) => {
+  if (DASHBOARD_DEBUG) console.log(...args);
+};
+
 const DashboardScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const styles = createStyles(theme);
-  const { settings, isLoading: settingsLoading, refreshSettings } = useSettings();
+  const { settings, isLoading: settingsLoading, refreshSettings, updatePartialSettings } = useSettings();
   const calculationService = useCalculationService();
+
+  // 🍽️ Rimborso pasti (cash standard) - per anno + residuo anno precedente
+  const [allTimeMealCashStandard, setAllTimeMealCashStandard] = useState({
+    total: 0,
+    lunchVoucherCount: 0,
+    dinnerVoucherCount: 0
+  });
+  const [yearMealCashStandard, setYearMealCashStandard] = useState({
+    year: new Date().getFullYear(),
+    total: 0,
+    lunchVoucherCount: 0,
+    dinnerVoucherCount: 0
+  });
+  const [prevYearMealCashStandard, setPrevYearMealCashStandard] = useState({
+    year: new Date().getFullYear() - 1,
+    total: 0,
+    lunchVoucherCount: 0,
+    dinnerVoucherCount: 0
+  });
+  const [mealReimbModalVisible, setMealReimbModalVisible] = useState(false);
+  const [mealReimbInput, setMealReimbInput] = useState('');
+  const [mealReimbEditIndex, setMealReimbEditIndex] = useState(null);
+  const [mealReimbUsePrevYearKeys, setMealReimbUsePrevYearKeys] = useState(false);
+  const [mealReimbModalYear, setMealReimbModalYear] = useState(null);
+
+  const formatLocalYYYYMMDD = useCallback((date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }, []);
 
   // Funzione per ottenere colori consistenti per le card giornaliere
   const getDayCardStyle = (dayType) => {
@@ -153,10 +193,13 @@ const DashboardScreen = ({ navigation, route }) => {
     };
   };
   
-  const [currentDate] = useState(new Date());
+  const currentDate = new Date();
   const [selectedDate, setSelectedDate] = useState(new Date()); // Data per navigazione mesi
   const lastVisitedRef = useRef(null);
   const selectedDateRef = useRef(new Date());
+  const lastKnownNowRef = useRef({ year: new Date().getFullYear(), month: new Date().getMonth() });
+  const loadSeqRef = useRef(0);
+  const [dataMonthKey, setDataMonthKey] = useState(null); // YYYY-MM del dataset attualmente caricato
   const [workEntries, setWorkEntries] = useState([]);
   const [monthlyAggregated, setMonthlyAggregated] = useState({});
   const [loading, setLoading] = useState(true);
@@ -167,17 +210,20 @@ const DashboardScreen = ({ navigation, route }) => {
   const [completionLoading, setCompletionLoading] = useState(true);
   const [isDailyBreakdownExpanded, setIsDailyBreakdownExpanded] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false); // Flag per evitare calcoli multipli
+  const isCalculatingRef = useRef(false);
+  const calcSeqRef = useRef(0);
+  const pendingCalcRef = useRef(null);
   const [standbyRates, setStandbyRates] = useState({ feriale: 0, sabato: 0, festivo: 0 }); // Tariffe reperibilità (calcolate)
 
   // � Debug: monitora cambiamenti selectedDate
   useEffect(() => {
-    console.log('📅 Dashboard: selectedDate cambiato:', formatMonthYear(selectedDate));
+    debugLog('📅 Dashboard: selectedDate cambiato:', formatMonthYear(selectedDate));
   }, [selectedDate, formatMonthYear]);
 
   // �🔄 Ascolta parametri di navigazione per refresh automatico
   useEffect(() => {
     if (route?.params?.refreshCalculations) {
-      console.log('🔄 DASHBOARD - Refresh richiesto dalle impostazioni');
+      debugLog('🔄 DASHBOARD - Refresh richiesto dalle impostazioni');
       // Reset del parametro per evitare loop infiniti
       navigation.setParams({ refreshCalculations: false });
       
@@ -195,26 +241,42 @@ const DashboardScreen = ({ navigation, route }) => {
   // 🔄 Listener per aggiornamenti automatici dei dati dal database
   useEffect(() => {
     const handleWorkEntriesUpdate = (action, data) => {
-      console.log('🔄 DASHBOARD - Ricevuto aggiornamento:', action, data);
+      debugLog('🔄 DASHBOARD - Ricevuto aggiornamento:', action, data);
       
       // Per ripristini completi del backup, ricarica sempre i dati
       if (action === 'BULK_RESTORE') {
-        console.log('🔄 DASHBOARD - Ripristino backup completo, ricarico tutti i dati...');
+        debugLog('🔄 DASHBOARD - Ripristino backup completo, ricarico tutti i dati...');
         loadData();
         return;
       }
       
-      // Ricarica i dati solo se l'aggiornamento riguarda il mese corrente
-      const entryYear = data?.year;
-      const entryMonth = data?.month;
+      // Ricarica i dati solo se l'aggiornamento riguarda il mese corrente.
+      // Robustezza: se year/month non arrivano, proviamo a ricavarli dalla data.
+      let entryYear = data?.year;
+      let entryMonth = data?.month;
+
+      if ((!entryYear || !entryMonth) && data?.date) {
+        const d = new Date(data.date);
+        if (!Number.isNaN(d.getTime())) {
+          entryYear = d.getFullYear();
+          entryMonth = d.getMonth() + 1;
+        }
+      }
+
+      // Se non riusciamo a determinare il mese/anno, facciamo comunque refresh del mese selezionato
+      if (!entryYear || !entryMonth) {
+        debugLog('🔄 DASHBOARD - Update senza month/year determinabili, ricarico dati per mese selezionato');
+        loadData();
+        return;
+      }
       const currentYear = selectedDate.getFullYear();
       const currentMonth = selectedDate.getMonth() + 1;
       
       if (entryYear === currentYear && entryMonth === currentMonth) {
-        console.log('🔄 DASHBOARD - Aggiornamento per mese corrente, ricarico dati...');
+        debugLog('🔄 DASHBOARD - Aggiornamento per mese corrente, ricarico dati...');
         loadData();
       } else {
-        console.log('⏭️ DASHBOARD - Update ricevuto per', entryMonth, '/', entryYear, 'ma la dashboard è su', currentMonth, '/', currentYear, '- nessun refresh');
+        debugLog('⏭️ DASHBOARD - Update ricevuto per', entryMonth, '/', entryYear, 'ma la dashboard è su', currentMonth, '/', currentYear, '- nessun refresh');
       }
     };
 
@@ -234,18 +296,37 @@ const DashboardScreen = ({ navigation, route }) => {
   useFocusEffect(
     useCallback(() => {
       const currentSelected = selectedDateRef.current;
-      const keepDate = lastVisitedRef.current ? new Date(lastVisitedRef.current) : currentSelected;
-      console.log('🔄 DASHBOARD - Screen focalizzato, ricarico dati per:', formatMonthYear(keepDate));
-      // Se differisce, aggiorna selectedDate (triggererà il loadData nell'useEffect dedicato)
-      if (
-        keepDate.getMonth() !== currentSelected.getMonth() ||
-        keepDate.getFullYear() !== currentSelected.getFullYear()
-      ) {
-        setSelectedDate(keepDate);
+      const now = new Date();
+      const prevNow = lastKnownNowRef.current;
+
+      const didNowChange = prevNow.year !== now.getFullYear() || prevNow.month !== now.getMonth();
+      const wasViewingPrevCurrent =
+        currentSelected.getFullYear() === prevNow.year &&
+        currentSelected.getMonth() === prevNow.month;
+
+      // Caso anno/mese cambiato mentre l'app era aperta: se l'utente stava guardando il mese corrente precedente,
+      // riallinea al nuovo mese corrente (evita "dashboard non aggiorna" a Capodanno).
+      if (didNowChange && wasViewingPrevCurrent) {
+        debugLog('🔄 DASHBOARD - Cambio mese/anno rilevato, riallineo al mese corrente:', formatMonthYear(now));
+        lastVisitedRef.current = new Date(now);
+        setSelectedDate(new Date(now));
       } else {
-        // Altrimenti ricarica direttamente i dati del mese mantenuto
-        loadData(keepDate);
+        const keepDate = lastVisitedRef.current ? new Date(lastVisitedRef.current) : currentSelected;
+        debugLog('🔄 DASHBOARD - Screen focalizzato, ricarico dati per:', formatMonthYear(keepDate));
+
+        // Se differisce, aggiorna selectedDate (triggererà il loadData nell'useEffect dedicato)
+        if (
+          keepDate.getMonth() !== currentSelected.getMonth() ||
+          keepDate.getFullYear() !== currentSelected.getFullYear()
+        ) {
+          setSelectedDate(keepDate);
+        } else {
+          // Altrimenti ricarica direttamente i dati del mese mantenuto
+          loadData(keepDate);
+        }
       }
+
+      lastKnownNowRef.current = { year: now.getFullYear(), month: now.getMonth() };
       // Aggiorna anche le impostazioni
       refreshSettings();
     }, [])
@@ -253,7 +334,7 @@ const DashboardScreen = ({ navigation, route }) => {
 
   // 🔄 Ricarica dati quando cambia il mese selezionato
   useEffect(() => {
-    console.log('🔄 Dashboard: Ricarico dati per nuovo mese:', formatMonthYear(selectedDate));
+    debugLog('🔄 Dashboard: Ricarico dati per nuovo mese:', formatMonthYear(selectedDate));
     // Memorizza l'ultimo mese visitato per ripristino al ritorno
     lastVisitedRef.current = new Date(selectedDate);
     loadData();
@@ -264,28 +345,34 @@ const DashboardScreen = ({ navigation, route }) => {
 
   // 🔍 DEBUG SETTINGS CARICAMENTO
   useEffect(() => {
-    console.log('🔍 DASHBOARD DEBUG - Settings loading status:', settingsLoading);
-    console.log('🔍 DASHBOARD DEBUG - Settings available:', !!settings);
+    debugLog('🔍 DASHBOARD DEBUG - Settings loading status:', settingsLoading);
+    debugLog('🔍 DASHBOARD DEBUG - Settings available:', !!settings);
     if (settings) {
-      console.log('🔍 DASHBOARD DEBUG - Settings mealAllowances:', JSON.stringify(settings.mealAllowances, null, 2));
-      console.log('🔍 DASHBOARD DEBUG - Settings travelAllowance:', JSON.stringify(settings.travelAllowance, null, 2));
-      console.log('🔍 DASHBOARD DEBUG - Settings travelHoursSetting:', settings.travelHoursSetting);
-      console.log('🔍 DASHBOARD DEBUG - Settings travelCompensationRate:', settings.travelCompensationRate);
+      debugLog('🔍 DASHBOARD DEBUG - Settings mealAllowances:', JSON.stringify(settings.mealAllowances, null, 2));
+      debugLog('🔍 DASHBOARD DEBUG - Settings travelAllowance:', JSON.stringify(settings.travelAllowance, null, 2));
+      debugLog('🔍 DASHBOARD DEBUG - Settings travelHoursSetting:', settings.travelHoursSetting);
+      debugLog('🔍 DASHBOARD DEBUG - Settings travelCompensationRate:', settings.travelCompensationRate);
     }
   }, [settingsLoading, settings]);
 
   // Carica dati dal database
   const loadData = useCallback(async (dateOverride = null) => {
     try {
+      const seq = ++loadSeqRef.current;
       const targetDate = dateOverride instanceof Date ? dateOverride : selectedDate;
       const year = targetDate.getFullYear();
       const month = targetDate.getMonth() + 1;
       let entries = await DatabaseService.getWorkEntries(year, month);
       // Ordina sempre per data crescente (dal giorno 1 in basso)
       entries = entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+
+      // Se nel frattempo è partita una nuova loadData, ignora questo risultato
+      if (seq !== loadSeqRef.current) return;
+
+      setDataMonthKey(`${year}-${String(month).padStart(2, '0')}`);
       setWorkEntries(entries);
-      await loadFixedDaysData();
-      await loadCompletionData();
+      await loadFixedDaysData(targetDate);
+      await loadCompletionData(targetDate);
     } catch (error) {
       console.error('Errore nel caricamento dati:', error);
       Alert.alert('Errore', 'Impossibile caricare i dati.');
@@ -294,18 +381,140 @@ const DashboardScreen = ({ navigation, route }) => {
     }
   }, [selectedDate]);
 
+  const loadAllTimeMealCashStandard = useCallback(async () => {
+    if (!settings) return;
+
+    try {
+      // Il conteggio deve seguire l'anno del mese selezionato in dashboard
+      // (es. se nel 2026 apro dicembre 2025, devo vedere i totali 2025).
+      const selectedYear = (selectedDate instanceof Date ? selectedDate : new Date()).getFullYear();
+      const prevYear = selectedYear - 1;
+      const yearStart = `${selectedYear}-01-01`;
+      const yearEnd = `${selectedYear}-12-31`;
+      const prevYearStart = `${prevYear}-01-01`;
+      const prevYearEnd = `${prevYear}-12-31`;
+
+      const [countsAllTime, countsYear, countsPrevYear] = await Promise.all([
+        DatabaseService.getAllTimeMealCashStandardCounts(),
+        DatabaseService.getMealCashStandardCountsByDateRange(yearStart, yearEnd),
+        DatabaseService.getMealCashStandardCountsByDateRange(prevYearStart, prevYearEnd)
+      ]);
+      const lunchCash = Number(settings?.mealAllowances?.lunch?.cashAmount || 0);
+      const dinnerCash = Number(settings?.mealAllowances?.dinner?.cashAmount || 0);
+      const lunchCountAllTime = Number(countsAllTime?.lunchVoucherCount || 0);
+      const dinnerCountAllTime = Number(countsAllTime?.dinnerVoucherCount || 0);
+      const lunchCountYear = Number(countsYear?.lunchVoucherCount || 0);
+      const dinnerCountYear = Number(countsYear?.dinnerVoucherCount || 0);
+      const lunchCountPrevYear = Number(countsPrevYear?.lunchVoucherCount || 0);
+      const dinnerCountPrevYear = Number(countsPrevYear?.dinnerVoucherCount || 0);
+
+      const totalAllTime = lunchCountAllTime * lunchCash + dinnerCountAllTime * dinnerCash;
+      const totalYear = lunchCountYear * lunchCash + dinnerCountYear * dinnerCash;
+      const totalPrevYear = lunchCountPrevYear * lunchCash + dinnerCountPrevYear * dinnerCash;
+      setAllTimeMealCashStandard({
+        total: totalAllTime,
+        lunchVoucherCount: lunchCountAllTime,
+        dinnerVoucherCount: dinnerCountAllTime
+      });
+      setYearMealCashStandard({
+        year: selectedYear,
+        total: totalYear,
+        lunchVoucherCount: lunchCountYear,
+        dinnerVoucherCount: dinnerCountYear
+      });
+      setPrevYearMealCashStandard({
+        year: prevYear,
+        total: totalPrevYear,
+        lunchVoucherCount: lunchCountPrevYear,
+        dinnerVoucherCount: dinnerCountPrevYear
+      });
+    } catch (e) {
+      console.warn('⚠️ loadAllTimeMealCashStandard failed:', e?.message);
+      setAllTimeMealCashStandard({ total: 0, lunchVoucherCount: 0, dinnerVoucherCount: 0 });
+      const y = (selectedDate instanceof Date ? selectedDate : new Date()).getFullYear();
+      setYearMealCashStandard({ year: y, total: 0, lunchVoucherCount: 0, dinnerVoucherCount: 0 });
+      setPrevYearMealCashStandard({ year: y - 1, total: 0, lunchVoucherCount: 0, dinnerVoucherCount: 0 });
+    }
+  }, [settings, selectedDate]);
+
+  useEffect(() => {
+    if (!settingsLoading && settings) {
+      loadAllTimeMealCashStandard();
+    }
+  }, [settingsLoading, settings, loadAllTimeMealCashStandard]);
+
+  const maybeRolloverMealCashStandardYear = useCallback(async () => {
+    if (!settings || typeof updatePartialSettings !== 'function') return;
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const lastRolloverYear = Number(settings?.mealCashStandardLastRolloverYear || 0);
+
+    // Prima inizializzazione: memorizza anno corrente senza azzerare nulla.
+    if (!lastRolloverYear) {
+      await updatePartialSettings({ mealCashStandardLastRolloverYear: currentYear });
+      return;
+    }
+
+    // Già fatto per quest'anno
+    if (lastRolloverYear === currentYear) return;
+
+    const previousYear = currentYear - 1;
+    const prevYearStart = `${previousYear}-01-01`;
+    const prevYearEnd = `${previousYear}-12-31`;
+
+    const countsPrevYear = await DatabaseService.getMealCashStandardCountsByDateRange(prevYearStart, prevYearEnd);
+    const lunchCash = Number(settings?.mealAllowances?.lunch?.cashAmount || 0);
+    const dinnerCash = Number(settings?.mealAllowances?.dinner?.cashAmount || 0);
+
+    const prevYearMatured =
+      (Number(countsPrevYear?.lunchVoucherCount || 0) * lunchCash) +
+      (Number(countsPrevYear?.dinnerVoucherCount || 0) * dinnerCash);
+
+    const currentList = Array.isArray(settings?.mealCashStandardReimbursements)
+      ? settings.mealCashStandardReimbursements
+      : [];
+    const prevYearReimbursed = currentList.length > 0
+      ? currentList.reduce((sum, v) => sum + (Number(v) || 0), 0)
+      : Number(settings?.mealCashStandardReimbursed || 0);
+
+    const prevYearResidualComputed = prevYearMatured - prevYearReimbursed;
+
+    await updatePartialSettings({
+      mealCashStandardPreviousYear: previousYear,
+      mealCashStandardPreviousYearResidual: prevYearResidualComputed,
+      mealCashStandardPreviousYearReimbursements: currentList,
+      mealCashStandardPreviousYearReimbursed: prevYearReimbursed,
+      mealCashStandardLastRolloverYear: currentYear,
+      mealCashStandardReimbursements: [],
+      mealCashStandardReimbursed: 0
+    });
+  }, [settings, updatePartialSettings]);
+
+  useEffect(() => {
+    if (!settingsLoading && settings) {
+      maybeRolloverMealCashStandardYear();
+    }
+  }, [settingsLoading, settings, maybeRolloverMealCashStandardYear]);
+
   // Calcola aggregazione mensile solo quando sia workEntries che settings sono aggiornati
   useEffect(() => {
     const doAggregation = async () => {
       if (!settingsLoading && settings) {
+        const ym = (typeof dataMonthKey === 'string' && dataMonthKey.includes('-')) ? dataMonthKey.split('-') : null;
+        const dataYear = ym ? Number(ym[0]) : null;
+        const dataMonth = ym ? Number(ym[1]) : null;
         // Chiama sempre calculateMonthlyAggregation, anche con array vuoto
         // La funzione sa gestire correttamente le indennità di reperibilità anche senza work entries
-        await calculateMonthlyAggregation(workEntries);
+        await calculateMonthlyAggregation(workEntries, dataYear, dataMonth);
+
+        // 🍽️ Aggiorna anche lo storico cash standard quando cambiano i dati
+        await loadAllTimeMealCashStandard();
       }
     };
     
     doAggregation();
-  }, [settingsLoading, settings, workEntries]);
+  }, [settingsLoading, settings, workEntries, loadAllTimeMealCashStandard, dataMonthKey]);
 
   // Ricarica i dati dei giorni fissi quando cambia il toggle di visualizzazione dei giorni speciali senza ore
   useEffect(() => {
@@ -319,11 +528,12 @@ const DashboardScreen = ({ navigation, route }) => {
   }, [settings?.showEffectiveEarningsOnSpecialNoWorkDays, loadFixedDaysData, settingsLoading]);
 
   // Carica dati dei giorni fissi (ferie, permessi, malattia, riposo, festivi)
-  const loadFixedDaysData = useCallback(async () => {
+  const loadFixedDaysData = useCallback(async (dateOverride = null) => {
     try {
       setFixedDaysLoading(true);
-      const startDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-      const endDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+      const baseDate = dateOverride instanceof Date ? dateOverride : selectedDate;
+      const startDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+      const endDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
       
       // Carica dati giorni fissi usando FixedDaysService
       if (FixedDaysService && typeof FixedDaysService.getFixedDaysSummary === 'function') {
@@ -360,11 +570,12 @@ const DashboardScreen = ({ navigation, route }) => {
   }, [selectedDate, settings]);
 
   // Carica dati dei giorni in completamento
-  const loadCompletionData = useCallback(async () => {
+  const loadCompletionData = useCallback(async (dateOverride = null) => {
     try {
       setCompletionLoading(true);
-      const startDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
-      const endDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+      const baseDate = dateOverride instanceof Date ? dateOverride : selectedDate;
+      const startDate = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1);
+      const endDate = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0);
       
       // Carica dati completamento usando FixedDaysService
       if (FixedDaysService && typeof FixedDaysService.getCompletionStats === 'function') {
@@ -391,32 +602,37 @@ const DashboardScreen = ({ navigation, route }) => {
   }, [selectedDate]);
 
   // Calcola aggregazione mensile fedele al breakdown del TimeEntryForm
-  const calculateMonthlyAggregation = async (entries) => {
-    console.log('🔧 DASHBOARD - INIZIO calculateMonthlyAggregation con', entries.length, 'entries');
+  const calculateMonthlyAggregation = async (entries, yearOverride = null, monthOverride = null) => {
+    debugLog('🔧 DASHBOARD - INIZIO calculateMonthlyAggregation con', entries.length, 'entries');
+
+    // Sequenza: ogni richiesta incrementa. I risultati vecchi non vengono applicati.
+    const calcSeq = ++calcSeqRef.current;
     
     // Evita calcoli multipli simultanei
-    if (isCalculating) {
-      console.log('🔧 DASHBOARD DEBUG - Calcolo già in corso, skip...');
+    if (isCalculatingRef.current) {
+      debugLog('🔧 DASHBOARD DEBUG - Calcolo già in corso, metto in coda ultimo mese richiesto...');
+      pendingCalcRef.current = { entries, yearOverride, monthOverride };
       return;
     }
-    
+
+    isCalculatingRef.current = true;
     setIsCalculating(true);
     
     try {
       // ⭐ CONTROLLO CRITICO: Non calcolare finché le impostazioni non sono caricate
       if (settingsLoading) {
-        console.log('🔧 DASHBOARD DEBUG - Settings ancora in caricamento, attesa...');
+        debugLog('🔧 DASHBOARD DEBUG - Settings ancora in caricamento, attesa...');
         return;
       }
 
     if (!settings) {
-      console.log(' DASHBOARD DEBUG - Settings non disponibili, skip...');
+      debugLog(' DASHBOARD DEBUG - Settings non disponibili, skip...');
       return;
     }
 
-    console.log('🔧 DASHBOARD - Calcolo aggregazione per', entries.length, 'entries');
-    console.log('🔧 DASHBOARD DEBUG - Travel mode corrente:', settings?.travelHoursSetting);
-    console.log('🔧 DASHBOARD DEBUG - Meal settings correnti:', JSON.stringify(settings?.mealAllowances, null, 2));
+    debugLog('🔧 DASHBOARD - Calcolo aggregazione per', entries.length, 'entries');
+    debugLog('🔧 DASHBOARD DEBUG - Travel mode corrente:', settings?.travelHoursSetting);
+    debugLog('🔧 DASHBOARD DEBUG - Meal settings correnti:', JSON.stringify(settings?.mealAllowances, null, 2));
 
     // Definizione di safeSettings (identica al TimeEntryForm)
     const defaultSettings = {
@@ -457,22 +673,22 @@ const DashboardScreen = ({ navigation, route }) => {
       multiShiftTravelAsWork: settings?.multiShiftTravelAsWork || false // Nuova opzione multi-turno
     };
 
-    console.log('🔧 DASHBOARD DEBUG - settings originali:', JSON.stringify(settings, null, 2));
-    console.log('🔧 DASHBOARD DEBUG - safeSettings travelHoursSetting:', safeSettings.travelHoursSetting);
-    console.log('🔧 DASHBOARD DEBUG - safeSettings pasti:', JSON.stringify(safeSettings.mealAllowances, null, 2));
-    console.log('🔧 DASHBOARD DEBUG - safeSettings trasferta:', JSON.stringify(safeSettings.travelAllowance, null, 2));
+    debugLog('🔧 DASHBOARD DEBUG - settings originali:', JSON.stringify(settings, null, 2));
+    debugLog('🔧 DASHBOARD DEBUG - safeSettings travelHoursSetting:', safeSettings.travelHoursSetting);
+    debugLog('🔧 DASHBOARD DEBUG - safeSettings pasti:', JSON.stringify(safeSettings.mealAllowances, null, 2));
+    debugLog('🔧 DASHBOARD DEBUG - safeSettings trasferta:', JSON.stringify(safeSettings.travelAllowance, null, 2));
 
     // 🔧 CALCOLA TARIFFE REALI INDENNITÀ REPERIBILITÀ
     const calculatedStandbyRates = getStandbyRatesFromSettings(safeSettings);
-    console.log('🔧 DASHBOARD DEBUG - tariffe reperibilità:', calculatedStandbyRates);
+    debugLog('🔧 DASHBOARD DEBUG - tariffe reperibilità:', calculatedStandbyRates);
     setStandbyRates(calculatedStandbyRates);
 
     // 🔄 CALCOLO AUTOMATICO INDENNITÀ DI REPERIBILITÀ DAL CALENDARIO
-    const year = selectedDate.getFullYear();
-    const month = selectedDate.getMonth() + 1;
+    const year = (typeof yearOverride === 'number' && Number.isFinite(yearOverride)) ? yearOverride : selectedDate.getFullYear();
+    const month = (typeof monthOverride === 'number' && Number.isFinite(monthOverride)) ? monthOverride : (selectedDate.getMonth() + 1);
     const standbyAllowances = calculationService.calculateMonthlyStandbyAllowances(year, month, safeSettings);
     
-    console.log('🔧 DASHBOARD DEBUG - Indennità reperibilità dal calendario:', standbyAllowances);
+    debugLog('🔧 DASHBOARD DEBUG - Indennità reperibilità dal calendario:', standbyAllowances);
 
     if (!entries || entries.length === 0) {
       // Calcola solo le indennità di reperibilità anche senza entries
@@ -562,9 +778,9 @@ const DashboardScreen = ({ navigation, route }) => {
       return;
     }
 
-    console.log('🔧 DASHBOARD DEBUG - settings originali:', JSON.stringify(settings, null, 2));
-    console.log('🔧 DASHBOARD DEBUG - safeSettings pasti:', JSON.stringify(safeSettings.mealAllowances, null, 2));
-    console.log('🔧 DASHBOARD DEBUG - safeSettings trasferta:', JSON.stringify(settings?.travelAllowance, null, 2));
+    debugLog('🔧 DASHBOARD DEBUG - settings originali:', JSON.stringify(settings, null, 2));
+    debugLog('🔧 DASHBOARD DEBUG - safeSettings pasti:', JSON.stringify(safeSettings.mealAllowances, null, 2));
+    debugLog('🔧 DASHBOARD DEBUG - safeSettings trasferta:', JSON.stringify(settings?.travelAllowance, null, 2));
 
     // Aggrega tutti i breakdown giornalieri
     let aggregated = {
@@ -741,10 +957,10 @@ const DashboardScreen = ({ navigation, route }) => {
 
         // 🔧 DEBUG: Log per verificare se usa sistema CCNL per giorni speciali
         if (breakdown.details?.ccnlCompliant) {
-          console.log(`[Dashboard] ✅ CCNL-compliant per ${entry.date}: €${breakdown.totalEarnings?.toFixed(2)}, Metodo: ${breakdown.details.hourlyRatesMethod}`);
+          debugLog(`[Dashboard] ✅ CCNL-compliant per ${entry.date}: €${breakdown.totalEarnings?.toFixed(2)}, Metodo: ${breakdown.details.hourlyRatesMethod}`);
           if (breakdown.details.hourlyRatesBreakdown) {
             breakdown.details.hourlyRatesBreakdown.forEach(item => {
-              console.log(`[Dashboard]   - ${item.name}: ${item.hours?.toFixed(1)}h × €${item.hourlyRate?.toFixed(2)} = €${item.earnings?.toFixed(2)} (+${item.totalBonus}%)`);
+              debugLog(`[Dashboard]   - ${item.name}: ${item.hours?.toFixed(1)}h × €${item.hourlyRate?.toFixed(2)} = €${item.earnings?.toFixed(2)} (+${item.totalBonus}%)`);
             });
           }
         }
@@ -784,7 +1000,7 @@ const DashboardScreen = ({ navigation, route }) => {
             aggregated.analytics.minDailyHours = dailyHours;
           }
         } else {
-          console.log(`📅 Dashboard: Giorno fisso escluso dal conteggio lavorativo: ${entry.date} (${workEntry.dayType})`);
+          debugLog(`📅 Dashboard: Giorno fisso escluso dal conteggio lavorativo: ${entry.date} (${workEntry.dayType})`);
         }
 
         // Analizza tipo di giornata
@@ -857,7 +1073,7 @@ const DashboardScreen = ({ navigation, route }) => {
             return intervento.work_start_1 && intervento.work_end_1; // Almeno orario inizio e fine del primo turno
           });
           if (validInterventi.length > 0) {
-            console.log(`🔧 DEBUG INTERVENTI - Giorno ${workEntry.date}: ${validInterventi.length} interventi validi su ${workEntry.interventi.length} totali`);
+            debugLog(`🔧 DEBUG INTERVENTI - Giorno ${workEntry.date}: ${validInterventi.length} interventi validi su ${workEntry.interventi.length} totali`);
           }
           aggregated.analytics.standbyInterventions += validInterventi.length;
         }
@@ -873,7 +1089,7 @@ const DashboardScreen = ({ navigation, route }) => {
           // Conta giorni con attività ordinarie (solo giorni feriali, no weekend/festivi)
           if ((breakdown.ordinary.total || 0) > 0) {
             aggregated.ordinary.days += 1;
-            console.log(`🔧 DEBUG ORDINARIO - Giorno ${entry.date}: feriale, isStandbyDay=${workEntry.isStandbyDay}, ordinary.total=${breakdown.ordinary.total}, ordinaryDays ora=${aggregated.ordinary.days}`);
+            debugLog(`🔧 DEBUG ORDINARIO - Giorno ${entry.date}: feriale, isStandbyDay=${workEntry.isStandbyDay}, ordinary.total=${breakdown.ordinary.total}, ordinaryDays ora=${aggregated.ordinary.days}`);
           }
           
           // Ore ordinarie
@@ -908,7 +1124,7 @@ const DashboardScreen = ({ navigation, route }) => {
 
             // 🆕 ACCUMULA ANCHE DA DAILY_RATE_WITH_SUPPLEMENTS regularBreakdown
             if (details.dailyRateBreakdown && details.dailyRateBreakdown.regularBreakdown && details.dailyRateBreakdown.regularBreakdown.length > 0) {
-              console.log('🔧 DASHBOARD DEBUG - Trovato regularBreakdown:', details.dailyRateBreakdown.regularBreakdown);
+              debugLog('🔧 DASHBOARD DEBUG - Trovato regularBreakdown:', details.dailyRateBreakdown.regularBreakdown);
               details.dailyRateBreakdown.regularBreakdown.forEach(period => {
                 if (period.breakdown && period.breakdown.length > 0) {
                   period.breakdown.forEach(fascia => {
@@ -945,7 +1161,7 @@ const DashboardScreen = ({ navigation, route }) => {
                       aggregated.ordinary.breakdownDetails.supplements.byTimeRange[key].hours += fascia.hours || 0;
                       aggregated.ordinary.breakdownDetails.supplements.byTimeRange[key].amount += fascia.amount || 0;
                       
-                      console.log(`🔧 DASHBOARD DEBUG - Aggiunto supplemento ${key}: ${fascia.hours}h × €${fascia.amount.toFixed(2)} (+${percentuale}%)`);
+                      debugLog(`🔧 DASHBOARD DEBUG - Aggiunto supplemento ${key}: ${fascia.hours}h × €${fascia.amount.toFixed(2)} (+${percentuale}%)`);
                     }
                   });
                 }
@@ -967,7 +1183,7 @@ const DashboardScreen = ({ navigation, route }) => {
               
               // Straordinari per percentuale
               if (drb.overtimeBreakdown && drb.overtimeBreakdown.length > 0) {
-                console.log(`🔧 DEBUG OVERTIME ENTRY ${entry.date} - overtimeBreakdown:`, JSON.stringify(drb.overtimeBreakdown, null, 2));
+                debugLog(`🔧 DEBUG OVERTIME ENTRY ${entry.date} - overtimeBreakdown:`, JSON.stringify(drb.overtimeBreakdown, null, 2));
                 
                 drb.overtimeBreakdown.forEach(overtimePeriod => {
                   // Ogni overtimePeriod ha una proprietà breakdown con i dettagli
@@ -975,7 +1191,7 @@ const DashboardScreen = ({ navigation, route }) => {
                     overtimePeriod.breakdown.forEach(overtime => {
                       const rate = overtime.rate || 1;
                       const percentage = Math.round(rate * 100) + '%';
-                      console.log(`🔧 DEBUG OVERTIME FASCIA - Date: ${entry.date}, Rate: ${rate}, Percentage: ${percentage}, Hours: ${overtime.hours}, Earnings: ${overtime.amount}`);
+                      debugLog(`🔧 DEBUG OVERTIME FASCIA - Date: ${entry.date}, Rate: ${rate}, Percentage: ${percentage}, Hours: ${overtime.hours}, Earnings: ${overtime.amount}`);
                       
                       if (!aggregated.ordinary.breakdownDetails.overtime.byPercentage[percentage]) {
                         aggregated.ordinary.breakdownDetails.overtime.byPercentage[percentage] = {
@@ -1033,7 +1249,7 @@ const DashboardScreen = ({ navigation, route }) => {
             });
           }
         } else if (breakdown.ordinary && !isOrdinaryDay) {
-          console.log(`🔧 DEBUG ORDINARIO - Giorno ${entry.date}: ESCLUSO da attività ordinarie (weekend=${isWeekend}, festivo=${isHoliday}), ordinary.total=${breakdown.ordinary.total}`);
+          debugLog(`🔧 DEBUG ORDINARIO - Giorno ${entry.date}: ESCLUSO da attività ordinarie (weekend=${isWeekend}, festivo=${isHoliday}), ordinary.total=${breakdown.ordinary.total}`);
         }
 
         // Aggrega reperibilità
@@ -1043,7 +1259,7 @@ const DashboardScreen = ({ navigation, route }) => {
           // Conta giorni con attività in reperibilità
           if (workEntry.isStandbyDay && (breakdown.standby.totalEarnings || 0) > 0) {
             aggregated.standby.days += 1;
-            console.log(`🔧 DEBUG REPERIBILITA - Giorno ${entry.date}: isStandbyDay=${workEntry.isStandbyDay}, standby.totalEarnings=${breakdown.standby.totalEarnings}, standbyDays ora=${aggregated.standby.days}`);
+            debugLog(`🔧 DEBUG REPERIBILITA - Giorno ${entry.date}: isStandbyDay=${workEntry.isStandbyDay}, standby.totalEarnings=${breakdown.standby.totalEarnings}, standbyDays ora=${aggregated.standby.days}`);
           }
           
           // Ore lavoro reperibilità
@@ -1113,7 +1329,7 @@ const DashboardScreen = ({ navigation, route }) => {
           aggregated.allowances.travelByPercent[percentCategory].amount += travelAmount;
           aggregated.allowances.travelByPercent[percentCategory].days += 1;
           
-          console.log(`🔧 DEBUG TRASFERTA CATEGORIZZATA - Giorno ${entry.date}: ${travelAmount.toFixed(2)}€ su ${dailyTravelAmount}€ base = ${(effectivePercent * 100).toFixed(1)}% effettiva (categoria: ${percentCategory}, form: ${workEntry.travelAllowancePercent || 'n/a'})`);
+          debugLog(`🔧 DEBUG TRASFERTA CATEGORIZZATA - Giorno ${entry.date}: ${travelAmount.toFixed(2)}€ su ${dailyTravelAmount}€ base = ${(effectivePercent * 100).toFixed(1)}% effettiva (categoria: ${percentCategory}, form: ${workEntry.travelAllowancePercent || 'n/a'})`);
         }
         
         // Aggrega altre indennità
@@ -1124,33 +1340,38 @@ const DashboardScreen = ({ navigation, route }) => {
           // Se c'è indennità reperibilità, categorizza per tipo di giorno
           if (standbyAmount > 0) {
             const entryDate = new Date(entry.date);
-            const isWeekend = entryDate.getDay() === 0 || entryDate.getDay() === 6;
             const isSaturday = entryDate.getDay() === 6;
             const isSunday = entryDate.getDay() === 0;
-            const isHoliday = entry.isHoliday || false;
+            const isHoliday = isItalianHoliday(entryDate);
+
+            const saturdayAsRest = safeSettings?.standbySettings?.saturdayAsRest === true;
+            const saturdayMode = safeSettings?.standbySettings?.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
             
             let dayType = 'feriale';
-            if (isSaturday) {
-              dayType = 'sabato';
-            } else if (isSunday || isHoliday) {
+
+            // Festivo: domenica, festivo, oppure sabato configurato come riposo/festivo
+            if (isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo')) {
               dayType = 'festivo';
+            } else if (isSaturday) {
+              // Sabato feriale / feriale24
+              dayType = 'sabato';
             }
             
             aggregated.allowances.standbyByType[dayType].amount += standbyAmount;
             aggregated.allowances.standbyByType[dayType].days += 1;
             
-            console.log(`🔧 DEBUG STANDBY TIPO - Giorno ${entry.date} (${dayType}): €${standbyAmount.toFixed(2)}, totale ${dayType}: €${aggregated.allowances.standbyByType[dayType].amount.toFixed(2)} (${aggregated.allowances.standbyByType[dayType].days} giorni)`);
+            debugLog(`🔧 DEBUG STANDBY TIPO - Giorno ${entry.date} (${dayType}): €${standbyAmount.toFixed(2)}, totale ${dayType}: €${aggregated.allowances.standbyByType[dayType].amount.toFixed(2)} (${aggregated.allowances.standbyByType[dayType].days} giorni)`);
           }
         }
         
         // Conta giorni con indennità basandosi sui dati diretti
         if (workEntry.travelAllowance && (breakdown.allowances?.travel || 0) > 0) {
           aggregated.allowances.travelDays += 1;
-          console.log(`🔧 DEBUG TRASFERTA - Giorno ${entry.date}: travelAllowance=${workEntry.travelAllowance}, breakdown.travel=${breakdown.allowances?.travel}, travelDays ora=${aggregated.allowances.travelDays}`);
+          debugLog(`🔧 DEBUG TRASFERTA - Giorno ${entry.date}: travelAllowance=${workEntry.travelAllowance}, breakdown.travel=${breakdown.allowances?.travel}, travelDays ora=${aggregated.allowances.travelDays}`);
         }
         if (workEntry.isStandbyDay && (breakdown.allowances?.standby || 0) > 0) {
           aggregated.allowances.standbyDays += 1;
-          console.log(`🔧 DEBUG STANDBY - Giorno ${entry.date}: isStandbyDay=${workEntry.isStandbyDay}, breakdown.standby=${breakdown.allowances?.standby}, standbyDays ora=${aggregated.allowances.standbyDays}`);
+          debugLog(`🔧 DEBUG STANDBY - Giorno ${entry.date}: isStandbyDay=${workEntry.isStandbyDay}, breakdown.standby=${breakdown.allowances?.standby}, standbyDays ora=${aggregated.allowances.standbyDays}`);
         }
 
         // Aggrega pasti dettagliati e calcola totale rimborsi con suddivisione per tipologia
@@ -1161,7 +1382,7 @@ const DashboardScreen = ({ navigation, route }) => {
         let todayCashSpecificCount = 0;
         
         if (workEntry.mealLunchVoucher || workEntry.mealLunchCash) {
-          console.log('🔧 DASHBOARD DEBUG - Pranzo trovato:', {
+          debugLog('🔧 DASHBOARD DEBUG - Pranzo trovato:', {
             voucher: workEntry.mealLunchVoucher,
             cash: workEntry.mealLunchCash,
             safeSettingsVoucher: safeSettings.mealAllowances?.lunch?.voucherAmount,
@@ -1272,9 +1493,9 @@ const DashboardScreen = ({ navigation, route }) => {
         aggregated.allowances.meal += mealAllowanceTotal;
         if (mealAllowanceTotal > 0) {
           aggregated.allowances.mealDays += 1;
-          console.log(`🔧 DEBUG PASTI - Giorno ${entry.date}: mealAllowanceTotal=${mealAllowanceTotal}, mealDays ora=${aggregated.allowances.mealDays}`);
+          debugLog(`🔧 DEBUG PASTI - Giorno ${entry.date}: mealAllowanceTotal=${mealAllowanceTotal}, mealDays ora=${aggregated.allowances.mealDays}`);
         }
-        console.log('🔧 DASHBOARD DEBUG - mealAllowanceTotal aggiunto:', mealAllowanceTotal);
+        debugLog('🔧 DASHBOARD DEBUG - mealAllowanceTotal aggiunto:', mealAllowanceTotal);
 
         // Calcola ore totali
         aggregated.totalHours += dailyHours;
@@ -1284,8 +1505,8 @@ const DashboardScreen = ({ navigation, route }) => {
       }
     }
 
-    console.log('🔧 DASHBOARD DEBUG - Totali finali aggregated.allowances:', aggregated.allowances);
-    console.log('🔧 DASHBOARD DEBUG - Totali finali aggregated.meals:', aggregated.meals);
+    debugLog('🔧 DASHBOARD DEBUG - Totali finali aggregated.allowances:', aggregated.allowances);
+    debugLog('🔧 DASHBOARD DEBUG - Totali finali aggregated.meals:', aggregated.meals);
 
     // Calcola metriche analytics finali
     if (aggregated.daysWorked > 0) {
@@ -1403,7 +1624,7 @@ const DashboardScreen = ({ navigation, route }) => {
       // Totale ore notturne = standby + ordinarie
       aggregated.analytics.nightWorkHours = standbyNightTotal + ordinaryNightTotal;
       
-      console.log(`🔧 NIGHT CALCULATION FINAL - Standby: ${standbyNightTotal}h, Ordinary: ${ordinaryNightTotal}h, Total: ${aggregated.analytics.nightWorkHours}h`);
+      debugLog(`🔧 NIGHT CALCULATION FINAL - Standby: ${standbyNightTotal}h, Ordinary: ${ordinaryNightTotal}h, Total: ${aggregated.analytics.nightWorkHours}h`);
 
       // 🔧 Calcolo ore serali finali usando dati aggregati (20:00-22:00)
       const standbyEveningTotal = (aggregated.standby?.workHours?.evening || 0) + (aggregated.standby?.travelHours?.evening || 0);
@@ -1424,7 +1645,7 @@ const DashboardScreen = ({ navigation, route }) => {
       // Totale ore serali = standby + ordinarie
       aggregated.analytics.eveningWorkHours = standbyEveningTotal + ordinaryEveningTotal;
       
-      console.log(`🔧 EVENING CALCULATION FINAL - Standby: ${standbyEveningTotal}h, Ordinary: ${ordinaryEveningTotal}h, Total: ${aggregated.analytics.eveningWorkHours}h`);
+      debugLog(`🔧 EVENING CALCULATION FINAL - Standby: ${standbyEveningTotal}h, Ordinary: ${ordinaryEveningTotal}h, Total: ${aggregated.analytics.eveningWorkHours}h`);
 
       // 🔧 CALCOLO NUOVI PATTERN MIGLIORATI
       
@@ -1460,7 +1681,7 @@ const DashboardScreen = ({ navigation, route }) => {
       let intensityDistribution = { light: 0, normal: 0, intense: 0, extreme: 0 };
       
       // Usa le analytics già calcolate che hanno i dati corretti
-      console.log(`🔧 DEBUG AGGREGATED ANALYTICS:`, aggregated.analytics);
+      debugLog(`🔧 DEBUG AGGREGATED ANALYTICS:`, aggregated.analytics);
       
       // Giorni + di 8h totali: usa dailyHours dagli analytics
       aggregated.analytics.dailyHours.forEach(hours => {
@@ -1515,7 +1736,7 @@ const DashboardScreen = ({ navigation, route }) => {
         }
       });
       
-      console.log(`🔧 DEBUG PATTERN RESULTS:`, {
+      debugLog(`🔧 DEBUG PATTERN RESULTS:`, {
         daysWithOvertime: `${daysWithOvertime} (ore > 8h)`,
         totalInterventions: `${totalInterventions} (da analytics)`,
         validStartTimes,
@@ -1527,7 +1748,7 @@ const DashboardScreen = ({ navigation, route }) => {
       aggregated.analytics.standbyInterventions = totalInterventions;
       aggregated.analytics.workIntensityDistribution = intensityDistribution;
       
-      console.log(`🔧 DEBUG PATTERN FINAL:`, {
+      debugLog(`🔧 DEBUG PATTERN FINAL:`, {
         daysWithOvertime: `${daysWithOvertime}/${entries.length}`,
         totalInterventions,
         validStartTimes,
@@ -1540,12 +1761,12 @@ const DashboardScreen = ({ navigation, route }) => {
         const avgHours = Math.floor(avgMinutes / 60);
         const avgMins = avgMinutes % 60;
         aggregated.analytics.averageStartTime = `${avgHours.toString().padStart(2, '0')}:${avgMins.toString().padStart(2, '0')}`;
-        console.log(`🔧 DEBUG AVERAGE START TIME: ${aggregated.analytics.averageStartTime}`);
+        debugLog(`🔧 DEBUG AVERAGE START TIME: ${aggregated.analytics.averageStartTime}`);
       }
     }
 
     // 🎯 RIEPILOGO CONTATORI GIORNI
-    console.log('🔧 CONTATORI FINALI:', {
+    debugLog('🔧 CONTATORI FINALI:', {
       ordinaryDays: aggregated.ordinary.days,
       standbyDays: aggregated.standby.days,
       travelDays: aggregated.allowances.travelDays,
@@ -1561,7 +1782,7 @@ const DashboardScreen = ({ navigation, route }) => {
     
     if (standbyOnlyDays.length > 0) {
       const standbyOnlyTotal = standbyOnlyDays.reduce((sum, allowance) => sum + allowance.allowance, 0);
-      console.log('🔧 DASHBOARD DEBUG - Indennità solo reperibilità:', {
+      debugLog('🔧 DASHBOARD DEBUG - Indennità solo reperibilità:', {
         giorni: standbyOnlyDays.length,
         totale: standbyOnlyTotal,
         dettagli: standbyOnlyDays
@@ -1575,10 +1796,24 @@ const DashboardScreen = ({ navigation, route }) => {
       
       // Aggiungi anche alla suddivisione per tipo
       standbyOnlyDays.forEach(allowance => {
-        const dayType = allowance.dayType || 'feriale';
+        const dateObj = new Date(allowance.date);
+        const isSaturday = dateObj.getDay() === 6;
+        const isSunday = dateObj.getDay() === 0;
+        const isHoliday = isItalianHoliday(allowance.date);
+
+        const saturdayAsRest = safeSettings?.standbySettings?.saturdayAsRest === true;
+        const saturdayMode = safeSettings?.standbySettings?.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
+
+        let dayType = 'feriale';
+        if (isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo')) {
+          dayType = 'festivo';
+        } else if (isSaturday) {
+          dayType = 'sabato';
+        }
+
         aggregated.allowances.standbyByType[dayType].amount += allowance.allowance;
         aggregated.allowances.standbyByType[dayType].days += 1;
-        console.log(`🔧 DEBUG STANDBY CALENDARIO - Giorno ${allowance.date} (${dayType}): €${allowance.allowance.toFixed(2)}, totale ${dayType}: €${aggregated.allowances.standbyByType[dayType].amount.toFixed(2)} (${aggregated.allowances.standbyByType[dayType].days} giorni)`);
+        debugLog(`🔧 DEBUG STANDBY CALENDARIO - Giorno ${allowance.date} (${dayType}): €${allowance.allowance.toFixed(2)}, totale ${dayType}: €${aggregated.allowances.standbyByType[dayType].amount.toFixed(2)} (${aggregated.allowances.standbyByType[dayType].days} giorni)`);
       });
     }
 
@@ -1602,7 +1837,7 @@ const DashboardScreen = ({ navigation, route }) => {
         customDeductionRate: settings?.netCalculation?.customDeductionRate || 32
       };
       
-      console.log('🔍 Dashboard - Calcolo netto per:', aggregated.totalEarnings, 'con impostazioni:', payslipSettings);
+      debugLog('🔍 Dashboard - Calcolo netto per:', aggregated.totalEarnings, 'con impostazioni:', payslipSettings);
       
       const netCalculation = RealPayslipCalculator.calculateNetFromGross(aggregated.totalEarnings, payslipSettings);
       
@@ -1611,7 +1846,7 @@ const DashboardScreen = ({ navigation, route }) => {
       aggregated.totalDeductions = netCalculation.totalDeductions;
       aggregated.deductionRate = netCalculation.deductionRate;
       
-      console.log('🔍 Dashboard - Netto calcolato:', {
+      debugLog('🔍 Dashboard - Netto calcolato:', {
         lordo: aggregated.totalEarnings,
         netto: aggregated.netTotalEarnings,
         trattenute: aggregated.totalDeductions,
@@ -1623,20 +1858,31 @@ const DashboardScreen = ({ navigation, route }) => {
       aggregated.deductionRate = 0;
     }
 
+    // Se nel frattempo è stato richiesto un nuovo calcolo (es. cambio mese), scarta questo risultato
+    if (calcSeq !== calcSeqRef.current) {
+      debugLog('🔧 DASHBOARD - Risultato calcolo obsoleto, scarto (mese cambiato durante il calcolo).');
+      return;
+    }
+
     setMonthlyAggregated(aggregated);
-    console.log('🔧 DASHBOARD - FINE calculateMonthlyAggregation');
-    console.log('🔧 DASHBOARD - Totale finale calcolato: €' + (aggregated.totalEarnings || 0).toFixed(2));
-    console.log('🔧 DASHBOARD - Giorni lavorati:', aggregated.daysWorked || 0);
+    debugLog('🔧 DASHBOARD - FINE calculateMonthlyAggregation');
+    debugLog('🔧 DASHBOARD - Totale finale calcolato: €' + (aggregated.totalEarnings || 0).toFixed(2));
+    debugLog('🔧 DASHBOARD - Giorni lavorati:', aggregated.daysWorked || 0);
     } catch (error) {
       console.error('🔧 DASHBOARD - Errore in calculateMonthlyAggregation:', error);
     } finally {
+      isCalculatingRef.current = false;
       setIsCalculating(false);
+
+      // Se durante il calcolo è arrivata una nuova richiesta (cambio mese), esegui subito l'ultima
+      if (pendingCalcRef.current) {
+        const pending = pendingCalcRef.current;
+        pendingCalcRef.current = null;
+        await Promise.resolve();
+        await calculateMonthlyAggregation(pending.entries, pending.yearOverride, pending.monthOverride);
+      }
     }
   };
-
-  useEffect(() => {
-    loadData();
-  }, [selectedDate]);
 
   // ...rimosso useEffect che rilanciava i calcoli...
 
@@ -1645,9 +1891,9 @@ const DashboardScreen = ({ navigation, route }) => {
     const total = monthlyAggregated?.totalEarnings || 0;
     const days = monthlyAggregated?.daysWorked || 0;
     const timestamp = new Date().toLocaleTimeString();
-    console.log(`📊 DASHBOARD MONITOR [${timestamp}] - monthlyAggregated cambiato: €${total.toFixed(2)}, ${days} giorni`);
+    debugLog(`📊 DASHBOARD MONITOR [${timestamp}] - monthlyAggregated cambiato: €${total.toFixed(2)}, ${days} giorni`);
     if (total > 0) {
-      console.log(`📊 DASHBOARD MONITOR [${timestamp}] - Breakdown presenti:`, {
+      debugLog(`📊 DASHBOARD MONITOR [${timestamp}] - Breakdown presenti:`, {
         ordinary: monthlyAggregated?.ordinary?.total || 0,
         standby: monthlyAggregated?.standby?.totalEarnings || 0,
         allowances: {
@@ -1662,14 +1908,14 @@ const DashboardScreen = ({ navigation, route }) => {
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     try {
-      console.log('🔄 DASHBOARD - Inizio refresh manuale...');
-      console.log('🔄 DASHBOARD - Refresh per mese:', formatMonthYear(selectedDate));
+      debugLog('🔄 DASHBOARD - Inizio refresh manuale...');
+      debugLog('🔄 DASHBOARD - Refresh per mese:', formatMonthYear(selectedDate));
       // Refresh sia impostazioni che dati
       await refreshSettings();
-      console.log('🔄 DASHBOARD - Settings aggiornate');
+      debugLog('🔄 DASHBOARD - Settings aggiornate');
       await loadData();
-      console.log('🔄 DASHBOARD - Dati ricaricati');
-      console.log('🔄 DASHBOARD - Refresh manuale completato');
+      debugLog('🔄 DASHBOARD - Dati ricaricati');
+      debugLog('🔄 DASHBOARD - Refresh manuale completato');
     } catch (error) {
       console.error('Errore nel refresh:', error);
     } finally {
@@ -1694,7 +1940,7 @@ const DashboardScreen = ({ navigation, route }) => {
               try {
                 setRefreshing(true);
                 
-                console.log(`📄 DASHBOARD - Avvio generazione PDF per ${month}/${year}`);
+                debugLog(`📄 DASHBOARD - Avvio generazione PDF per ${month}/${year}`);
                 
                 // 🎯 PASSA I DATI DASHBOARD AL PDF PER COERENZA (daily + monthly totals)
                 const dashboardData = {
@@ -1711,7 +1957,7 @@ const DashboardScreen = ({ navigation, route }) => {
                     breakdown: monthlyAggregated?.breakdown || {}
                   }
                 };
-                console.log(`📄 DASHBOARD - Passando dati completi al PDF:`, {
+                debugLog(`📄 DASHBOARD - Passando dati completi al PDF:`, {
                   giorni: Object.keys(dashboardData.dailyBreakdowns).length,
                   totaleEuro: dashboardData.monthlyTotals.totalEarnings?.toFixed(2),
                   giorniLavorati: dashboardData.monthlyTotals.daysWorked
@@ -1724,7 +1970,7 @@ const DashboardScreen = ({ navigation, route }) => {
                     '✅ PDF Generato',
                     `PDF creato con successo!\n\nFile: ${result.fileName}\nInserimenti elaborati: ${result.dataCount}\n\nIl PDF è stato condiviso.`
                   );
-                  console.log(`📄 DASHBOARD - PDF generato con successo: ${result.fileName}`);
+                  debugLog(`📄 DASHBOARD - PDF generato con successo: ${result.fileName}`);
                 } else {
                   throw new Error('Generazione PDF fallita');
                 }
@@ -1755,7 +2001,7 @@ const DashboardScreen = ({ navigation, route }) => {
   const goToPreviousMonth = () => {
     const newDate = new Date(selectedDate);
     newDate.setMonth(newDate.getMonth() - 1);
-    console.log('🔍 Dashboard: Navigazione mese precedente:', {
+    debugLog('🔍 Dashboard: Navigazione mese precedente:', {
       from: formatMonthYear(selectedDate),
       to: formatMonthYear(newDate)
     });
@@ -1766,7 +2012,7 @@ const DashboardScreen = ({ navigation, route }) => {
   const goToNextMonth = () => {
     const newDate = new Date(selectedDate);
     newDate.setMonth(newDate.getMonth() + 1);
-    console.log('🔍 Dashboard: Navigazione mese successivo:', {
+    debugLog('🔍 Dashboard: Navigazione mese successivo:', {
       from: formatMonthYear(selectedDate),
       to: formatMonthYear(newDate)
     });
@@ -1793,9 +2039,64 @@ const DashboardScreen = ({ navigation, route }) => {
   const hasStandbyData = monthlyAggregated?.standby?.totalEarnings > 0 ||
     Object.values(monthlyAggregated?.standby?.workHours || {}).some(h => h > 0) ||
     Object.values(monthlyAggregated?.standby?.travelHours || {}).some(h => h > 0);
+  const mealCashStandardReimbursements = Array.isArray(settings?.mealCashStandardReimbursements)
+    ? settings.mealCashStandardReimbursements
+    : [];
+
+  const getMealReimbAmount = useCallback((item) => {
+    if (item && typeof item === 'object') return Number(item.amount || 0);
+    return Number(item || 0);
+  }, []);
+
+  const getMealReimbTs = useCallback((item) => {
+    if (item && typeof item === 'object') {
+      const ts = Number(item.ts);
+      return Number.isFinite(ts) ? ts : null;
+    }
+    return null;
+  }, []);
+  const mealCashStandardReimbursed = useMemo(() => {
+    if (mealCashStandardReimbursements.length > 0) {
+      return mealCashStandardReimbursements.reduce((sum, v) => sum + (getMealReimbAmount(v) || 0), 0);
+    }
+    return Number(settings?.mealCashStandardReimbursed || 0);
+  }, [mealCashStandardReimbursements, settings?.mealCashStandardReimbursed, getMealReimbAmount]);
+  const allTimeCashStandardTotal = Number(allTimeMealCashStandard?.total || 0);
+  const selectedYearCashStandardTotal = Number(yearMealCashStandard?.total || 0);
+  const selectedYearNumber = Number(yearMealCashStandard?.year || (selectedDate instanceof Date ? selectedDate.getFullYear() : new Date().getFullYear()));
+  const actualCurrentYear = new Date().getFullYear();
+  const isViewingActualCurrentYear = selectedYearNumber === actualCurrentYear;
+  const isViewingActualPreviousYear = selectedYearNumber === (actualCurrentYear - 1);
+  const prevYearResidualYear = Number(settings?.mealCashStandardPreviousYear || 0);
+  const prevYearResidual = Number(settings?.mealCashStandardPreviousYearResidual || 0);
+  const prevYearReimbursements = Array.isArray(settings?.mealCashStandardPreviousYearReimbursements)
+    ? settings.mealCashStandardPreviousYearReimbursements
+    : [];
+  const prevYearReimbursed = useMemo(() => {
+    if (prevYearReimbursements.length > 0) {
+      return prevYearReimbursements.reduce((sum, v) => sum + (getMealReimbAmount(v) || 0), 0);
+    }
+    return Number(settings?.mealCashStandardPreviousYearReimbursed || 0);
+  }, [prevYearReimbursements, settings?.mealCashStandardPreviousYearReimbursed, getMealReimbAmount]);
+
+  const prevYearCashStandardTotal = Number(prevYearMealCashStandard?.total || 0);
+
+  // Se sto guardando un anno diverso da quello attuale, mostro "già rimborsato" e "residuo"
+  // riferiti a quell'anno (solo se disponibile: anno corrente reale o anno precedente salvato).
+  const displayedReimbursed = isViewingActualCurrentYear
+    ? mealCashStandardReimbursed
+    : (isViewingActualPreviousYear ? prevYearReimbursed : 0);
+  const displayedResidual = isViewingActualCurrentYear
+    ? (prevYearResidual + (selectedYearCashStandardTotal - mealCashStandardReimbursed))
+    : (selectedYearCashStandardTotal - displayedReimbursed);
   const hasAllowancesData = (monthlyAggregated?.allowances?.travel > 0 || 
                             monthlyAggregated?.allowances?.meal > 0 || 
-                            monthlyAggregated?.allowances?.standby > 0);
+                            monthlyAggregated?.allowances?.standby > 0 ||
+                            selectedYearCashStandardTotal > 0 ||
+                            mealCashStandardReimbursed !== 0 ||
+                            prevYearResidual !== 0 ||
+                            prevYearReimbursed !== 0 ||
+                            prevYearCashStandardTotal > 0);
 
   const renderOrdinarySection = () => {
     if (!hasOrdinaryData) return null;
@@ -1807,7 +2108,7 @@ const DashboardScreen = ({ navigation, route }) => {
     const hourlyRate = settings?.contract?.hourlyRate || 16.15;
     
     // 🔧 DEBUG: Mostra tutti i breakdown accumulati
-    console.log('🔧 DASHBOARD DEBUG - Breakdown completo ordinary:', JSON.stringify({
+    debugLog('🔧 DASHBOARD DEBUG - Breakdown completo ordinary:', JSON.stringify({
       'ordinary.hours': ordinary.hours,
       'ordinary.earnings': ordinary.earnings,
       'breakdownDetails.overtime': breakdownDetails.overtime,
@@ -1882,8 +2183,8 @@ const DashboardScreen = ({ navigation, route }) => {
 
         {/* 💰 ORE STRAORDINARIE LAVORO */}
         {(() => {
-          console.log('🔧 DEBUG STRAORDINARI CONDIZIONE - ordinary.hours?.lavoro_extra:', ordinary.hours?.lavoro_extra);
-          console.log('🔧 DEBUG STRAORDINARI CONDIZIONE - condition result:', (ordinary.hours?.lavoro_extra || 0) > 0);
+          debugLog('🔧 DEBUG STRAORDINARI CONDIZIONE - ordinary.hours?.lavoro_extra:', ordinary.hours?.lavoro_extra);
+          debugLog('🔧 DEBUG STRAORDINARI CONDIZIONE - condition result:', (ordinary.hours?.lavoro_extra || 0) > 0);
           return null;
         })()}
         {(ordinary.hours?.lavoro_extra || 0) > 0 && (
@@ -1902,15 +2203,15 @@ const DashboardScreen = ({ navigation, route }) => {
                   🔍 Breakdown dettagliato per fasce orarie:
                 </Text>
                 {(() => {
-                  console.log('🔧 DEBUG STRAORDINARI RENDERING - breakdownDetails.overtime:', JSON.stringify(breakdownDetails.overtime, null, 2));
+                  debugLog('🔧 DEBUG STRAORDINARI RENDERING - breakdownDetails.overtime:', JSON.stringify(breakdownDetails.overtime, null, 2));
                   const entries = Object.entries(breakdownDetails.overtime.byPercentage);
-                  console.log('🔧 DEBUG STRAORDINARI RENDERING - entries before filter:', entries);
+                  debugLog('🔧 DEBUG STRAORDINARI RENDERING - entries before filter:', entries);
                   const filtered = entries.filter(([percentage, data]) => {
                     const shouldShow = data.hours > 0; // Rimuovo filtro su 100%
-                    console.log(`🔧 DEBUG STRAORDINARI RENDERING - ${percentage}: hours=${data.hours}, shouldShow=${shouldShow}`);
+                    debugLog(`🔧 DEBUG STRAORDINARI RENDERING - ${percentage}: hours=${data.hours}, shouldShow=${shouldShow}`);
                     return shouldShow;
                   });
-                  console.log('🔧 DEBUG STRAORDINARI RENDERING - entries after filter:', filtered);
+                  debugLog('🔧 DEBUG STRAORDINARI RENDERING - entries after filter:', filtered);
                   return null;
                 })()}
                 {Object.entries(breakdownDetails.overtime.byPercentage)
@@ -2156,7 +2457,7 @@ const DashboardScreen = ({ navigation, route }) => {
   // Mostra sempre la card se abilitata dalle impostazioni, anche con 0 interventi
 
     // Debug log per vedere i dati standby
-    console.log('🔍 STANDBY DEBUG - Dati standby ricevuti:', {
+    debugLog('🔍 STANDBY DEBUG - Dati standby ricevuti:', {
       workHours: standby.workHours,
       workEarnings: standby.workEarnings,
       travelHours: standby.travelHours,
@@ -2426,6 +2727,218 @@ const DashboardScreen = ({ navigation, route }) => {
 
     const allowances = monthlyAggregated?.allowances || {};
     const meals = monthlyAggregated?.meals || {};
+
+    const cashStandardResidual = selectedYearCashStandardTotal - mealCashStandardReimbursed;
+    const canEditCashStandardReimb = isViewingActualCurrentYear || isViewingActualPreviousYear;
+    const showCashStandardReimbursement = (
+      selectedYearCashStandardTotal > 0 ||
+      mealCashStandardReimbursed !== 0 ||
+      prevYearResidual !== 0 ||
+      prevYearReimbursed !== 0 ||
+      prevYearCashStandardTotal > 0
+    );
+
+    const openMealReimbModal = () => {
+      // Consentiamo modifica solo per anno corrente reale o anno precedente salvato.
+      if (!canEditCashStandardReimb) {
+        Alert.alert('Info', 'Puoi modificare i rimborsi solo per l\'anno corrente o per l\'anno precedente (residuo).');
+        return;
+      }
+
+      setMealReimbInput('');
+      setMealReimbEditIndex(null);
+      const usePrev = !isViewingActualCurrentYear && isViewingActualPreviousYear;
+      setMealReimbUsePrevYearKeys(usePrev);
+      setMealReimbModalYear(selectedYearNumber);
+      setMealReimbModalVisible(true);
+    };
+
+    const persistMealReimbursementsList = async (newList) => {
+      const rawList = Array.isArray(newList) ? newList : [];
+      // Normalizza: supporta lista legacy di numeri e nuova lista di oggetti { amount, ts }
+      const safeList = rawList
+        .map((item) => {
+          if (item && typeof item === 'object') {
+            const amount = Number(item.amount || 0);
+            const ts = Number(item.ts);
+            return {
+              amount: Number.isFinite(amount) ? amount : 0,
+              ...(Number.isFinite(ts) ? { ts } : {})
+            };
+          }
+          const amount = Number(item || 0);
+          return { amount: Number.isFinite(amount) ? amount : 0 };
+        })
+        .filter((it) => Number(it.amount || 0) !== 0);
+
+      const newTotal = safeList.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+
+      // Calcolo residuo per l'anno mostrato (yearMealCashStandard è già allineato a selectedDate)
+      const maturedForDisplayedYear = Number(selectedYearCashStandardTotal || 0);
+      const newResidual = maturedForDisplayedYear - newTotal;
+
+      // Se sto guardando l'anno precedente (es. 2025 da 2026), aggiorna i campi dedicati.
+      if (mealReimbUsePrevYearKeys) {
+        await updatePartialSettings({
+          mealCashStandardPreviousYear: selectedYearNumber,
+          mealCashStandardPreviousYearReimbursements: safeList,
+          mealCashStandardPreviousYearReimbursed: newTotal,
+          mealCashStandardPreviousYearResidual: newResidual
+        });
+        return;
+      }
+
+      await updatePartialSettings({
+        mealCashStandardReimbursements: safeList,
+        // Mantieni anche il legacy aggiornato per compatibilità
+        mealCashStandardReimbursed: newTotal
+      });
+    };
+
+    const saveMealReimbursed = async () => {
+      try {
+        const raw = String(mealReimbInput ?? '').trim();
+        const parsed = raw.length === 0 ? 0 : parseFloat(raw.replace(',', '.'));
+        const delta = Number.isFinite(parsed) ? parsed : 0;
+
+        // Se non inserisce nulla, non modificare.
+        if (!delta) {
+          setMealReimbModalVisible(false);
+          return;
+        }
+
+        const currentList = mealReimbUsePrevYearKeys
+          ? (Array.isArray(settings?.mealCashStandardPreviousYearReimbursements)
+            ? settings.mealCashStandardPreviousYearReimbursements
+            : [])
+          : (Array.isArray(settings?.mealCashStandardReimbursements)
+            ? settings.mealCashStandardReimbursements
+            : []);
+
+        let newList = [];
+
+        // Caso MODIFICA: non facciamo split automatico (manteniamo il target corrente)
+        if (mealReimbEditIndex !== null && mealReimbEditIndex >= 0 && mealReimbEditIndex < currentList.length) {
+          newList = currentList.map((v, i) => {
+            if (i !== mealReimbEditIndex) return v;
+            // Preserva timestamp se presente
+            if (v && typeof v === 'object') return { ...v, amount: delta };
+            return { amount: delta };
+          });
+          await persistMealReimbursementsList(newList);
+        } else {
+          // Caso AGGIUNTA: se siamo nell'anno corrente reale, paga prima il residuo anno precedente.
+          const nowTs = Date.now();
+
+          if (!mealReimbUsePrevYearKeys && isViewingActualCurrentYear) {
+            const prevResidual = Math.max(0, Number(prevYearResidual || 0));
+            const allocateToPrev = Math.min(delta, prevResidual);
+            const allocateToCurrent = delta - allocateToPrev;
+
+            const payload = {};
+
+            // Aggiorna anno precedente (riduce residuo e aumenta rimborsato/lista)
+            if (allocateToPrev > 0) {
+              const prevListRaw = Array.isArray(settings?.mealCashStandardPreviousYearReimbursements)
+                ? settings.mealCashStandardPreviousYearReimbursements
+                : [];
+              const prevList = prevListRaw
+                .map((item) => {
+                  if (item && typeof item === 'object') {
+                    const amount = Number(item.amount || 0);
+                    const ts = Number(item.ts);
+                    return {
+                      amount: Number.isFinite(amount) ? amount : 0,
+                      ...(Number.isFinite(ts) ? { ts } : {})
+                    };
+                  }
+                  const amount = Number(item || 0);
+                  return { amount: Number.isFinite(amount) ? amount : 0 };
+                })
+                .filter((it) => Number(it.amount || 0) !== 0);
+
+              const newPrevList = [...prevList, { amount: allocateToPrev, ts: nowTs }];
+              const newPrevTotal = newPrevList.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+
+              payload.mealCashStandardPreviousYear = actualCurrentYear - 1;
+              payload.mealCashStandardPreviousYearReimbursements = newPrevList;
+              payload.mealCashStandardPreviousYearReimbursed = newPrevTotal;
+              payload.mealCashStandardPreviousYearResidual = Math.max(0, prevResidual - allocateToPrev);
+            }
+
+            // Aggiorna anno corrente solo con l'eventuale eccedenza
+            if (allocateToCurrent > 0) {
+              const currentListNorm = currentList
+                .map((item) => {
+                  if (item && typeof item === 'object') {
+                    const amount = Number(item.amount || 0);
+                    const ts = Number(item.ts);
+                    return {
+                      amount: Number.isFinite(amount) ? amount : 0,
+                      ...(Number.isFinite(ts) ? { ts } : {})
+                    };
+                  }
+                  const amount = Number(item || 0);
+                  return { amount: Number.isFinite(amount) ? amount : 0 };
+                })
+                .filter((it) => Number(it.amount || 0) !== 0);
+
+              const newCurrentList = [...currentListNorm, { amount: allocateToCurrent, ts: nowTs }];
+              const newCurrentTotal = newCurrentList.reduce((sum, v) => sum + (Number(v.amount) || 0), 0);
+              payload.mealCashStandardReimbursements = newCurrentList;
+              payload.mealCashStandardReimbursed = newCurrentTotal;
+            }
+
+            // Se tutto è andato su anno precedente, comunque aggiorna legacy corrente a 0 coerente
+            if (allocateToCurrent <= 0) {
+              // Mantieni lista corrente com'è; assicura total legacy coerente
+              const currentListNorm = Array.isArray(settings?.mealCashStandardReimbursements)
+                ? settings.mealCashStandardReimbursements
+                : [];
+              const currentTotal = currentListNorm.reduce((sum, v) => sum + (getMealReimbAmount(v) || 0), 0);
+              payload.mealCashStandardReimbursed = Number(currentTotal || 0);
+            }
+
+            await updatePartialSettings(payload);
+          } else {
+            // Aggiunta normale (stai modificando direttamente l'anno selezionato)
+            newList = [...currentList, { amount: delta, ts: nowTs }];
+            await persistMealReimbursementsList(newList);
+          }
+        }
+
+        setMealReimbModalVisible(false);
+        setMealReimbEditIndex(null);
+      } catch (e) {
+        console.error('Errore salvataggio rimborso pasti:', e);
+        Alert.alert('Errore', 'Impossibile salvare l\'importo rimborsato.');
+      }
+    };
+
+    const deleteMealReimbursement = async (index) => {
+      try {
+        const currentList = mealReimbUsePrevYearKeys
+          ? (Array.isArray(settings?.mealCashStandardPreviousYearReimbursements)
+              ? settings.mealCashStandardPreviousYearReimbursements
+              : [])
+          : (Array.isArray(settings?.mealCashStandardReimbursements)
+              ? settings.mealCashStandardReimbursements
+              : []);
+        if (index < 0 || index >= currentList.length) return;
+
+        const newList = currentList.filter((_, i) => i !== index);
+        await persistMealReimbursementsList(newList);
+
+        // Se stavi modificando proprio quell'elemento, reset
+        if (mealReimbEditIndex === index) {
+          setMealReimbEditIndex(null);
+          setMealReimbInput('');
+        }
+      } catch (e) {
+        console.error('Errore eliminazione rimborso pasti:', e);
+        Alert.alert('Errore', 'Impossibile eliminare l\'importo.');
+      }
+    };
     
     return (
       <View style={styles.sectionCard}>
@@ -2506,21 +3019,21 @@ const DashboardScreen = ({ navigation, route }) => {
             </View>
             <View style={styles.breakdownSubItems}>
               {/* Feriale */}
-              {allowances.standbyByType?.feriale?.amount > 0 && (
+              {allowances.standbyByType?.feriale?.amount > 0 && standbyRates?.feriale !== undefined && (
                 <Text style={styles.breakdownDetail}>
                   Feriale ({standbyRates.feriale.toFixed(2).replace('.', ',')}€/giorno): €{allowances.standbyByType.feriale.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.feriale.days} gg)
                 </Text>
               )}
               
               {/* Sabato */}
-              {allowances.standbyByType?.sabato?.amount > 0 && (
+              {allowances.standbyByType?.sabato?.amount > 0 && standbyRates?.sabato !== undefined && (
                 <Text style={styles.breakdownDetail}>
                   Sabato ({standbyRates.sabato.toFixed(2).replace('.', ',')}€/giorno): €{allowances.standbyByType.sabato.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.sabato.days} gg)
                 </Text>
               )}
               
               {/* Festivo */}
-              {allowances.standbyByType?.festivo?.amount > 0 && (
+              {allowances.standbyByType?.festivo?.amount > 0 && standbyRates?.festivo !== undefined && (
                 <Text style={styles.breakdownDetail}>
                   Festivo ({standbyRates.festivo.toFixed(2).replace('.', ',')}€/giorno): €{allowances.standbyByType.festivo.amount.toFixed(2).replace('.', ',')} ({allowances.standbyByType.festivo.days} gg)
                 </Text>
@@ -2601,6 +3114,164 @@ const DashboardScreen = ({ navigation, route }) => {
           </View>
         )}
 
+        {/* Rimborso pasti (cash standard) - anno corrente + anno precedente */}
+        {showCashStandardReimbursement && (
+          <View style={styles.breakdownItem}>
+            <View style={styles.breakdownRow}>
+              <Text style={styles.breakdownLabel}>Rimborso pasti (cash standard)</Text>
+              <Text style={styles.breakdownValue}>{formatSafeAmount(selectedYearCashStandardTotal)}</Text>
+            </View>
+            <Text style={styles.breakdownDetail}>
+              Totale maturato ({yearMealCashStandard.year}) • Pranzo: {yearMealCashStandard.lunchVoucherCount || 0} • Cena: {yearMealCashStandard.dinnerVoucherCount || 0}
+            </Text>
+
+            {(isViewingActualCurrentYear && prevYearResidualYear > 0 && prevYearResidual > 0) && (
+              <View style={styles.mealResidualRow}>
+                <Text style={styles.breakdownDetail}>Residuo anno precedente ({prevYearResidualYear})</Text>
+                <Text style={styles.breakdownValue}>{formatSafeAmount(prevYearResidual)}</Text>
+              </View>
+            )}
+
+            <TouchableOpacity
+              onPress={openMealReimbModal}
+              activeOpacity={0.65}
+              accessibilityRole="button"
+              accessibilityLabel={`Modifica già rimborsato (${yearMealCashStandard.year})`}
+              accessibilityHint="Tocca per aggiungere, modificare o eliminare gli importi rimborsati"
+              style={styles.mealResidualRow}
+            >
+              <Text style={[styles.breakdownDetail, { textDecorationLine: 'underline', color: theme.colors.primary }]}>Già rimborsato ({yearMealCashStandard.year})</Text>
+              <Text style={[styles.breakdownValue, { color: theme.colors.primary }]}>{formatSafeAmount(displayedReimbursed)}</Text>
+            </TouchableOpacity>
+
+            <View style={styles.mealResidualRow}>
+              <Text style={styles.breakdownDetail}>Residuo da rimborsare</Text>
+              <Text style={styles.breakdownValue}>{formatSafeAmount(displayedResidual)}</Text>
+            </View>
+
+            {/* Per l'anno corrente: mostra solo il residuo anno precedente (sopra), senza blocco dettagliato */}
+          </View>
+        )}
+
+        {/* Modale inserimento già rimborsato */}
+        <Modal
+          visible={mealReimbModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setMealReimbModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalBackdrop} />
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.modalContent}
+            >
+              <Text style={styles.modalTitle}>Rimborso pasti (cash standard) {mealReimbModalYear ? `(${mealReimbModalYear})` : ''}</Text>
+              <Text style={styles.modalSubtitle}>
+                {mealReimbEditIndex !== null
+                  ? 'Modifica l\'importo selezionato.'
+                  : 'Inserisci l\'importo rimborsato oggi/questa volta: verrà sommato al totale (può superare il maturato).'}
+              </Text>
+
+              <View style={styles.modalInputRow}>
+                <TextInput
+                  value={mealReimbInput}
+                  onChangeText={setMealReimbInput}
+                  placeholder="0,00"
+                  placeholderTextColor={theme.colors.textSecondary}
+                  keyboardType="numeric"
+                  style={styles.modalTextInput}
+                />
+                <Text style={styles.modalInputSuffix}>€</Text>
+              </View>
+
+              <Text style={styles.breakdownDetail}>
+                Totale rimborsato finora: {formatSafeAmount(mealReimbUsePrevYearKeys ? prevYearReimbursed : mealCashStandardReimbursed)}
+              </Text>
+
+              {(mealReimbUsePrevYearKeys ? prevYearReimbursements.length : mealCashStandardReimbursements.length) > 0 && (
+                <View style={{ marginTop: 12, width: '100%' }}>
+                  <Text style={styles.breakdownDetail}>Inserimenti (ultimi 10):</Text>
+                  {(() => {
+                    const list = mealReimbUsePrevYearKeys ? prevYearReimbursements : mealCashStandardReimbursements;
+                    const max = 10;
+                    const start = Math.max(0, list.length - max);
+                    const slice = list.slice(start);
+                    return slice
+                      .map((amount, localIdx) => ({
+                        amount,
+                        index: start + localIdx
+                      }))
+                      .reverse();
+                  })().map((item) => {
+                    const isEditing = mealReimbEditIndex === item.index;
+                    const ts = getMealReimbTs(item.amount);
+                    const dateLabel = ts
+                      ? new Date(ts).toLocaleDateString('it-IT')
+                      : null;
+                    return (
+                      <View
+                        key={`meal-reimb-${item.index}`}
+                        style={{
+                          flexDirection: 'row',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          paddingVertical: 6
+                        }}
+                      >
+                        <Text style={styles.breakdownDetail}>
+                          • {formatSafeAmount(getMealReimbAmount(item.amount))}{dateLabel ? `  (${dateLabel})` : ''}{isEditing ? ' (in modifica)' : ''}
+                        </Text>
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                          <TouchableOpacity
+                            onPress={() => {
+                              setMealReimbEditIndex(item.index);
+                              setMealReimbInput(String(getMealReimbAmount(item.amount) || 0).replace('.', ','));
+                            }}
+                          >
+                            <Text style={[styles.breakdownDetail, { textDecorationLine: 'underline' }]}>Modifica</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            onPress={() => {
+                              Alert.alert(
+                                'Elimina inserimento',
+                                'Vuoi eliminare questo importo rimborsato?',
+                                [
+                                  { text: 'Annulla', style: 'cancel' },
+                                  { text: 'Elimina', style: 'destructive', onPress: () => deleteMealReimbursement(item.index) }
+                                ]
+                              );
+                            }}
+                          >
+                            <Text style={[styles.breakdownDetail, { textDecorationLine: 'underline' }]}>Elimina</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              <View style={styles.modalButtonsRow}>
+                <TouchableOpacity
+                  onPress={() => setMealReimbModalVisible(false)}
+                  style={[styles.modalButton, styles.modalButtonSecondary]}
+                >
+                  <Text style={styles.modalButtonText}>Annulla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={saveMealReimbursed}
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>
+                    {mealReimbEditIndex !== null ? 'Salva modifica' : 'Aggiungi'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </Modal>
+
         {/* Ore lavoro senza viaggio extra */}
         {monthlyAggregated?.totalHours && monthlyAggregated?.ordinary?.hours?.viaggio_extra && 
          ((monthlyAggregated.totalHours - (monthlyAggregated.ordinary.hours.viaggio_extra || 0)) > 0) && (
@@ -2654,9 +3325,129 @@ const DashboardScreen = ({ navigation, route }) => {
     const fixedSum = showEffective ? (dailyRateForFixed * fixedDaysCount) : 0;
     const adjustedTotalEarnings = Math.max(0, (monthlyAggregated?.totalEarnings || 0) - (fixedSum || 0));
 
+    // Totale netto stimato (spostato in cima sotto il titolo riepilogo)
+    const netEstimatedTotalBlock = (() => {
+      // Determina se è il mese corrente
+      const currentDate = new Date();
+      const selectedYear = selectedDate.getFullYear();
+      const selectedMonth = selectedDate.getMonth();
+      const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
+
+      // Calcola il lordo previsto/totale del mese (non maturato ad oggi)
+      const baseSalary = settings?.contract?.monthlySalary || 2866.96;
+      const currentTotal = adjustedTotalEarnings;
+      const daysWorked = monthlyAggregated?.daysWorked || 0;
+      const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
+
+      let grossAmount;
+
+      if (isCurrentMonth && daysWorked > 0) {
+        // Mese corrente: usa il previsto fine mese (solo feriali lun-ven)
+        const dailyRate = baseSalary / workingDaysInMonth;
+        const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+        const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+        const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+        const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+        const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+        const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+        grossAmount = baseSalary + realExtraEarnings;
+      } else if (!isCurrentMonth && daysWorked > 0) {
+        // Mese passato: calcola il totale teorico del mese (non maturato) usando solo feriali
+        const dailyRate = baseSalary / workingDaysInMonth;
+        const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+        const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+        const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
+        const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+        const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+        const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+        grossAmount = baseSalary + realExtraEarnings;
+      } else {
+        // Fallback: usa il totale effettivo se non ci sono dati sufficienti
+        grossAmount = currentTotal;
+      }
+
+      // Aggiungi i pasti cash al calcolo finale
+      const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
+
+      if (grossAmount > 0) {
+        try {
+          // 💰 Usa impostazioni salvate dall'utente con default IRPEF
+          const payslipSettings = {
+            method: settings?.netCalculation?.method || 'irpef', // Default IRPEF
+            customDeductionRate: settings?.netCalculation?.customDeductionRate || 32 // Fallback 32% realistico
+          };
+
+          // 🎯 Scelta base di calcolo: cifra presente vs stima annuale
+          let calculationBase = grossAmount;
+          let isEstimated = false;
+
+          const useActualAmount = settings?.netCalculation?.useActualAmount ?? false;
+
+          // ✅ Se l'utente ha scelto "stima annuale", usa SEMPRE lo stipendio base
+          if (!useActualAmount && settings?.contract?.monthlySalary) {
+            // Usa lo stipendio base mensile per garantire percentuali consistenti
+            calculationBase = settings.contract.monthlySalary;
+            isEstimated = true;
+          }
+
+          const netCalculation = RealPayslipCalculator.calculateNetFromGross(calculationBase, payslipSettings);
+
+          // Totale finale = netto + pasti cash
+          const finalNetTotal = netCalculation.net + cashMealsFromForm;
+
+          return (
+            <>
+              <View style={[styles.totalRow, { marginTop: 8 }]}>
+                <Text style={[styles.totalLabel, { color: theme.colors.income }]}>Totale Netto Stimato</Text>
+                <Text style={[styles.totalAmount, { color: theme.colors.income }]}>{formatSafeAmount(finalNetTotal)}</Text>
+              </View>
+              <Text style={[styles.totalSubtext, { fontSize: 12, color: theme.colors.textSecondary }]}>
+                Trattenute: {formatSafeAmount(netCalculation.totalDeductions)} ({(netCalculation.deductionRate * 100).toFixed(1)}% - {payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF + INPS + Addizionali'})
+              </Text>
+              {cashMealsFromForm > 0 && (
+                <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.accent, fontStyle: 'italic' }]}>
+                  Include cash pasti: {formatSafeAmount(cashMealsFromForm)} (netto tasse: {formatSafeAmount(netCalculation.net)})
+                </Text>
+              )}
+              {isEstimated && (
+                <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.textDisabled, fontStyle: 'italic' }]}>
+                  *Calcolo basato su stipendio standard (€{calculationBase.toFixed(2)}/mese)
+                </Text>
+              )}
+              {!isEstimated && calculationBase === grossAmount && (
+                <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.textSecondary }]}>
+                  Calcolato sul {isCurrentMonth ? 'previsto fine mese' : 'totale mese'} (€{grossAmount.toFixed(2)})
+                </Text>
+              )}
+              <Text style={styles.totalSubtext}>
+                Include attività ordinarie, interventi in reperibilità e indennità (esclusi rimborsi pasti)
+              </Text>
+            </>
+          );
+        } catch (error) {
+          console.warn('Errore calcolo netto:', error);
+          return (
+            <>
+              <View style={[styles.totalRow, { marginTop: 8 }]}>
+                <Text style={[styles.totalLabel, { color: theme.colors.textSecondary }]}>Totale Netto Stimato</Text>
+                <Text style={[styles.totalAmount, { color: theme.colors.textSecondary }]}>Calcolo non disponibile</Text>
+              </View>
+              <Text style={styles.totalSubtext}>
+                Include attività ordinarie, interventi in reperibilità e indennità (esclusi rimborsi pasti)
+              </Text>
+            </>
+          );
+        }
+      }
+
+      return null;
+    })();
+
     return (
     <View style={styles.summaryCard}>
       <Text style={styles.summaryTitle}>Riepilogo {selectedDate.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' })}</Text>
+
+      {netEstimatedTotalBlock}
       
       <View style={styles.statsGrid}>
         <View style={styles.statItem}>
@@ -3109,142 +3900,6 @@ const DashboardScreen = ({ navigation, route }) => {
             })()}
           </View>
         </View>
-
-        {/* Calcolo netto con trattenute - USA PREVISTO FINE MESE */}
-        {(() => {
-          // Determina se è il mese corrente
-          const currentDate = new Date();
-          const selectedYear = selectedDate.getFullYear();
-          const selectedMonth = selectedDate.getMonth();
-          const isCurrentMonth = currentDate.getFullYear() === selectedYear && currentDate.getMonth() === selectedMonth;
-          
-          // Calcola il lordo previsto/totale del mese (non maturato ad oggi)
-          const baseSalary = settings?.contract?.monthlySalary || 2866.96;
-          const currentTotal = adjustedTotalEarnings;
-          const daysWorked = monthlyAggregated?.daysWorked || 0;
-          const workingDaysInMonth = settings?.contract?.workingDaysPerMonth || 26;
-          
-          let grossAmount;
-          
-          if (isCurrentMonth && daysWorked > 0) {
-            // Mese corrente: usa il previsto fine mese (solo feriali lun-ven)
-            const dailyRate = baseSalary / workingDaysInMonth;
-            const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
-            const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
-            const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
-            const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
-            const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
-            const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
-            grossAmount = baseSalary + realExtraEarnings;
-          } else if (!isCurrentMonth && daysWorked > 0) {
-            // Mese passato: calcola il totale teorico del mese (non maturato) usando solo feriali
-            const dailyRate = baseSalary / workingDaysInMonth;
-            const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
-            const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
-            const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
-            const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
-            const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
-            const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
-            grossAmount = baseSalary + realExtraEarnings;
-          } else {
-            // Fallback: usa il totale effettivo se non ci sono dati sufficienti
-            grossAmount = currentTotal;
-          }
-          
-          // Aggiungi i pasti cash al calcolo finale
-          const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
-          
-          if (grossAmount > 0) {
-            try {
-              // 💰 Usa impostazioni salvate dall'utente con default IRPEF
-              const payslipSettings = {
-                method: settings?.netCalculation?.method || 'irpef', // Default IRPEF
-                customDeductionRate: settings?.netCalculation?.customDeductionRate || 32 // Fallback 32% realistico
-              };
-              
-              console.log('🔍 DASHBOARD - Impostazioni per calcolo netto:');
-              console.log('- Settings disponibili:', !!settings?.netCalculation);
-              console.log('- Metodo utilizzato:', payslipSettings.method);
-              console.log('- Percentuale utilizzata:', payslipSettings.customDeductionRate);
-              console.log('- Usa cifra presente:', settings?.netCalculation?.useActualAmount ?? false);
-              
-              // 🎯 Scelta base di calcolo: cifra presente vs stima annuale
-              let calculationBase = grossAmount;
-              let isEstimated = false;
-              
-              const useActualAmount = settings?.netCalculation?.useActualAmount ?? false;
-              
-              console.log('🔧 DASHBOARD DEBUG - Condizioni per stima annuale:');
-              console.log(`- useActualAmount: ${useActualAmount}`);
-              console.log(`- !useActualAmount: ${!useActualAmount}`);
-              console.log(`- contract disponibile: ${!!settings?.contract}`);
-              console.log(`- monthlySalary: ${settings?.contract?.monthlySalary}`);
-              console.log(`- monthlySalary truthy: ${!!settings?.contract?.monthlySalary}`);
-              console.log(`- Condizione IF completa: ${!useActualAmount && settings?.contract?.monthlySalary}`);
-              
-              // ✅ Se l'utente ha scelto "stima annuale", usa SEMPRE lo stipendio base
-              if (!useActualAmount && settings?.contract?.monthlySalary) {
-                // Usa lo stipendio base mensile per garantire percentuali consistenti
-                calculationBase = settings.contract.monthlySalary;
-                isEstimated = true;
-                
-                console.log('🎯 DASHBOARD - Usando stima annuale (stipendio base):');
-                console.log(`- Importo lordo effettivo: €${grossAmount.toFixed(2)}`);
-                console.log(`- Base calcolo (stipendio base): €${calculationBase.toFixed(2)}`);
-                console.log(`- Percentuale trattenute costante basata su stipendio standard`);
-              } else {
-                console.log('🎯 DASHBOARD - Usando cifra presente:');
-                console.log(`- Importo lordo: €${grossAmount.toFixed(2)}`);
-                console.log(`- useActualAmount: ${useActualAmount}`);
-              }
-              
-              const netCalculation = RealPayslipCalculator.calculateNetFromGross(calculationBase, payslipSettings);
-              
-              // Totale finale = netto + pasti cash
-              const finalNetTotal = netCalculation.net + cashMealsFromForm;
-              
-              return (
-                <>
-                  <View style={[styles.totalRow, { marginTop: 8 }]}>
-                    <Text style={[styles.totalLabel, { color: theme.colors.income }]}>Totale Netto Stimato</Text>
-                    <Text style={[styles.totalAmount, { color: theme.colors.income }]}>{formatSafeAmount(finalNetTotal)}</Text>
-                  </View>
-                  <Text style={[styles.totalSubtext, { fontSize: 12, color: theme.colors.textSecondary }]}>
-                    Trattenute: {formatSafeAmount(netCalculation.totalDeductions)} ({(netCalculation.deductionRate * 100).toFixed(1)}% - {payslipSettings.method === 'custom' ? 'Personalizzato' : 'IRPEF + INPS + Addizionali'})
-                  </Text>
-                  {cashMealsFromForm > 0 && (
-                    <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.accent, fontStyle: 'italic' }]}>
-                      Include cash pasti: {formatSafeAmount(cashMealsFromForm)} (netto tasse: {formatSafeAmount(netCalculation.net)})
-                    </Text>
-                  )}
-                  {isEstimated && (
-                    <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.textDisabled, fontStyle: 'italic' }]}>
-                      *Calcolo basato su stipendio standard (€{calculationBase.toFixed(2)}/mese)
-                    </Text>
-                  )}
-                  {!isEstimated && calculationBase === grossAmount && (
-                    <Text style={[styles.totalSubtext, { fontSize: 11, color: theme.colors.textSecondary }]}>
-                      Calcolato sul {isCurrentMonth ? 'previsto fine mese' : 'totale mese'} (€{grossAmount.toFixed(2)})
-                    </Text>
-                  )}
-                </>
-              );
-            } catch (error) {
-              console.warn('Errore calcolo netto:', error);
-              return (
-                <View style={[styles.totalRow, { marginTop: 8 }]}>
-                  <Text style={[styles.totalLabel, { color: theme.colors.textSecondary }]}>Totale Netto Stimato</Text>
-                  <Text style={[styles.totalAmount, { color: theme.colors.textSecondary }]}>Calcolo non disponibile</Text>
-                </View>
-              );
-            }
-          }
-          return null;
-        })()}
-        
-        <Text style={styles.totalSubtext}>
-          Include attività ordinarie, interventi in reperibilità e indennità (esclusi rimborsi pasti)
-        </Text>
       </View>
     </View>
   );
@@ -3960,7 +4615,7 @@ const DashboardScreen = ({ navigation, route }) => {
                 earnings = savedBreakdown.totalEarnings;
                 dailyHours = savedBreakdown.dailyHours;
                 hasSavedBreakdown = true;
-                console.log(`🔧 DAILY DEBUG - ${entry.date}: da breakdown salvati (preferito), hours=${(dailyHours || 0).toFixed(2)}, earnings=€${(earnings || 0).toFixed(2)}`);
+                debugLog(`🔧 DAILY DEBUG - ${entry.date}: da breakdown salvati (preferito), hours=${(dailyHours || 0).toFixed(2)}, earnings=€${(earnings || 0).toFixed(2)}`);
               }
             } catch (error) {
               console.error('Errore nell\'accesso ai breakdown salvati:', error);
@@ -3972,17 +4627,17 @@ const DashboardScreen = ({ navigation, route }) => {
               if (entryIndex >= 0 && entryIndex < monthlyAggregated.analytics.dailyHours.length) {
                 dailyHours = monthlyAggregated.analytics.dailyHours[entryIndex] || 0;
                 earnings = monthlyAggregated.analytics.dailyEarnings[entryIndex] || 0;
-                console.log(`🔧 DAILY DEBUG - ${entry.date}: da analytics (fallback), hours=${dailyHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
+                debugLog(`🔧 DAILY DEBUG - ${entry.date}: da analytics (fallback), hours=${dailyHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
               }
             } else if ((hasSavedBreakdown || workEntry.isFixedDay) && (earnings === 0 && dailyHours === 0)) {
               // Evita override dei giorni fissi o con breakdown salvato (0 è autorevole per ferie/malattia/permesso/riposo)
-              console.log(`🔧 DAILY DEBUG - ${entry.date}: skip analytics fallback (${hasSavedBreakdown ? 'saved' : 'fixed day'})`);
+              debugLog(`🔧 DAILY DEBUG - ${entry.date}: skip analytics fallback (${hasSavedBreakdown ? 'saved' : 'fixed day'})`);
             }
 
             // 3) Fallback: usa totalEarnings dal database se disponibile e > 0
             if (!hasSavedBreakdown && !workEntry.isFixedDay && earnings === 0 && entry.totalEarnings && entry.totalEarnings > 0) {
               earnings = entry.totalEarnings;
-              console.log(`🔧 DAILY DEBUG - ${entry.date}: da database (fallback), earnings=€${earnings.toFixed(2)}`);
+              debugLog(`🔧 DAILY DEBUG - ${entry.date}: da database (fallback), earnings=€${earnings.toFixed(2)}`);
             }
             
             // 4) Ultimo fallback: calcolo manuale
@@ -4004,7 +4659,7 @@ const DashboardScreen = ({ navigation, route }) => {
               if (workEntry.isStandbyDay && !workEntry.workStart1 && !workEntry.workStart2) {
                 // Solo reperibilità senza lavoro
                 earnings = safeSettings.standbySettings.dailyAllowance;
-                console.log(`🔧 DAILY DEBUG - ${entry.date}: solo reperibilità, earnings=€${earnings.toFixed(2)}`);
+                debugLog(`🔧 DAILY DEBUG - ${entry.date}: solo reperibilità, earnings=€${earnings.toFixed(2)}`);
               } else {
                 // Calcola ore di lavoro dai dati base
                 let workHours = 0;
@@ -4059,7 +4714,7 @@ const DashboardScreen = ({ navigation, route }) => {
                     earnings += workEntry.mealDinnerCash;
                   }
                   
-                  console.log(`🔧 DAILY DEBUG - ${entry.date}: calcolato manualmente, hours=${workHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
+                  debugLog(`🔧 DAILY DEBUG - ${entry.date}: calcolato manualmente, hours=${workHours.toFixed(2)}, earnings=€${earnings.toFixed(2)}`);
                 }
               }
             }
@@ -4481,6 +5136,13 @@ const DashboardScreen = ({ navigation, route }) => {
     );
   }
 
+  const hasAnyMonthData =
+    (workEntries?.length || 0) > 0 ||
+    (fixedDaysData?.totalDays || 0) > 0 ||
+    (completionData?.totalEntries || 0) > 0 ||
+    (monthlyAggregated?.totalEarnings || 0) > 0 ||
+    (monthlyAggregated?.allowances?.standbyDays || 0) > 0;
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle={theme.colors.statusBarStyle} />
@@ -4542,16 +5204,16 @@ const DashboardScreen = ({ navigation, route }) => {
         style={styles.scrollView}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        {monthlyAggregated?.daysWorked > 0 ? (
+        {hasAnyMonthData ? (
           <>
             {renderSummaryStats()}
+            {renderAllowancesSection()}
             {renderAnalyticsSection()}
             {renderWorkPatternSection()}
             {renderEarningsBreakdownSection()}
             {renderOrdinarySection()}
             {renderSpecialDaysSection()}
             {renderStandbySection()}
-            {renderAllowancesSection()}
             {renderFixedDaysSection()}
             {renderCompletionSection()}
             {renderDailyBreakdown()}
@@ -4910,6 +5572,88 @@ const createStyles = (theme) => StyleSheet.create({
     marginLeft: 8,
     marginTop: 6,
     marginBottom: 4,
+  },
+  mealResidualRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 16,
+  },
+  modalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.cardShadow,
+    opacity: theme.name === 'dark' ? 0.7 : 0.45,
+  },
+  modalContent: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: 6,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    marginBottom: 12,
+  },
+  modalInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: theme.colors.card,
+    marginBottom: 14,
+  },
+  modalTextInput: {
+    flex: 1,
+    color: theme.colors.text,
+    fontSize: 16,
+  },
+  modalInputSuffix: {
+    color: theme.colors.textSecondary,
+    marginLeft: 8,
+    fontSize: 16,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  modalButtonPrimary: {
+    backgroundColor: theme.colors.primary,
+    borderColor: theme.colors.primary,
+    marginLeft: 10,
+  },
+  modalButtonSecondary: {
+    backgroundColor: theme.colors.surface,
+  },
+  modalButtonText: {
+    color: theme.colors.text,
+    fontWeight: '600',
+  },
+  modalButtonTextPrimary: {
+    color: theme.name === 'dark' ? theme.colors.text : theme.colors.background,
   },
   totalRow: {
     borderTopWidth: 2,

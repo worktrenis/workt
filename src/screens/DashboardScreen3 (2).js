@@ -1076,16 +1076,19 @@ const DashboardScreen = ({ navigation, route }) => {
           // Se c'è indennità reperibilità, categorizza per tipo di giorno
           if (standbyAmount > 0) {
             const entryDate = new Date(entry.date);
-            const isWeekend = entryDate.getDay() === 0 || entryDate.getDay() === 6;
             const isSaturday = entryDate.getDay() === 6;
             const isSunday = entryDate.getDay() === 0;
-            const isHoliday = entry.isHoliday || false;
+            const isHoliday = isItalianHoliday(entryDate);
+
+            const saturdayAsRest = safeSettings?.standbySettings?.saturdayAsRest === true;
+            const saturdayMode = safeSettings?.standbySettings?.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
             
             let dayType = 'feriale';
-            if (isSaturday) {
-              dayType = 'sabato';
-            } else if (isSunday || isHoliday) {
+
+            if (isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo')) {
               dayType = 'festivo';
+            } else if (isSaturday) {
+              dayType = 'sabato';
             }
             
             aggregated.allowances.standbyByType[dayType].amount += standbyAmount;
@@ -1527,7 +1530,20 @@ const DashboardScreen = ({ navigation, route }) => {
       
       // Aggiungi anche alla suddivisione per tipo
       standbyOnlyDays.forEach(allowance => {
-        const dayType = allowance.dayType || 'feriale';
+        const dateObj = new Date(allowance.date);
+        const isSaturday = dateObj.getDay() === 6;
+        const isSunday = dateObj.getDay() === 0;
+        const isHoliday = isItalianHoliday(allowance.date);
+
+        const saturdayAsRest = safeSettings?.standbySettings?.saturdayAsRest === true;
+        const saturdayMode = safeSettings?.standbySettings?.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
+
+        let dayType = 'feriale';
+        if (isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo')) {
+          dayType = 'festivo';
+        } else if (isSaturday) {
+          dayType = 'sabato';
+        }
         aggregated.allowances.standbyByType[dayType].amount += allowance.allowance;
         aggregated.allowances.standbyByType[dayType].days += 1;
         console.log(`🔧 DEBUG STANDBY CALENDARIO - Giorno ${allowance.date} (${dayType}): €${allowance.allowance.toFixed(2)}, totale ${dayType}: €${aggregated.allowances.standbyByType[dayType].amount.toFixed(2)} (${aggregated.allowances.standbyByType[dayType].days} giorni)`);

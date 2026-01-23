@@ -146,17 +146,18 @@ export class EarningsCalculator {
     let effectiveWorkHours = workHours;
     let effectiveTravelHours = travelHours;
     
-    if (multiShiftTravelAsWork && workEntry.interventi && workEntry.interventi.length > 1) {
-      // Calcola viaggi interni vs esterni per multi-turno
+    if (multiShiftTravelAsWork) {
+      // Calcola viaggi interni vs esterni: solo primo andata + ultimo ritorno = viaggio (external)
+      // Tutti gli spostamenti tra cantieri = lavoro (internal)
       const travelBreakdown = this.timeCalculator.calculateTravelHoursWithTypes(workEntry);
-      const externalTravelHours = travelBreakdown.external || 0;
-      const internalTravelHours = travelBreakdown.internal || 0;
-      
+      const externalTravelHours = travelBreakdown?.external || 0;
+      const internalTravelHours = travelBreakdown?.internal || 0;
+
       // I viaggi interni diventano lavoro
       effectiveWorkHours = workHours + internalTravelHours;
       effectiveTravelHours = externalTravelHours;
-      
-      console.log('🔄 Multi-turno applicato:', {
+
+      console.log('🔄 Multi-cantiere applicato (viaggi interni = lavoro):', {
         originalWork: workHours,
         originalTravel: travelHours,
         internalTravelAsWork: internalTravelHours,

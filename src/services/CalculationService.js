@@ -20,6 +20,27 @@ class CalculationService {
     this.earningsCalculator = new EarningsCalculator(this.timeCalculator);
   }
 
+  getEffectiveDailyRateFromContract(contract) {
+    const safeContract = contract || {};
+
+    const explicitDailyRate = Number(safeContract.dailyRate);
+    if (Number.isFinite(explicitDailyRate) && explicitDailyRate > 0) {
+      return explicitDailyRate;
+    }
+
+    const monthlySalary = Number(safeContract.monthlySalary);
+    const workingDaysPerMonthRaw = Number(safeContract.workingDaysPerMonth);
+    const workingDaysPerMonth = Number.isFinite(workingDaysPerMonthRaw) && workingDaysPerMonthRaw > 0
+      ? workingDaysPerMonthRaw
+      : 26;
+
+    if (Number.isFinite(monthlySalary) && monthlySalary > 0) {
+      return monthlySalary / workingDaysPerMonth;
+    }
+
+    return 109.19;
+  }
+
   // Parse time string to minutes from midnight
   parseTime(timeString) {
     if (!timeString) return null;
@@ -864,10 +885,13 @@ class CalculationService {
       console.log(`[CalculationService] Giorno fisso rilevato (${dayType}) per ${workEntry.date}, applicazione retribuzione giornaliera standard`);
       
       // Per i giorni fissi, applica la preferenza: se disattiva la visualizzazione, non calcolare il guadagno (totale=0)
-      const dailyRate = settings.contract?.dailyRate || 109.19;
+      const dailyRate = this.getEffectiveDailyRateFromContract(settings?.contract);
       const showEffective = settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false;
       const effectiveDaily = showEffective ? dailyRate : 0;
       
+      // Se il giorno è anche di reperibilità, non perdere l'indennità (anche se non ci sono ore)
+      const fixedDayTotal = effectiveDaily + (standbyAllowance || 0);
+
       return {
         regularPay: effectiveDaily,
         overtimePay: 0,
@@ -875,9 +899,9 @@ class CalculationService {
         travelPay: 0,
         standbyWorkPay: 0,
         standbyTravelPay: 0,
-        standbyAllowance: 0,
+        standbyAllowance: standbyAllowance || 0,
         travelAllowance: 0,
-        total: effectiveDaily,
+        total: fixedDayTotal,
         breakdown: {
           isFixedDay: true,
           dayType: dayType
@@ -997,9 +1021,60 @@ class CalculationService {
       console.log(`[CalculationService] Giorno fisso rilevato (${dayType}) per ${workEntry.date}, applicazione retribuzione giornaliera standard`);
       
       // Per i giorni fissi, applica la preferenza: se disattiva la visualizzazione, non calcolare il guadagno (totale=0)
-      const dailyRate = contract.dailyRate || 109.19;
+      const dailyRate = this.getEffectiveDailyRateFromContract(contract);
       const showEffective = settings?.showEffectiveEarningsOnSpecialNoWorkDays !== false;
       const effectiveDaily = showEffective ? dailyRate : 0;
+
+      // 🔧 FIX: se è reperibilità, includi l'indennità anche nei giorni fissi (es. festivo senza ore)
+      let standbyIndemnity = 0;
+      try {
+        const standbySettings = settings?.standbySettings || {};
+        const standbyDays = standbySettings?.standbyDays || {};
+        const dateStr = workEntry.date;
+
+        const isManuallyDeactivated = workEntry.isStandbyDay === false ||
+          workEntry.isStandbyDay === 0 ||
+          workEntry.standbyAllowance === false ||
+          workEntry.standbyAllowance === 0;
+
+        const isManuallyActivated = workEntry.isStandbyDay === true ||
+          workEntry.isStandbyDay === 1 ||
+          workEntry.standbyAllowance === true ||
+          workEntry.standbyAllowance === 1;
+
+        const isInCalendar = Boolean(standbySettings?.enabled && standbyDays?.[dateStr]?.selected);
+        const isStandbyDay = isManuallyActivated || (!isManuallyDeactivated && isInCalendar);
+
+        if (isStandbyDay) {
+          const { getStandbyRatesForContract } = require('../constants');
+          const cKey = settings?.contract?.key;
+          const r = getStandbyRatesForContract(cKey);
+          const IND_16H_FERIALE = r.feriale16;
+          const IND_24H_FERIALE = r.feriale24;
+          const IND_24H_FESTIVO = r.festivo24;
+
+          const customFeriale16 = standbySettings.customFeriale16;
+          const customFeriale24 = standbySettings.customFeriale24;
+          const customFestivo = standbySettings.customFestivo;
+          const allowanceType = standbySettings.allowanceType || '24h';
+          const saturdayAsRest = standbySettings.saturdayAsRest === true;
+          const saturdayMode = standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
+
+          const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
+          if (isRestDay) {
+            standbyIndemnity = customFestivo || IND_24H_FESTIVO;
+          } else if (isSaturday && saturdayMode === 'feriale24') {
+            standbyIndemnity = customFeriale24 || IND_24H_FERIALE;
+          } else if (allowanceType === '16h') {
+            standbyIndemnity = customFeriale16 || IND_16H_FERIALE;
+          } else {
+            standbyIndemnity = customFeriale24 || IND_24H_FERIALE;
+          }
+        }
+      } catch (e) {
+        // Fallback silenzioso: non bloccare il calcolo dei giorni fissi
+        standbyIndemnity = 0;
+      }
       
       const fixedDayResult = {
         ordinary: {
@@ -1021,14 +1096,14 @@ class CalculationService {
           travelHours: {},
           workEarnings: {},
           travelEarnings: {},
-          dailyIndemnity: 0,
-          totalEarnings: 0
+          dailyIndemnity: standbyIndemnity,
+          totalEarnings: standbyIndemnity
         },
         allowances: {
           meal: 0,
-          standby: 0
+          standby: standbyIndemnity
         },
-        totalEarnings: effectiveDaily,
+        totalEarnings: effectiveDaily + standbyIndemnity,
         details: {
           isSaturday,
           isSunday,
@@ -1202,7 +1277,7 @@ class CalculationService {
         // Giorni feriali: calcolo standard
         if (totalOrdinaryHours >= standardWorkDay) {
           // Giornata piena: paga giornaliera + extra
-          result.ordinary.earnings.giornaliera = contract.dailyRate || 109.19;
+          result.ordinary.earnings.giornaliera = this.getEffectiveDailyRateFromContract(contract);
           
           // Usa la nuova logica per i viaggi extra
           const travelRateInfo = this.getTravelRateForDate(settings, workEntry.date, baseRate);
@@ -1229,7 +1304,7 @@ class CalculationService {
           
           // Se il completamento è specificato, considera la giornata come completa ai fini del calcolo
           if (workEntry.completamentoGiornata && workEntry.completamentoGiornata !== 'nessuno') {
-            result.ordinary.earnings.giornaliera = contract.dailyRate || 109.19;
+            result.ordinary.earnings.giornaliera = this.getEffectiveDailyRateFromContract(contract);
           }
         }
         
@@ -1520,7 +1595,7 @@ class CalculationService {
     
     const contract = settings.contract || this.defaultContract;
     const baseRate = contract.hourlyRate || 16.41;
-    const dailyRate = contract.dailyRate || 109.19;
+    const dailyRate = this.getEffectiveDailyRateFromContract(contract);
     
     // Calcola informazioni sulla data
     const date = workEntry.date ? new Date(workEntry.date) : new Date();
@@ -1534,6 +1609,56 @@ class CalculationService {
     const isFixedDay = workEntry.isFixedDay || ['ferie', 'malattia', 'permesso', 'riposo', 'festivo'].includes(dayType);
     
     if (isFixedDay && dayType !== 'lavorativa') {
+      // 🔧 FIX: se è reperibilità, includi l'indennità anche nei giorni fissi (sync/basic)
+      let standbyIndemnity = 0;
+      try {
+        const standbySettings = settings?.standbySettings || {};
+        const standbyDays = standbySettings?.standbyDays || {};
+        const dateStr = workEntry.date;
+
+        const isManuallyDeactivated = workEntry.isStandbyDay === false ||
+          workEntry.isStandbyDay === 0 ||
+          workEntry.standbyAllowance === false ||
+          workEntry.standbyAllowance === 0;
+
+        const isManuallyActivated = workEntry.isStandbyDay === true ||
+          workEntry.isStandbyDay === 1 ||
+          workEntry.standbyAllowance === true ||
+          workEntry.standbyAllowance === 1;
+
+        const isInCalendar = Boolean(standbySettings?.enabled && standbyDays?.[dateStr]?.selected);
+        const isStandbyDay = isManuallyActivated || (!isManuallyDeactivated && isInCalendar);
+
+        if (isStandbyDay) {
+          const { getStandbyRatesForContract } = require('../constants');
+          const cKey = settings?.contract?.key;
+          const r = getStandbyRatesForContract(cKey);
+          const IND_16H_FERIALE = r.feriale16;
+          const IND_24H_FERIALE = r.feriale24;
+          const IND_24H_FESTIVO = r.festivo24;
+
+          const customFeriale16 = standbySettings.customFeriale16;
+          const customFeriale24 = standbySettings.customFeriale24;
+          const customFestivo = standbySettings.customFestivo;
+          const allowanceType = standbySettings.allowanceType || '24h';
+          const saturdayAsRest = standbySettings.saturdayAsRest === true;
+          const saturdayMode = standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
+
+          const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
+          if (isRestDay) {
+            standbyIndemnity = customFestivo || IND_24H_FESTIVO;
+          } else if (isSaturday && saturdayMode === 'feriale24') {
+            standbyIndemnity = customFeriale24 || IND_24H_FERIALE;
+          } else if (allowanceType === '16h') {
+            standbyIndemnity = customFeriale16 || IND_16H_FERIALE;
+          } else {
+            standbyIndemnity = customFeriale24 || IND_24H_FERIALE;
+          }
+        }
+      } catch (e) {
+        standbyIndemnity = 0;
+      }
+
       return {
         ordinary: {
           hours: {
@@ -1554,14 +1679,14 @@ class CalculationService {
           travelHours: {},
           workEarnings: {},
           travelEarnings: {},
-          dailyIndemnity: 0,
-          totalEarnings: 0
+          dailyIndemnity: standbyIndemnity,
+          totalEarnings: standbyIndemnity
         },
         allowances: {
           meal: 0,
-          standby: 0
+          standby: standbyIndemnity
         },
-        totalEarnings: dailyRate,
+        totalEarnings: dailyRate + standbyIndemnity,
         details: {
           isSaturday,
           isSunday,
@@ -2914,11 +3039,12 @@ class CalculationService {
    */
   calculateDailyRateWithSupplements(workEntry, settings, workHours, travelHours) {
     const contract = settings.contract || this.defaultContract;
-    const dailyRate = contract.dailyRate || 109.19;
+    const dailyRate = this.getEffectiveDailyRateFromContract(contract);
     const baseRate = contract.hourlyRate || 16.41;
     const standardWorkDay = getWorkDayHours();
     const travelCompensationRate = settings.travelCompensationRate || 1.0;
     const travelHoursSetting = settings.travelHoursSetting || 'TRAVEL_RATE_EXCESS';
+    const multiShiftTravelAsWork = settings.multiShiftTravelAsWork === true;
     
     const date = workEntry.date ? new Date(workEntry.date) : new Date();
     const isSaturday = date.getDay() === 6;
@@ -2926,7 +3052,28 @@ class CalculationService {
     const isHoliday = isItalianHoliday(date);
     const isWeekday = !isSaturday && !isSunday && !isHoliday;
     
-    const totalHours = workHours + travelHours;
+    // 🔄 MULTI-CANTIERE: spostamenti tra cantieri = ore lavoro
+    // Solo il primo viaggio (azienda → primo cantiere) e l'ultimo (ultimo cantiere → azienda) restano viaggio
+    let effectiveWorkHours = workHours;
+    let effectiveTravelHours = travelHours;
+    if (multiShiftTravelAsWork) {
+      const typedTravel = this.timeCalculator.calculateTravelHoursWithTypes(workEntry);
+      const externalTravelHours = typedTravel?.external || 0;
+      const internalTravelHours = typedTravel?.internal || 0;
+
+      effectiveWorkHours = workHours + internalTravelHours;
+      effectiveTravelHours = externalTravelHours;
+
+      console.log(`[CalculationService] 🔄 Multi-cantiere attivo (viaggi interni = lavoro)`, {
+        originalWorkHours: workHours,
+        originalTravelHours: travelHours,
+        internalTravelAsWork: internalTravelHours,
+        effectiveWorkHours,
+        effectiveTravelHours
+      });
+    }
+
+    const totalHours = effectiveWorkHours + effectiveTravelHours;
     let regularHours = Math.min(totalHours, standardWorkDay);
     let extraHours = Math.max(0, totalHours - standardWorkDay);
 
@@ -2937,10 +3084,10 @@ class CalculationService {
     let travelBreakdown = [];
     let travelExtraHours = 0; // Ore viaggio eccedenti che saranno pagate come viaggio
     
-    if (travelHours > 0) {
+    if (effectiveTravelHours > 0) {
       if (travelHoursSetting === 'TRAVEL_RATE_EXCESS') {
         // Solo le ore viaggio eccedenti la giornata standard
-        travelExtraHours = Math.max(0, travelHours - Math.max(0, standardWorkDay - workHours));
+        travelExtraHours = Math.max(0, effectiveTravelHours - Math.max(0, standardWorkDay - effectiveWorkHours));
         if (travelExtraHours > 0) {
           travelEarnings = travelExtraHours * baseRate * travelCompensationRate;
           travelBreakdown.push({
@@ -2958,18 +3105,18 @@ class CalculationService {
         }
       } else if (travelHoursSetting === 'TRAVEL_RATE_ALL') {
         // Tutte le ore viaggio
-        travelEarnings = travelHours * baseRate * travelCompensationRate;
+        travelEarnings = effectiveTravelHours * baseRate * travelCompensationRate;
         travelBreakdown.push({
           type: 'Viaggio (tutte le ore)',
-          hours: travelHours,
+          hours: effectiveTravelHours,
           rate: travelCompensationRate,
           hourlyRate: baseRate * travelCompensationRate,
           amount: travelEarnings
         });
         
         // CORREZIONE: Se paghiamo tutto il viaggio, escludiamo tutto dalle ore straordinarie
-        extraHours = Math.max(0, extraHours - travelHours);
-        console.log(`[CalculationService] 🚨 CORREZIONE TRAVEL_RATE_ALL: ${travelHours}h viaggio già pagato come viaggio, extraHours ridotto a: ${extraHours}h`);
+        extraHours = Math.max(0, extraHours - effectiveTravelHours);
+        console.log(`[CalculationService] 🚨 CORREZIONE TRAVEL_RATE_ALL: ${effectiveTravelHours}h viaggio già pagato come viaggio, extraHours ridotto a: ${extraHours}h`);
       } else if (travelHoursSetting === 'OVERTIME_EXCESS') {
         // Eccedenza viaggio come straordinario
         // (già gestito sotto come extraHours)
@@ -3092,13 +3239,21 @@ class CalculationService {
       });
       
       // CORREZIONE: Se non troviamo periodi ma abbiamo ore straordinarie, creiamo i periodi mancanti
-      // SOLO se il totale giornaliero supera le 8 ore E non siamo in multi-turni
-      // (I multi-turni hanno logica complessa che spesso confonde la distribuzione)
-      const totalDailyHours = workHours + travelHours;
-      const hasMultipleShifts = workEntry.viaggi && Array.isArray(workEntry.viaggi) && workEntry.viaggi.length > 0;
+      // SOLO se il totale giornaliero supera le 8 ore E non siamo in multi-cantiere
+      // (Il multi-cantiere ha logica complessa che spesso confonde la distribuzione)
+      const totalDailyHours = effectiveWorkHours + effectiveTravelHours;
+      let viaggiArrayForFlags = workEntry.viaggi;
+      if (typeof viaggiArrayForFlags === 'string') {
+        try {
+          viaggiArrayForFlags = JSON.parse(viaggiArrayForFlags);
+        } catch (e) {
+          viaggiArrayForFlags = null;
+        }
+      }
+      const hasMultipleShifts = Array.isArray(viaggiArrayForFlags) && viaggiArrayForFlags.length > 0;
       
       if (overtimePeriods.length === 0 && totalDailyHours > 8 && !hasMultipleShifts) {
-        console.log(`[CalculationService] ⚠️ CORREZIONE: Nessun periodo trovato ma ${totalDailyHours}h > 8h (no multi-turni), creo periodo straordinario artificiale`);
+        console.log(`[CalculationService] ⚠️ CORREZIONE: Nessun periodo trovato ma ${totalDailyHours}h > 8h (no multi-cantiere), creo periodo straordinario artificiale`);
         // Crea un periodo straordinario artificiale usando il primo turno di lavoro
         if (workEntry.workStart1 && workEntry.workEnd1) {
           const workDuration = this.calculateTimeDifference(workEntry.workStart1, workEntry.workEnd1) / 60;
@@ -3114,7 +3269,7 @@ class CalculationService {
       } else if (overtimePeriods.length === 0 && totalDailyHours <= 8) {
         console.log(`[CalculationService] ✅ NESSUNA CORREZIONE: ${totalDailyHours}h <= 8h, nessun straordinario da creare`);
       } else if (overtimePeriods.length === 0 && hasMultipleShifts) {
-        console.log(`[CalculationService] ✅ NESSUNA CORREZIONE: Multi-turni rilevati, salto la correzione artificiale per evitare calcoli errati`);
+        console.log(`[CalculationService] ✅ NESSUNA CORREZIONE: Multi-cantiere rilevato, salto la correzione artificiale per evitare calcoli errati`);
       }
       
       // Sistema complesso di fasce orarie (ora dovrebbe funzionare)
@@ -3216,7 +3371,7 @@ class CalculationService {
       // Non applicare fallback se le ore extra sono solo dovute al viaggio
       if (totalOvertimeHours === 0 && extraHours > 0 && overtimePeriods.length === 0) {
         // Verifica se le ore extra sono dovute principalmente al viaggio
-        const isExtraFromTravel = workHours <= standardWorkDay;
+        const isExtraFromTravel = effectiveWorkHours <= standardWorkDay;
         
         if (!isExtraFromTravel) {
           console.log(`[CalculationService] ⚠️ CORREZIONE FINALE: Ore extra da lavoro effettivo, forzo totalOvertimeHours da 0 a ${extraHours}`);
@@ -3281,10 +3436,10 @@ class CalculationService {
     return {
       ordinary: {
         hours: {
-          lavoro_giornaliera: Math.min(workHours, standardWorkDay),
-          viaggio_giornaliera: Math.min(travelHours, Math.max(0, standardWorkDay - workHours)),
-          lavoro_extra: Math.max(0, workHours - standardWorkDay),
-          viaggio_extra: Math.max(0, travelHours - Math.max(0, standardWorkDay - workHours))
+          lavoro_giornaliera: Math.min(effectiveWorkHours, standardWorkDay),
+          viaggio_giornaliera: Math.min(effectiveTravelHours, Math.max(0, standardWorkDay - effectiveWorkHours)),
+          lavoro_extra: Math.max(0, effectiveWorkHours - standardWorkDay),
+          viaggio_extra: Math.max(0, effectiveTravelHours - Math.max(0, standardWorkDay - effectiveWorkHours))
         },
         earnings: {
           giornaliera: ordinaryEarnings + supplementEarnings,
@@ -3428,22 +3583,27 @@ class CalculationService {
     // Viaggi aggiuntivi
     if (workEntry.viaggi && Array.isArray(workEntry.viaggi)) {
       workEntry.viaggi.forEach((viaggio, index) => {
-        if (viaggio.workStart1 && viaggio.workEnd1) {
-          const duration = this.calculateTimeDifference(viaggio.workStart1, viaggio.workEnd1) / 60;
+        const vWorkStart1 = viaggio.workStart1 || viaggio.work_start_1;
+        const vWorkEnd1 = viaggio.workEnd1 || viaggio.work_end_1;
+        const vWorkStart2 = viaggio.workStart2 || viaggio.work_start_2;
+        const vWorkEnd2 = viaggio.workEnd2 || viaggio.work_end_2;
+
+        if (vWorkStart1 && vWorkEnd1) {
+          const duration = this.calculateTimeDifference(vWorkStart1, vWorkEnd1) / 60;
           allWorkPeriods.push({
             type: 'work',
-            startTime: viaggio.workStart1,
-            endTime: viaggio.workEnd1,
+            startTime: vWorkStart1,
+            endTime: vWorkEnd1,
             duration: duration
           });
         }
         
-        if (viaggio.workStart2 && viaggio.workEnd2) {
-          const duration = this.calculateTimeDifference(viaggio.workStart2, viaggio.workEnd2) / 60;
+        if (vWorkStart2 && vWorkEnd2) {
+          const duration = this.calculateTimeDifference(vWorkStart2, vWorkEnd2) / 60;
           allWorkPeriods.push({
             type: 'work',
-            startTime: viaggio.workStart2,
-            endTime: viaggio.workEnd2,
+            startTime: vWorkStart2,
+            endTime: vWorkEnd2,
             duration: duration
           });
         }

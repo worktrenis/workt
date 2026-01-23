@@ -18,14 +18,14 @@ class EnhancedNotificationService {
     this.scheduledNotifications = new Map();
     this.backgroundTimers = new Map();
     
-    console.log('🚀 EnhancedNotificationService inizializzato');
-    console.log('📱 Sistema: JavaScript Timer + Background Timer per persistenza');
+    // console.log('🚀 EnhancedNotificationService inizializzato');
+    // console.log('📱 Sistema: JavaScript Timer + Background Timer per persistenza');
   }
 
   // ✅ INIZIALIZZAZIONE SISTEMA MIGLIORATO
   async initialize() {
     if (this.initialized) {
-      console.log('✅ Sistema già inizializzato');
+      // console.log('✅ Sistema già inizializzato');
       return true;
     }
 
@@ -34,8 +34,8 @@ class EnhancedNotificationService {
       AppState.addEventListener('change', this.handleAppStateChange.bind(this));
       
       this.initialized = true;
-      console.log('✅ Sistema Enhanced Notification inizializzato con successo');
-      console.log('🔄 Supporto: Foreground + Background Timer per persistenza');
+      // console.log('✅ Sistema Enhanced Notification inizializzato con successo');
+      // console.log('🔄 Supporto: Foreground + Background Timer per persistenza');
       
       return true;
     } catch (error) {
@@ -46,13 +46,13 @@ class EnhancedNotificationService {
 
   // 🔄 GESTIONE STATO APP
   handleAppStateChange(nextAppState) {
-    console.log(`🔄 App state: ${this.appState} → ${nextAppState}`);
+    // console.log(`🔄 App state: ${this.appState} → ${nextAppState}`);
     
     if (this.appState === 'background' && nextAppState === 'active') {
-      console.log('📱 App tornata attiva - controllo notifiche perse');
+      // console.log('📱 App tornata attiva - controllo notifiche perse');
       this.checkMissedNotifications();
     } else if (this.appState === 'active' && nextAppState === 'background') {
-      console.log('📱 App in background - attivo background timers');
+      // console.log('📱 App in background - attivo background timers');
       this.activateBackgroundTimers();
     }
     
@@ -61,12 +61,12 @@ class EnhancedNotificationService {
 
   // ✅ CONTROLLO PERMESSI (sempre disponibili per Alert)
   async requestPermissions() {
-    console.log('✅ Enhanced System: Alert React Native sempre disponibile');
+    // console.log('✅ Enhanced System: Alert React Native sempre disponibile');
     return true;
   }
 
   async hasPermissions() {
-    console.log('✅ Enhanced System: Alert React Native sempre disponibile');
+    // console.log('✅ Enhanced System: Alert React Native sempre disponibile');
     return true;
   }
 
@@ -216,7 +216,7 @@ class EnhancedNotificationService {
   // 🎯 PROGRAMMAZIONE PROMEMORIA LAVORO
   async scheduleWorkReminders(settings) {
     if (!settings.enabled) {
-      console.log('⏰ Promemoria lavoro disabilitati');
+      // console.log('⏰ Promemoria lavoro disabilitati');
       return 0;
     }
 
@@ -357,7 +357,7 @@ class EnhancedNotificationService {
       });
       
       await AsyncStorage.setItem('background_notifications', JSON.stringify(notifications));
-      console.log('💾 Notifica background salvata per recupero');
+      // console.log('💾 Notifica background salvata per recupero');
     } catch (error) {
       console.error('❌ Errore salvataggio notifica background:', error);
     }
@@ -399,24 +399,24 @@ class EnhancedNotificationService {
 
   // 🔄 ATTIVA BACKGROUND TIMERS quando app va in background
   activateBackgroundTimers() {
-    console.log('🔄 Attivazione background timers per persistenza...');
-    console.log(`📊 Background timers attivi: ${this.backgroundTimers.size}`);
+    // console.log('🔄 Attivazione background timers per persistenza...');
+    // console.log(`📊 Background timers attivi: ${this.backgroundTimers.size}`);
     
     // Verifica e riattiva tutti i background timers se necessario
     this.backgroundTimers.forEach((timerId, notificationId) => {
-      console.log(`🔄 Background timer attivo: ${notificationId}`);
+      // console.log(`🔄 Background timer attivo: ${notificationId}`);
     });
     
     if (this.backgroundTimers.size > 0) {
-      console.log('✅ Background timers confermati attivi per persistenza notifiche');
+      // console.log('✅ Background timers confermati attivi per persistenza notifiche');
     } else {
-      console.log('⚠️ Nessun background timer attivo - notifiche potrebbero non funzionare in background');
+      // console.log('⚠️ Nessun background timer attivo - notifiche potrebbero non funzionare in background');
     }
   }
 
   // 🔔 MOSTRA NOTIFICA
   showNotification(title, message, data = {}) {
-    console.log(`🔔 Mostro notifica: ${title}`);
+    // console.log(`🔔 Mostro notifica: ${title}`);
     
     Alert.alert(
       title,
@@ -425,7 +425,7 @@ class EnhancedNotificationService {
         { 
           text: 'OK', 
           onPress: () => {
-            console.log(`👆 Notifica confermata: ${title}`);
+            // console.log(`👆 Notifica confermata: ${title}`);
             if (data.type) {
               this.handleNotificationClick(data);
             }
@@ -438,27 +438,27 @@ class EnhancedNotificationService {
 
   // 🎯 GESTIONE CLICK NOTIFICA
   handleNotificationClick(data) {
-    console.log('👆 Click notifica tipo:', data.type);
+    // console.log('👆 Click notifica tipo:', data.type);
     
     switch (data.type) {
       case 'time_entry':
-        console.log('📝 Notifica inserimento orario cliccata');
+        // console.log('📝 Notifica inserimento orario cliccata');
         break;
       case 'standby':
-        console.log('📞 Notifica reperibilità cliccata');
+        // console.log('📞 Notifica reperibilità cliccata');
         break;
       case 'work_morning':
       case 'work_evening':
-        console.log('⏰ Notifica lavoro cliccata');
+        // console.log('⏰ Notifica lavoro cliccata');
         break;
       default:
-        console.log('🔔 Notifica generica cliccata');
+        // console.log('🔔 Notifica generica cliccata');
     }
   }
 
   // 🧹 CANCELLA TUTTE LE NOTIFICHE
   async cancelAllNotifications() {
-    console.log('🧹 Cancellazione sistema enhanced...');
+    // console.log('🧹 Cancellazione sistema enhanced...');
     
     // Cancella timer normali
     for (const [id, notification] of this.scheduledNotifications) {
@@ -477,20 +477,20 @@ class EnhancedNotificationService {
     // Pulisci storage
     await AsyncStorage.removeItem('background_notifications');
     
-    console.log('✅ Tutte le notifiche enhanced cancellate');
+    // console.log('✅ Tutte le notifiche enhanced cancellate');
   }
 
   // 📊 STATISTICHE NOTIFICHE
   getScheduledCount() {
     const total = this.scheduledNotifications.size;
     const background = this.backgroundTimers.size;
-    console.log(`📊 Notifiche programmate: ${total} (${background} background timers)`);
+    // console.log(`📊 Notifiche programmate: ${total} (${background} background timers)`);
     return total;
   }
 
   // 🧪 TEST NOTIFICA
   async sendTestNotification() {
-    console.log('🧪 Test notifica enhanced...');
+    // console.log('🧪 Test notifica enhanced...');
     
     this.showNotification(
       '🔔 Test Enhanced System',
@@ -498,7 +498,7 @@ class EnhancedNotificationService {
       { type: 'test' }
     );
     
-    console.log('✅ Test notifica enhanced completato');
+    // console.log('✅ Test notifica enhanced completato');
   }
 
   // 📅 OTTIENI DATE REPERIBILITÀ (stesso del sistema precedente)

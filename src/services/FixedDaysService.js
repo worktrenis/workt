@@ -4,6 +4,13 @@ import DatabaseService from './DatabaseService';
  * Servizio per la gestione dei giorni fissi (ferie, malattia, permessi, ecc.)
  */
 class FixedDaysService {
+
+  static formatLocalDateYmd(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
   
   /**
    * Ottieni un riepilogo dei giorni fissi per un periodo
@@ -14,8 +21,9 @@ class FixedDaysService {
    */
   static async getFixedDaysSummary(startDate, endDate, settings = null) {
     try {
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
+      // ⚠️ Evita toISOString(): usa UTC e può spostare di 1 giorno il range (Capodanno / fine mese)
+      const startDateStr = FixedDaysService.formatLocalDateYmd(startDate);
+      const endDateStr = FixedDaysService.formatLocalDateYmd(endDate);
       
       console.log('📊 FixedDaysService: Caricamento giorni fissi per periodo', { startDateStr, endDateStr });
       
@@ -133,27 +141,39 @@ class FixedDaysService {
    */
   static async getCompletionStats(startDate, endDate) {
     try {
-      const startDateStr = startDate.toISOString().split('T')[0];
-      const endDateStr = endDate.toISOString().split('T')[0];
+      // ⚠️ Evita toISOString(): usa UTC e può spostare di 1 giorno il range (include 31/12 ed esclude 31/01)
+      const startDateStr = FixedDaysService.formatLocalDateYmd(startDate);
+      const endDateStr = FixedDaysService.formatLocalDateYmd(endDate);
       
       console.log('� COMPLETION STATS: FUNZIONE CHIAMATA!', { startDateStr, endDateStr });
       console.log('�📊 FixedDaysService: Caricamento stats completamento per periodo', { startDateStr, endDateStr });
       
       // Ottieni tutte le entries per il periodo
       const entries = await DatabaseService.getWorkEntriesByDateRange(startDateStr, endDateStr);
+
+      const normalizeCompletion = (raw) => {
+        const normalized = String(raw ?? 'nessuno').trim().toLowerCase();
+        // Valori ammessi nel form "Completamento giornata"
+        const allowed = new Set(['nessuno', 'ferie', 'permesso', 'malattia', 'riposo']);
+        return allowed.has(normalized) ? normalized : 'nessuno';
+      };
       
       // Filtra solo le entries con completamento giornata diverso da 'nessuno'
       const completionEntries = entries.filter(entry => {
-        const completion = entry.completamento_giornata || entry.completamentoGiornata || 'nessuno';
-        return completion && completion !== 'nessuno';
+        const completionRaw = entry.completamento_giornata ?? entry.completamentoGiornata;
+        const completion = normalizeCompletion(completionRaw);
+        return completion !== 'nessuno';
       });
       
       console.log('📊 FixedDaysService: Entries con completamento trovate:', completionEntries.length);
       
       // Debug: mostra tutte le entries per vedere cosa c'è
       entries.forEach((entry, index) => {
-        const completion = entry.completamento_giornata || entry.completamentoGiornata || 'nessuno';
-        console.log(`📋 Entry ${index + 1}: date=${entry.date}, completion="${completion}", dayType="${entry.day_type}"`);
+        const completionRaw = entry.completamento_giornata ?? entry.completamentoGiornata;
+        const completion = normalizeCompletion(completionRaw);
+        console.log(
+          `📋 Entry ${index + 1}: date=${entry.date}, completionRaw="${completionRaw}", completion="${completion}", dayType="${entry.day_type}"`
+        );
       });
       
       // Inizializza contatori in formato compatibile con Dashboard
@@ -165,7 +185,7 @@ class FixedDaysService {
       
       // Elabora ogni entry con il nuovo formato
       completionEntries.forEach(entry => {
-        const completion = entry.completamento_giornata || entry.completamentoGiornata || 'nessuno';
+        const completion = normalizeCompletion(entry.completamento_giornata ?? entry.completamentoGiornata);
         
         // Calcola le ore mancanti per completare la giornata (8 ore standard)
         const totalWorkHours = FixedDaysService.calculateTotalWorkHours(entry);

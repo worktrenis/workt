@@ -245,6 +245,11 @@ export const DEFAULT_SETTINGS = {
   // 🔄 NUOVE LOGICHE VIAGGIO
   travelHoursSetting: 'TRAVEL_RATE_EXCESS', // 'TRAVEL_RATE_EXCESS', 'TRAVEL_RATE_ALL', 'OVERTIME_EXCESS'
   multiShiftTravelAsWork: false, // Viaggi multi-turno come ore lavoro
+  // 🍽️ Rimborso pasti (contanti standard) - riconciliazione manuale
+  // Nuovo formato: lista importi rimborsati (aggiunte incrementali)
+  mealCashStandardReimbursements: [],
+  // Legacy: totale rimborsato (manteniamo per compatibilità)
+  mealCashStandardReimbursed: 0,
   // 👁️ Preferenze di visualizzazione
   // true: mostra la retribuzione giornaliera effettiva anche nei giorni speciali senza ore di lavoro
   // false: lascia vuoto l'importo nei giorni speciali senza ore di lavoro (ferie, malattia, permesso, riposo, festivo)

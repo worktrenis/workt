@@ -57,21 +57,6 @@ const NotificationMainMenu = ({ navigation }) => {
       icon: 'bell-ring',
       screen: 'NotificationSettings',
       color: '#FF5722'
-    },
-    {
-      title: 'Notifiche di Sistema',
-      subtitle: 'Gestione notifiche app e messaggi importanti',
-      icon: 'bell-alert',
-      screen: 'SystemNotificationMenu',
-      color: '#E91E63',
-      showNotificationBadge: true
-    },
-    {
-      title: 'Debug Notifiche',
-      subtitle: 'Monitoraggio sistema persistente notifiche',
-      icon: 'bug-check',
-      screen: 'NotificationDebug',
-      color: '#FF6B35'
     }
   ];
 

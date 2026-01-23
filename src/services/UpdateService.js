@@ -14,7 +14,7 @@ class UpdateService {
   async checkForUpdates(showAlert = false) {
     // In modalità sviluppo, mostra info utili invece di saltare
     if (__DEV__) {
-      console.log('🔄 UPDATE SERVICE - Modalità sviluppo rilevata');
+      // console.log('🔄 UPDATE SERVICE - Modalità sviluppo rilevata');
       if (showAlert) {
         return this.showDevelopmentUpdateInfo();
       }
@@ -23,20 +23,20 @@ class UpdateService {
 
     // Evita controlli multipli simultanei
     if (this.isChecking) {
-      console.log('🔄 UPDATE SERVICE - Controllo già in corso');
+      // console.log('🔄 UPDATE SERVICE - Controllo già in corso');
       return false;
     }
 
     try {
       this.isChecking = true;
-      console.log('🔄 UPDATE SERVICE - Controllo aggiornamenti...');
+      // console.log('🔄 UPDATE SERVICE - Controllo aggiornamenti...');
 
       // Controlla se ci sono aggiornamenti
       const update = await Updates.checkForUpdateAsync();
       
       if (update.isAvailable) {
-        console.log('✅ UPDATE SERVICE - Aggiornamento disponibile!');
-        console.log('🔍 UPDATE SERVICE - Manifest:', update.manifest);
+        // console.log('✅ UPDATE SERVICE - Aggiornamento disponibile!');
+        // console.log('🔍 UPDATE SERVICE - Manifest:', update.manifest);
         
         if (showAlert) {
           return this.showUpdatePrompt(update);
@@ -45,7 +45,7 @@ class UpdateService {
           return this.downloadAndApplyUpdate(update);
         }
       } else {
-        console.log('ℹ️ UPDATE SERVICE - Nessun aggiornamento disponibile');
+        // console.log('ℹ️ UPDATE SERVICE - Nessun aggiornamento disponibile');
         return false;
       }
     } catch (error) {
@@ -91,17 +91,17 @@ class UpdateService {
    */
   async downloadAndApplyUpdate(update, newVersion) {
     try {
-      console.log('⬇️ UPDATE SERVICE - Download aggiornamento...');
+      // console.log('⬇️ UPDATE SERVICE - Download aggiornamento...');
       
       // Salva info pre-aggiornamento
       await this.savePreUpdateInfo(newVersion);
       
       // Scarica l'aggiornamento
       await Updates.fetchUpdateAsync();
-      console.log('✅ UPDATE SERVICE - Download completato');
+      // console.log('✅ UPDATE SERVICE - Download completato');
 
       // Applica l'aggiornamento (riavvia l'app)
-      console.log('🔄 UPDATE SERVICE - Applicazione aggiornamento e riavvio...');
+      // console.log('🔄 UPDATE SERVICE - Applicazione aggiornamento e riavvio...');
       await Updates.reloadAsync();
       return true;
     } catch (error) {
@@ -142,13 +142,13 @@ class UpdateService {
       const lastKnownVersion = await AsyncStorage.getItem('last_known_version');
       
       if (lastKnownVersion && lastKnownVersion !== this.currentVersion) {
-        console.log(`🔄 UPDATE SERVICE - Rilevato cambio versione: ${lastKnownVersion} → ${this.currentVersion}`);
+        // console.log(`🔄 UPDATE SERVICE - Rilevato cambio versione: ${lastKnownVersion} → ${this.currentVersion}`);
         
         // ✅ PREVENZIONE POPUP DUPLICATI v1.3.1 + PULIZIA SISTEMA
         if (this.currentVersion === '1.3.1') {
           const popupShown = await AsyncStorage.getItem('update_popup_shown_v1_3_1');
           if (popupShown === 'true') {
-            console.log('✅ Popup v1.3.1 già mostrato, skip automatico');
+            // console.log('✅ Popup v1.3.1 già mostrato, skip automatico');
             await AsyncStorage.setItem('last_known_version', this.currentVersion);
             return;
           }
@@ -156,7 +156,7 @@ class UpdateService {
           // 🧹 PULIZIA POPUP VERSIONI PRECEDENTI per evitare conflitti
           await AsyncStorage.removeItem('update_popup_shown_v1_3_0');
           await AsyncStorage.removeItem('pending_update_info');
-          console.log('🧹 Rimossi popup versioni precedenti per sistema pulito');
+          // console.log('🧹 Rimossi popup versioni precedenti per sistema pulito');
         }
         
         // Mostra popup di aggiornamento completato
@@ -198,7 +198,7 @@ class UpdateService {
         previousVersion: this.currentVersion
       };
       await AsyncStorage.setItem('pending_update_info', JSON.stringify(updateInfo));
-      console.log('💾 UPDATE SERVICE - Info pre-aggiornamento salvate:', updateInfo);
+      // console.log('💾 UPDATE SERVICE - Info pre-aggiornamento salvate:', updateInfo);
     } catch (error) {
       console.error('❌ UPDATE SERVICE - Errore salvataggio info pre-aggiornamento:', error);
     }

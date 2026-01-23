@@ -4,6 +4,18 @@ Un'applicazione React Native per Android per il tracciamento delle ore di lavoro
 
 ## 🚀 Caratteristiche Principali
 
+## OTA (EAS Update)
+
+- Task consigliata: **OTA: Publish (production)** (VS Code → Run Task) e inserisci il messaggio.
+- Da terminale: `npx eas update --channel production --message "..."`
+
+### Nota Windows: `node` punta a `C:\Windows\System32\node`
+
+Se `Get-Command node` restituisce `C:\Windows\System32\node` (stub) potresti avere problemi con gli script `npm` che invocano `node`.
+
+- Soluzione consigliata: metti `C:\Program Files\nodejs\` **prima** nel PATH utente/sistema oppure rimuovi l'alias/stub.
+- Task di diagnosi: **Diagnostics: Node Resolution**.
+
 - **Tracciamento Ore Completo**: Registrazione di ore lavoro, viaggio, reperibilità e doppi turni
 - **Modifica Flessibile**: Possibilità di cancellare facilmente qualsiasi orario inserito
 - **Calcolo Automatico CCNL**: Retribuzione calcolata automaticamente basata su CCNL Metalmeccanico PMI Livello 5

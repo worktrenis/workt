@@ -28,7 +28,7 @@ import HolidayService from '../services/HolidayService';
 import NotificationService from '../services/FixedNotificationService';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
@@ -192,6 +192,7 @@ const TimeFieldModern = ({ label, value, icon, onPress, onClear, styles }) => {
 // Earnings Summary Component
 const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCalendarInitialized, reperibilityManualOverride, dayType, styles }) => {
   const [breakdown, setBreakdown] = useState(null);
+  const breakdownRequestIdRef = useRef(0);
   const calculationService = useCalculationService();
   
   // Create a work entry object from the form for calculation
@@ -200,20 +201,20 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
     const additionalShifts = form.viaggi.slice(1) || []; // Turni aggiuntivi (dall'indice 1 in poi)
     
     // Log per debug viaggi
-    console.log("🔥 MULTI-TURNO DEBUG - Form structure:", {
-      primaryShift,
-      additionalShifts,
-      viaggiCount: form.viaggi.length,
-      totalViaggi: form.viaggi,
-      willCreateWorkEntry: {
-        mainFields: `${primaryShift.work_start_1}-${primaryShift.work_end_1}`,
-        additionalShiftsCount: additionalShifts.length,
-        additionalShiftsDetails: additionalShifts.map((s, i) => `Turno ${i+2}: ${s.work_start_1}-${s.work_end_1}`)
-      }
-    });
+    // console.log("🔥 MULTI-TURNO DEBUG - Form structure:", {
+    //   primaryShift,
+    //   additionalShifts,
+    //   viaggiCount: form.viaggi.length,
+    //   totalViaggi: form.viaggi,
+    //   willCreateWorkEntry: {
+    //     mainFields: `${primaryShift.work_start_1}-${primaryShift.work_end_1}`,
+    //     additionalShiftsCount: additionalShifts.length,
+    //     additionalShiftsDetails: additionalShifts.map((s, i) => `Turno ${i+2}: ${s.work_start_1}-${s.work_end_1}`)
+    //   }
+    // });
     
     // Log per debug
-    console.log("Form reperibilità:", form.reperibilita);
+    // console.log("Form reperibilità:", form.reperibilita);
     
     // Verifica se ci sono ore inserite (lavoro o interventi), per gestire correttamente i festivi lavorati
     const hasAnyHours = (
@@ -232,10 +233,10 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
     return {
       date: (() => {
         const [d, m, y] = form.date.split('/');
-        return `${y}-${m}-${d}`;
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       })(),
-      siteName: form.site_name || '',
-      vehicleDriven: form.veicolo || '',
+        siteName: primaryShift.site_name || form.site_name || '',
+        vehicleDriven: primaryShift.veicolo || form.veicolo || '',
   // 🔥 TURNO PRINCIPALE - da form.viaggi[0]
       departureCompany: primaryShift.departure_company || '',
       arrivalSite: primaryShift.arrival_site || '',
@@ -260,34 +261,46 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
       completamentoGiornata: form.completamentoGiornata || 'nessuno', // Modalità di completamento giornata
   // Nuovi campi per gestione giorni fissi
   isFixedDay: isFixedDay,
-  fixedEarnings: form.fixedEarnings || (isFixedDay ? (settings?.contract?.dailyRate || 109.19) : 0),
+  fixedEarnings: form.fixedEarnings || (isFixedDay ? HolidayService.calculateHolidayPay(settings) : 0),
       dayType: form.dayType || dayType
     };
-  }, [form, dayType]);
+  }, [
+    form,
+    dayType,
+    settings?.contract?.dailyRate,
+    settings?.contract?.monthlySalary,
+    settings?.contract?.workingDaysPerMonth
+  ]);
 
   // Log del workEntry creato per debug multi-turno
   useEffect(() => {
-    console.log("🔥 WORKENTRY CREATED FOR TIMECALCULATOR:", {
-      mainShift: `${workEntry.workStart1}-${workEntry.workEnd1} + ${workEntry.workStart2}-${workEntry.workEnd2}`,
-      viaggiArray: workEntry.viaggi,
-      viaggiCount: workEntry.viaggi?.length || 0,
-      viaggiDetails: workEntry.viaggi?.map((v, i) => ({
-        index: i,
-        shift1: `${v.work_start_1}-${v.work_end_1}`,
-        shift2: `${v.work_start_2}-${v.work_end_2}`,
-        travel: `${v.departure_company}-${v.arrival_site} / ${v.departure_return}-${v.arrival_company}`
-      })) || [],
-      expectedTotalShifts: (workEntry.workStart1 ? 1 : 0) + (workEntry.workStart2 ? 1 : 0) + (workEntry.viaggi?.length || 0),
-      formViaggiLength: form.viaggi?.length || 0
-    });
+    // console.log("🔥 WORKENTRY CREATED FOR TIMECALCULATOR:", {
+    //   mainShift: `${workEntry.workStart1}-${workEntry.workEnd1} + ${workEntry.workStart2}-${workEntry.workEnd2}`,
+    //   viaggiArray: workEntry.viaggi,
+    //   viaggiCount: workEntry.viaggi?.length || 0,
+    //   viaggiDetails: workEntry.viaggi?.map((v, i) => ({
+    //     index: i,
+    //     shift1: `${v.work_start_1}-${v.work_end_1}`,
+    //     shift2: `${v.work_start_2}-${v.work_end_2}`,
+    //     travel: `${v.departure_company}-${v.arrival_site} / ${v.departure_return}-${v.arrival_company}`
+    //   })) || [],
+    //   expectedTotalShifts: (workEntry.workStart1 ? 1 : 0) + (workEntry.workStart2 ? 1 : 0) + (workEntry.viaggi?.length || 0),
+    //   formViaggiLength: form.viaggi?.length || 0
+    // });
   }, [workEntry, form.viaggi?.length]);
   
   // Calculate earnings breakdown when form changes
   useEffect(() => {
+    const requestId = ++breakdownRequestIdRef.current;
+
     // Assicurati che settings includa tutte le proprietà necessarie
     const defaultSettings = {
       contract: { 
-        dailyRate: 109.19,
+        // Non impostare un dailyRate "fisso" qui: se l'utente usa monthlySalary senza dailyRate,
+        // un valore di default bloccherebbe la derivazione corretta.
+        dailyRate: null,
+        monthlySalary: 2800,
+        workingDaysPerMonth: 26,
         hourlyRate: 16.41,
         overtimeRates: {
           day: 1.2,
@@ -333,15 +346,78 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
     );
     const isFixedNonWorking = workEntry.isFixedDay && (workEntry.dayType !== 'festivo' || !hasAnyHours);
     if (isFixedNonWorking) {
-      const fixedEarnings = workEntry.fixedEarnings || safeSettings.contract.dailyRate;
+      const fixedEarnings = workEntry.fixedEarnings || HolidayService.calculateHolidayPay(safeSettings);
+
+      // 🔧 FIX: nei giorni fissi (es. festivo senza ore) la reperibilità deve comunque generare indennità
+      let standbyIndemnity = 0;
+      try {
+        const standbySettings = safeSettings?.standbySettings || {};
+        const standbyDays = standbySettings?.standbyDays || {};
+        const dateStr = workEntry.date;
+
+        const isManuallyDeactivated = workEntry.isStandbyDay === false ||
+          workEntry.isStandbyDay === 0 ||
+          workEntry.standbyAllowance === false ||
+          workEntry.standbyAllowance === 0;
+
+        const isManuallyActivated = workEntry.isStandbyDay === true ||
+          workEntry.isStandbyDay === 1 ||
+          workEntry.standbyAllowance === true ||
+          workEntry.standbyAllowance === 1;
+
+        const isInCalendar = Boolean(standbySettings?.enabled && standbyDays?.[dateStr]?.selected);
+        const isStandbyDay = isManuallyActivated || (!isManuallyDeactivated && isInCalendar);
+
+        if (isStandbyDay) {
+          const dateObj = workEntry.date ? new Date(workEntry.date) : new Date();
+          const isSunday = dateObj.getDay() === 0;
+          const isSaturday = dateObj.getDay() === 6;
+          const isHoliday = Boolean(HolidayService.isHoliday(workEntry.date));
+
+          const { getStandbyRatesForContract } = require('../constants');
+          const cKey = safeSettings?.contract?.key;
+          const r = getStandbyRatesForContract(cKey);
+          const IND_16H_FERIALE = r.feriale16;
+          const IND_24H_FERIALE = r.feriale24;
+          const IND_24H_FESTIVO = r.festivo24;
+
+          const customFeriale16 = standbySettings.customFeriale16;
+          const customFeriale24 = standbySettings.customFeriale24;
+          const customFestivo = standbySettings.customFestivo;
+          const allowanceType = standbySettings.allowanceType || '24h';
+          const saturdayAsRest = standbySettings.saturdayAsRest === true;
+          const saturdayMode = standbySettings.saturdayMode || (saturdayAsRest ? 'festivo' : 'feriale');
+
+          const isRestDay = isSunday || isHoliday || (isSaturday && saturdayMode === 'festivo');
+          if (isRestDay) {
+            standbyIndemnity = customFestivo || IND_24H_FESTIVO;
+          } else if (isSaturday && saturdayMode === 'feriale24') {
+            standbyIndemnity = customFeriale24 || IND_24H_FERIALE;
+          } else if (allowanceType === '16h') {
+            standbyIndemnity = customFeriale16 || IND_16H_FERIALE;
+          } else {
+            standbyIndemnity = customFeriale24 || IND_24H_FERIALE;
+          }
+        }
+      } catch (e) {
+        standbyIndemnity = 0;
+      }
+
       setBreakdown({
         isFixedDay: true,
         dayType: workEntry.dayType,
         fixedEarnings: fixedEarnings,
-        totalEarnings: fixedEarnings,
+        totalEarnings: fixedEarnings + standbyIndemnity,
         ordinary: { total: 0 },
-        standby: null,
-        allowances: { travel: 0, meal: 0, standby: 0 },
+        standby: {
+          dailyIndemnity: standbyIndemnity,
+          workHours: {},
+          travelHours: {},
+          workEarnings: {},
+          travelEarnings: {},
+          totalEarnings: standbyIndemnity
+        },
+        allowances: { travel: 0, meal: 0, standby: standbyIndemnity },
         details: {
           isPartialDay: false,
           completamentoTipo: 'nessuno'
@@ -352,66 +428,68 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
       const calculateAsync = async () => {
         try {
           // 🔍 DEBUG: Verifica che le impostazioni giorni speciali siano presenti
-          console.log('🔍 EarningsSummary - DEBUG impostazioni:', {
-            hasSettings: !!settings,
-            hasSpecialDaySettings: !!settings?.specialDayTravelSettings,
-            specialDaySettings: settings?.specialDayTravelSettings,
-            safeSpecialSettings: safeSettings?.specialDayTravelSettings,
-            workEntryDate: workEntry.date
-          });
+          // console.log('🔍 EarningsSummary - DEBUG impostazioni:', {
+          //   hasSettings: !!settings,
+          //   hasSpecialDaySettings: !!settings?.specialDayTravelSettings,
+          //   specialDaySettings: settings?.specialDayTravelSettings,
+          //   safeSpecialSettings: safeSettings?.specialDayTravelSettings,
+          //   workEntryDate: workEntry.date
+          // });
           
           const result = await calculationService.calculateEarningsBreakdown(workEntry, safeSettings);
+          if (breakdownRequestIdRef.current !== requestId) return;
           setBreakdown(result);
           
           // Log dettagliato per debug breakdown
-          if (workEntry.date === '2025-07-06') {
-            console.log('DEBUG breakdown 06/07/2025:', JSON.stringify(result, null, 2));
-          }
+          // if (workEntry.date === '2025-07-06') {
+          //   console.log('DEBUG breakdown 06/07/2025:', JSON.stringify(result, null, 2));
+          // }
           
           // 🕐 Log del sistema multi-fascia se attivo
-          if (result.details?.hourlyRatesBreakdown) {
-            console.log('🕐 SISTEMA MULTI-FASCIA ATTIVO:', {
-              method: result.details.hourlyRatesMethod,
-              totalFasce: result.details.hourlyRatesBreakdown.length,
-              breakdown: result.details.hourlyRatesBreakdown.map(item => ({
-                fascia: item.name,
-                ore: item.hours?.toFixed(2),
-                tariffa: `€${item.hourlyRate?.toFixed(2)}`,
-                guadagno: `€${item.earnings?.toFixed(2)}`
-              }))
-            });
-          }
+          // if (result.details?.hourlyRatesBreakdown) {
+          //   console.log('🕐 SISTEMA MULTI-FASCIA ATTIVO:', {
+          //     method: result.details.hourlyRatesMethod,
+          //     totalFasce: result.details.hourlyRatesBreakdown.length,
+          //     breakdown: result.details.hourlyRatesBreakdown.map(item => ({
+          //       fascia: item.name,
+          //       ore: item.hours?.toFixed(2),
+          //       tariffa: `€${item.hourlyRate?.toFixed(2)}`,
+          //       guadagno: `€${item.earnings?.toFixed(2)}`
+          //     }))
+          //   });
+          // }
           
           // 📊 Log del sistema tariffa giornaliera se attivo
           if (result.details?.calculationMethod === 'DAILY_RATE_WITH_SUPPLEMENTS') {
-            console.log('📊 SISTEMA TARIFFA GIORNALIERA ATTIVO:', {
-              method: result.details.calculationMethod,
-              isWeekday: result.details.dailyRateBreakdown?.isWeekday,
-              dailyRate: `€${result.details.dailyRateBreakdown?.dailyRate?.toFixed(2) || 0}`,
-              supplements: `€${result.details.dailyRateBreakdown?.supplements?.toFixed(2) || 0}`,
-              overtime: `€${result.details.dailyRateBreakdown?.totalOvertimeEarnings?.toFixed(2) || 0}`,
-              total: `€${result.details.dailyRateBreakdown?.totalEarnings?.toFixed(2) || 0}`,
-              regularBreakdown: result.details.dailyRateBreakdown?.regularBreakdown?.length || 0,
-              overtimeBreakdown: result.details.dailyRateBreakdown?.overtimeBreakdown?.length || 0
-            });
+            // console.log('📊 SISTEMA TARIFFA GIORNALIERA ATTIVO:', {
+            //   method: result.details.calculationMethod,
+            //   isWeekday: result.details.dailyRateBreakdown?.isWeekday,
+            //   dailyRate: `€${result.details.dailyRateBreakdown?.dailyRate?.toFixed(2) || 0}`,
+            //   supplements: `€${result.details.dailyRateBreakdown?.supplements?.toFixed(2) || 0}`,
+            //   overtime: `€${result.details.dailyRateBreakdown?.totalOvertimeEarnings?.toFixed(2) || 0}`,
+            //   total: `€${result.details.dailyRateBreakdown?.totalEarnings?.toFixed(2) || 0}`,
+            //   regularBreakdown: result.details.dailyRateBreakdown?.regularBreakdown?.length || 0,
+            //   overtimeBreakdown: result.details.dailyRateBreakdown?.overtimeBreakdown?.length || 0
+            // });
           }
           
           // Log delle impostazioni viaggio per debug
-          console.log('🚀 DEBUG MODALITÀ VIAGGIO ATTIVA:', {
-            modalitaSelezionata: safeSettings.travelHoursSetting,
-            descrizione: safeSettings.travelHoursSetting === 'AS_WORK' ? 'Come ore lavorative' :
-                         safeSettings.travelHoursSetting === 'TRAVEL_SEPARATE' ? 'Viaggio con tariffa separata' :
-                         safeSettings.travelHoursSetting === 'EXCESS_AS_TRAVEL' ? 'Eccedenza come retribuzione viaggio' :
-                         safeSettings.travelHoursSetting === 'EXCESS_AS_OVERTIME' ? 'Eccedenza come straordinario' : 
-                         safeSettings.travelHoursSetting === 'MULTI_SHIFT_OPTIMIZED' ? 'Multi-turno ottimizzato (viaggi interni = lavoro)' : 'Sconosciuta',
-            settingsOriginali: settings?.travelHoursSetting,
-            travelCompensationRate: safeSettings.travelCompensationRate,
-            workHours: calculationService.calculateWorkHours(workEntry),
-            travelHours: calculationService.calculateTravelHours(workEntry)
-          });
+          // console.log('🚀 DEBUG MODALITÀ VIAGGIO ATTIVA:', {
+          //   modalitaSelezionata: safeSettings.travelHoursSetting,
+          //   descrizione: safeSettings.travelHoursSetting === 'AS_WORK' ? 'Come ore lavorative' :
+          //                safeSettings.travelHoursSetting === 'TRAVEL_SEPARATE' ? 'Viaggio con tariffa separata' :
+          //                safeSettings.travelHoursSetting === 'EXCESS_AS_TRAVEL' ? 'Eccedenza come retribuzione viaggio' :
+          //                safeSettings.travelHoursSetting === 'EXCESS_AS_OVERTIME' ? 'Eccedenza come straordinario' : 
+          //                safeSettings.travelHoursSetting === 'MULTI_SHIFT_OPTIMIZED' ? 'Multi-turno ottimizzato (viaggi interni = lavoro)' : 'Sconosciuta',
+          //   settingsOriginali: settings?.travelHoursSetting,
+          //   travelCompensationRate: safeSettings.travelCompensationRate,
+          //   workHours: calculationService.calculateWorkHours(workEntry),
+          //   travelHours: calculationService.calculateTravelHours(workEntry)
+          // });
         } catch (error) {
           console.error('❌ Errore calcolo breakdown:', error);
           // Fallback per errori
+          if (breakdownRequestIdRef.current !== requestId) return;
           setBreakdown({
             ordinary: { total: 0 },
             standby: null,
@@ -574,6 +652,13 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
               <Text style={styles.breakdownLabel}>Retribuzione CCNL</Text>
               <Text style={styles.breakdownValue}>{formatSafeAmount(breakdown?.fixedEarnings)}</Text>
             </View>
+
+            {(breakdown?.allowances?.standby || 0) > 0 && (
+              <View style={styles.breakdownRow}>
+                <Text style={styles.breakdownLabel}>Indennità reperibilità</Text>
+                <Text style={styles.breakdownValue}>{formatSafeAmount(breakdown?.allowances?.standby || 0)}</Text>
+              </View>
+            )}
             <Text style={styles.breakdownDetail}>
               Retribuzione giornaliera secondo contratto CCNL Metalmeccanico PMI Level 5
             </Text>
@@ -588,7 +673,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
           
           <View style={[styles.breakdownRow, styles.totalRow]}>
             <Text style={styles.breakdownLabel}>Totale giornata</Text>
-            <Text style={styles.breakdownTotal}>{formatSafeAmount(breakdown?.fixedEarnings)}</Text>
+            <Text style={styles.breakdownTotal}>{formatSafeAmount((breakdown?.totalEarnings ?? (breakdown?.fixedEarnings || 0) + (breakdown?.allowances?.standby || 0)))}</Text>
           </View>
         </View>
       )}
@@ -990,7 +1075,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                       (breakdown?.ordinary?.hours?.lavoro_giornaliera || 0) +
                       (breakdown?.ordinary?.hours?.viaggio_giornaliera || 0);
                     const standardWorkDayHours = 8;
-                    const dailyRate = settings.contract?.dailyRate || 109.19;
+                    const dailyRate = HolidayService.calculateHolidayPay(settings);
                     if (totalOrdinaryHours >= standardWorkDayHours) {
                       return `${dailyRate.toFixed(2).replace('.', ',')} € x 1 giorno = ${breakdown?.ordinary?.earnings?.giornaliera.toFixed(2).replace('.', ',')} €`;
                     } else {
@@ -2455,12 +2540,12 @@ const TimeEntryForm = ({ route, navigation }) => {
   
   // 🔍 DEBUG: Log delle impostazioni ricevute
   useEffect(() => {
-    console.log('🔍 TimeEntryForm - Settings ricevute:', {
-      hasSettings: !!settings,
-      hasSpecialDayTravelSettings: !!settings?.specialDayTravelSettings,
-      specialDayTravelSettings: settings?.specialDayTravelSettings,
-      keysInSettings: settings ? Object.keys(settings) : 'null'
-    });
+    // console.log('🔍 TimeEntryForm - Settings ricevute:', {
+    //   hasSettings: !!settings,
+    //   hasSpecialDayTravelSettings: !!settings?.specialDayTravelSettings,
+    //   specialDayTravelSettings: settings?.specialDayTravelSettings,
+    //   keysInSettings: settings ? Object.keys(settings) : 'null'
+    // });
   }, [settings]);
   
   // Crea stili dinamici basati sul tema
@@ -2469,13 +2554,13 @@ const TimeEntryForm = ({ route, navigation }) => {
   const today = new Date();
   
   // DEBUG: Log dei parametri ricevuti
-  console.log('🔍 TimeEntryForm - Parametri ricevuti:', {
-    initialDate: route?.params?.initialDate,
-    entryId: route?.params?.entryId,
-    isEditing: route?.params?.isEditing,
-    entryDate: route?.params?.entry?.date,
-    allParams: route?.params
-  });
+  // console.log('🔍 TimeEntryForm - Parametri ricevuti:', {
+  //   initialDate: route?.params?.initialDate,
+  //   entryId: route?.params?.entryId,
+  //   isEditing: route?.params?.isEditing,
+  //   entryDate: route?.params?.entry?.date,
+  //   allParams: route?.params
+  // });
   
   // Gestisci la data iniziale:
   // 1. Se è in modalità modifica, usa la data dell'entry esistente
@@ -2509,6 +2594,9 @@ const TimeEntryForm = ({ route, navigation }) => {
     targa_veicolo: '', // Campo per targa/numero veicolo
     viaggi: [
       {
+        site_name: '',
+        veicolo: 'andata_ritorno',
+        targa_veicolo: '',
         departure_company: '',
         arrival_site: '',
         work_start_1: '',
@@ -2538,6 +2626,8 @@ const TimeEntryForm = ({ route, navigation }) => {
   const [datePickerMode, setDatePickerMode] = useState('date');
   const [viaggioIndex, setViaggioIndex] = useState(0);
   const [interventoIndex, setInterventoIndex] = useState(0);
+  // UI: dettagli veicolo/targa per-cantiere (dal 2° in poi di default chiusi)
+  const [cantiereVehicleDetailsOpen, setCantiereVehicleDetailsOpen] = useState([true]);
   const [dayType, setDayType] = useState('lavorativa');
   const [mealCash, setMealCash] = useState({ pranzo: '', cena: '' });
   const [initialized, setInitialized] = useState(false);
@@ -2554,6 +2644,19 @@ const TimeEntryForm = ({ route, navigation }) => {
   const [isStandbyCalendarInitialized, setIsStandbyCalendarInitialized] = useState(false);
   const [reperibilityManualOverride, setReperibilityManualOverride] = useState(false);
 
+  useEffect(() => {
+    setCantiereVehicleDetailsOpen(prev => {
+      const targetLen = form.viaggi?.length ?? 0;
+      if (targetLen <= 0) return [true];
+
+      let next = Array.isArray(prev) ? [...prev] : [];
+      if (next.length > targetLen) next = next.slice(0, targetLen);
+      while (next.length < targetLen) next.push(false);
+      next[0] = true;
+      return next;
+    });
+  }, [form.viaggi?.length]);
+
   // Estrai parametri per modalità modifica/cancellazione
   const isEdit = route?.params?.isEdit;
   const enableDelete = route?.params?.enableDelete;
@@ -2563,6 +2666,16 @@ const TimeEntryForm = ({ route, navigation }) => {
   // Precarica i dati in modalità modifica
   useEffect(() => {
     if (isEdit && entryToEdit) {
+      const normalizeCcnlAmountInNote = (noteText) => {
+        if (!noteText || typeof noteText !== 'string') return noteText;
+        // Applica solo alle note generate automaticamente (non vogliamo toccare note libere dell'utente)
+        if (!/\bCCNL\b/i.test(noteText)) return noteText;
+        if (!/Retribuzione secondo CCNL|retribuito secondo CCNL/i.test(noteText)) return noteText;
+
+        const dailyRate = HolidayService.calculateHolidayPay(settings);
+        return noteText.replace(/CCNL\s*\(€\s*\d+(?:[\.,]\d{2})\)/i, `CCNL (€${dailyRate.toFixed(2)})`);
+      };
+
       // Log per debug caricamento
       console.log("Caricamento entry esistente:", {
         id: entryToEdit.id,
@@ -2598,6 +2711,9 @@ const TimeEntryForm = ({ route, navigation }) => {
         viaggi: (() => {
           // Turno principale dai campi del database
           const primaryShift = {
+            site_name: entryToEdit.site_name || entryToEdit.siteName || '',
+            veicolo: entryToEdit.veicolo || entryToEdit.vehicleDriven || 'andata_ritorno',
+            targa_veicolo: entryToEdit.targa_veicolo || entryToEdit.vehiclePlate || '',
             departure_company: entryToEdit.departure_company || entryToEdit.departureCompany || '',
             arrival_site: entryToEdit.arrival_site || entryToEdit.arrivalSite || '',
             work_start_1: entryToEdit.work_start_1 || entryToEdit.workStart1 || '',
@@ -2609,13 +2725,13 @@ const TimeEntryForm = ({ route, navigation }) => {
           };
           
           // Turni aggiuntivi dal campo viaggi del database  
-          console.log("🔥 CARICAMENTO FORM: Debug campo viaggi dal DB:", {
-            viaggiRaw: entryToEdit.viaggi,
-            viaggiType: typeof entryToEdit.viaggi,
-            viaggiIsArray: Array.isArray(entryToEdit.viaggi),
-            viaggiLength: entryToEdit.viaggi?.length,
-            entryId: entryToEdit.id
-          });
+          // console.log("🔥 CARICAMENTO FORM: Debug campo viaggi dal DB:", {
+          //   viaggiRaw: entryToEdit.viaggi,
+          //   viaggiType: typeof entryToEdit.viaggi,
+          //   viaggiIsArray: Array.isArray(entryToEdit.viaggi),
+          //   viaggiLength: entryToEdit.viaggi?.length,
+          //   entryId: entryToEdit.id
+          // });
           
           // 🚀 Parse viaggi dal database (può essere stringa JSON o array)
           
@@ -2624,26 +2740,41 @@ const TimeEntryForm = ({ route, navigation }) => {
             if (typeof entryToEdit.viaggi === 'string') {
               try {
                 additionalShifts = JSON.parse(entryToEdit.viaggi);
-                console.log("🔥 CARICAMENTO FORM: Viaggi parsati da stringa JSON:", additionalShifts);
+                // console.log("🔥 CARICAMENTO FORM: Viaggi parsati da stringa JSON:", additionalShifts);
               } catch (error) {
                 console.warn("🔥 CARICAMENTO FORM: Errore parsing viaggi JSON:", error);
                 additionalShifts = [];
               }
             } else if (Array.isArray(entryToEdit.viaggi)) {
               additionalShifts = entryToEdit.viaggi;
-              console.log("🔥 CARICAMENTO FORM: Viaggi già array:", additionalShifts);
+              // console.log("🔥 CARICAMENTO FORM: Viaggi già array:", additionalShifts);
             }
           }
           
-          console.log("🔥 CARICAMENTO FORM: Ricostruendo viaggi da DB:", {
-            primaryShift,
-            additionalShifts,
-            additionalShiftsLength: additionalShifts.length,
-            totalShifts: 1 + additionalShifts.length
-          });
+          // console.log("🔥 CARICAMENTO FORM: Ricostruendo viaggi da DB:", {
+          //   primaryShift,
+          //   additionalShifts,
+          //   additionalShiftsLength: additionalShifts.length,
+          //   totalShifts: 1 + additionalShifts.length
+          // });
           
+          // Normalizza turni aggiuntivi: garantisci il campo site_name
+          const normalizedAdditional = (additionalShifts || []).map(s => ({
+            site_name: s?.site_name ?? s?.siteName ?? '',
+            veicolo: s?.veicolo ?? s?.vehicleDriven ?? 'andata_ritorno',
+            targa_veicolo: s?.targa_veicolo ?? s?.vehiclePlate ?? '',
+            departure_company: s?.departure_company ?? '',
+            arrival_site: s?.arrival_site ?? '',
+            work_start_1: s?.work_start_1 ?? '',
+            work_end_1: s?.work_end_1 ?? '',
+            work_start_2: s?.work_start_2 ?? '',
+            work_end_2: s?.work_end_2 ?? '',
+            departure_return: s?.departure_return ?? '',
+            arrival_company: s?.arrival_company ?? '',
+          }));
+
           // Combina turno principale + turni aggiuntivi
-          return [primaryShift, ...additionalShifts];
+          return [primaryShift, ...normalizedAdditional];
         })(),
         reperibilita: entryToEdit.is_standby_day === 1 || entryToEdit.isStandbyDay === 1,
         reperibilityManualOverride: entryToEdit.reperibilityManualOverride === true || false,
@@ -2670,7 +2801,7 @@ const TimeEntryForm = ({ route, navigation }) => {
         trasfertaPercent: entryToEdit.travelAllowancePercent || entryToEdit.travel_allowance_percent || 1.0,
         travelAllowancePercent: entryToEdit.travelAllowancePercent || 1.0,
         completamentoGiornata: entryToEdit.completamento_giornata || entryToEdit.completamentoGiornata || 'nessuno', // ← AGGIUNTO!
-        note: entryToEdit.note || entryToEdit.notes || '',
+        note: normalizeCcnlAmountInNote(entryToEdit.note || entryToEdit.notes || ''),
       }));
       // Precarica dayType in modifica
       setDayType(entryToEdit.day_type || entryToEdit.dayType || 'lavorativa');
@@ -2726,7 +2857,7 @@ const TimeEntryForm = ({ route, navigation }) => {
       console.log('Auto-compilazione attivata per:', dayType);
       
       // Calcola la retribuzione giornaliera secondo CCNL
-      const ccnlDailyRate = settings?.contract?.dailyRate || 109.19;
+      const ccnlDailyRate = HolidayService.calculateHolidayPay(settings);
       
       // Applica i dati di auto-compilazione sempre per giorni di ferie/malattia/riposo/permesso
       setForm(prev => ({
@@ -2735,6 +2866,12 @@ const TimeEntryForm = ({ route, navigation }) => {
         veicolo: 'non_guidato',
         targa_veicolo: '',
         viaggi: [{
+          site_name: prev.site_name || (dayType === 'malattia' ? 'Malattia' : 
+                                       dayType === 'ferie' ? 'Ferie' : 
+                                       dayType === 'permesso' ? 'Permesso' :
+                                       dayType === 'riposo' ? 'Riposo compensativo' : ''),
+          veicolo: 'non_guidato',
+          targa_veicolo: '',
           departure_company: '',
           arrival_site: '',
           work_start_1: '',
@@ -2781,6 +2918,9 @@ const TimeEntryForm = ({ route, navigation }) => {
           veicolo: 'non_guidato',
           targa_veicolo: '',
           viaggi: [{
+            site_name: prev.site_name || '',
+            veicolo: 'non_guidato',
+            targa_veicolo: '',
             departure_company: '',
             arrival_site: '',
             work_start_1: '',
@@ -2819,7 +2959,7 @@ const TimeEntryForm = ({ route, navigation }) => {
         }));
       }
     }
-  }, [dayType, isEdit, settings?.contract?.dailyRate]);
+  }, [dayType, isEdit, settings?.contract?.dailyRate, settings?.contract?.monthlySalary, settings?.contract?.workingDaysPerMonth]);
 
   // Effetto aggiuntivo per verificare giorni festivi al cambio data
   useEffect(() => {
@@ -2835,6 +2975,9 @@ const TimeEntryForm = ({ route, navigation }) => {
           veicolo: 'non_guidato',
           targa_veicolo: '',
           viaggi: [{
+            site_name: prev.site_name || '',
+            veicolo: 'non_guidato',
+            targa_veicolo: '',
             departure_company: '',
             arrival_site: '',
             work_start_1: '',
@@ -2870,12 +3013,99 @@ const TimeEntryForm = ({ route, navigation }) => {
           pasti: { pranzo: false, cena: false },
           trasferta: false,
           site_name: '',
+          viaggi: (() => {
+            const current = Array.isArray(prev.viaggi) && prev.viaggi.length > 0 ? prev.viaggi : null;
+            if (!current) {
+              return [{
+                site_name: '',
+                departure_company: '',
+                arrival_site: '',
+                work_start_1: '',
+                work_end_1: '',
+                work_start_2: '',
+                work_end_2: '',
+                departure_return: '',
+                arrival_company: '',
+              }];
+            }
+            return current.map((s, i) => ({
+              ...s,
+              site_name: i === 0 ? '' : (s?.site_name ?? s?.siteName ?? ''),
+            }));
+          })(),
           note: ''
         }));
         setDayType('lavorativa');
       }
     }
-  }, [form.date, isEdit, dayType, settings?.contract?.dailyRate]);
+  }, [form.date, isEdit, dayType, settings?.contract?.dailyRate, settings?.contract?.monthlySalary, settings?.contract?.workingDaysPerMonth]);
+
+  // Mantieni in sync la NOTA auto-generata CCNL quando arrivano/si aggiornano le impostazioni contratto
+  // (es: Capodanno calcolato inizialmente con fallback e poi corretto quando settings è disponibile)
+  useEffect(() => {
+    // Per i festivi: consideriamo "giorno fisso" solo se non ci sono ore inserite
+    const effectiveDayType = String(form?.dayType || dayType || '').toLowerCase();
+
+    const hasAnyHours = (() => {
+      try {
+        const primaryShift = form?.viaggi?.[0] || {};
+        const additionalShifts = (form?.viaggi || []).slice(1);
+        return Boolean(
+          (primaryShift.work_start_1 && primaryShift.work_end_1) ||
+          (primaryShift.work_start_2 && primaryShift.work_end_2) ||
+          (additionalShifts || []).some(s => (s.work_start_1 && s.work_end_1) || (s.work_start_2 && s.work_end_2)) ||
+          (Array.isArray(form?.interventi) && form.interventi.some(iv => (iv.work_start_1 && iv.work_end_1) || (iv.work_start_2 && iv.work_end_2)))
+        );
+      } catch {
+        return false;
+      }
+    })();
+
+    let isFixedDayEffective = Boolean(form?.isFixedDay || ['ferie', 'malattia', 'riposo', 'permesso'].includes(effectiveDayType));
+    if (effectiveDayType === 'festivo') {
+      isFixedDayEffective = !hasAnyHours;
+    }
+    if (!isFixedDayEffective) return;
+
+    const isCcnlFixedDay = ['festivo', 'ferie', 'malattia', 'riposo', 'permesso'].includes(effectiveDayType);
+    if (!isCcnlFixedDay) return;
+
+    const noteText = form?.note;
+    if (!noteText || typeof noteText !== 'string') return;
+
+    // Applica solo alle note generate automaticamente (non vogliamo toccare note libere dell'utente)
+    if (!/\bCCNL\b/i.test(noteText)) return;
+    if (!/Retribuzione secondo CCNL|retribuito secondo CCNL/i.test(noteText)) return;
+
+    const dailyRate = HolidayService.calculateHolidayPay(settings);
+    const normalizedNote = noteText.replace(
+      /CCNL\s*\(€\s*\d+(?:[\.,]\d{2})\)/i,
+      `CCNL (€${Number(dailyRate || 0).toFixed(2)})`
+    );
+
+    const currentFixed = Number(form?.fixedEarnings || 0);
+    const nextFixed = Number(dailyRate || 0);
+    const fixedChanged = Math.abs(currentFixed - nextFixed) > 0.005;
+
+    if (normalizedNote !== noteText || fixedChanged) {
+      setForm(prev => ({
+        ...prev,
+        note: normalizedNote,
+        fixedEarnings: nextFixed
+      }));
+    }
+  }, [
+    form?.viaggi,
+    form?.interventi,
+    form?.isFixedDay,
+    form?.dayType,
+    dayType,
+    form?.note,
+    form?.fixedEarnings,
+    settings?.contract?.dailyRate,
+    settings?.contract?.monthlySalary,
+    settings?.contract?.workingDaysPerMonth
+  ]);
 
   // Verifica se la data selezionata è impostata come reperibile nel calendario
   useEffect(() => {
@@ -2886,7 +3116,7 @@ const TimeEntryForm = ({ route, navigation }) => {
       const dateStr = (() => {
         if (!form.date) return null;
         const [d, m, y] = form.date.split('/');
-        return `${y}-${m}-${d}`;
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
       })();
       
       if (!dateStr) {
@@ -2985,14 +3215,12 @@ const TimeEntryForm = ({ route, navigation }) => {
     setForm({ ...form, [field]: value });
   };
 
-  // Gestione cambio veicolo
-  const handleVeicoloChange = (value) => {
-    setForm({ ...form, veicolo: value });
-  };
-
   // Aggiungi viaggio/lavoro
   const addViaggio = () => {
     const newViaggio = {
+      site_name: '',
+      veicolo: 'andata_ritorno',
+      targa_veicolo: '',
       departure_company: '',
       arrival_site: '',
       work_start_1: '',
@@ -3005,14 +3233,22 @@ const TimeEntryForm = ({ route, navigation }) => {
     
     const newViaggi = [...form.viaggi, newViaggio];
     
-    console.log("🚀 MULTI-TURNO: Aggiunto nuovo turno:", {
-      viaggiPrima: form.viaggi.length,
-      viaggiDopo: newViaggi.length,
-      nuovoViaggio: newViaggio,
-      tuttiIViaggi: newViaggi
-    });
+    // console.log("🚀 MULTI-TURNO: Aggiunto nuovo turno:", {
+    //   viaggiPrima: form.viaggi.length,
+    //   viaggiDopo: newViaggi.length,
+    //   nuovoViaggio: newViaggio,
+    //   tuttiIViaggi: newViaggi
+    // });
     
     setForm({ ...form, viaggi: newViaggi });
+    setCantiereVehicleDetailsOpen(prev => {
+      const next = Array.isArray(prev) ? [...prev] : [];
+      // Il primo resta sempre aperto, i successivi chiusi di default
+      if (next.length === 0) next.push(true);
+      next.push(false);
+      next[0] = true;
+      return next;
+    });
   };
 
   // Aggiungi intervento reperibilità
@@ -3067,12 +3303,12 @@ const TimeEntryForm = ({ route, navigation }) => {
     const nuovoValore = !form.trasferta;
     const manualOverride = form.trasfertaManualOverride || (isSpecialDay && nuovoValore);
     
-    console.log("Toggle trasferta:", { 
-      isSpecialDay, 
-      canApplyOnSpecialDays, 
-      manualOverride,
-      nuovoValore
-    });
+    // console.log("Toggle trasferta:", { 
+    //   isSpecialDay, 
+    //   canApplyOnSpecialDays, 
+    //   manualOverride,
+    //   nuovoValore
+    // });
     
     // Se è un giorno speciale e non è permesso applicare l'indennità, mostra un avviso
     if (isSpecialDay && !canApplyOnSpecialDays && nuovoValore) {
@@ -3093,7 +3329,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                 trasferta: true,
                 trasfertaManualOverride: true // Aggiunge un flag di override manuale
               });
-              console.log("Applicato override manuale trasferta su giorno speciale");
+              // console.log("Applicato override manuale trasferta su giorno speciale");
             }
           }
         ]
@@ -3477,10 +3713,13 @@ const TimeEntryForm = ({ route, navigation }) => {
       const viaggi = form.viaggi[0] || {};
       const additionalShifts = form.viaggi.slice(1) || [];
       const entry = {
-        date: (() => { const [d,m,y] = form.date.split('/'); return `${y}-${m}-${d}`; })(),
-        siteName: form.site_name || '',
-        vehicleDriven: form.veicolo || '',
-        targaVeicolo: form.targa_veicolo || '',
+        date: (() => {
+          const [d, m, y] = form.date.split('/');
+          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        })(),
+        siteName: (form?.viaggi?.[0]?.site_name || form.site_name || ''),
+        vehicleDriven: (form?.viaggi?.[0]?.veicolo || form.veicolo || ''),
+        targaVeicolo: (form?.viaggi?.[0]?.targa_veicolo || form.targa_veicolo || ''),
         departureCompany: viaggi.departure_company || '',
         arrivalSite: viaggi.arrival_site || '',
         workStart1: viaggi.work_start_1 || '',
@@ -3489,7 +3728,19 @@ const TimeEntryForm = ({ route, navigation }) => {
         workEnd2: viaggi.work_end_2 || '',
         departureReturn: viaggi.departure_return || '',
         arrivalCompany: viaggi.arrival_company || '',
-        viaggi: additionalShifts,
+        viaggi: (additionalShifts || []).map(s => ({
+          site_name: s?.site_name ?? s?.siteName ?? '',
+          veicolo: s?.veicolo ?? s?.vehicleDriven ?? 'andata_ritorno',
+          targa_veicolo: s?.targa_veicolo ?? s?.vehiclePlate ?? '',
+          departure_company: s?.departure_company ?? '',
+          arrival_site: s?.arrival_site ?? '',
+          work_start_1: s?.work_start_1 ?? '',
+          work_end_1: s?.work_end_1 ?? '',
+          work_start_2: s?.work_start_2 ?? '',
+          work_end_2: s?.work_end_2 ?? '',
+          departure_return: s?.departure_return ?? '',
+          arrival_company: s?.arrival_company ?? '',
+        })),
         interventi: form.interventi || [],
         mealLunchVoucher: form.pasti.pranzo && !(mealCash.pranzo && parseFloat(mealCash.pranzo) > 0) ? 1 : 0,
         mealLunchCash: mealCash.pranzo && parseFloat(mealCash.pranzo) > 0 ? parseFloat(String(mealCash.pranzo).replace(',','.')) : 0,
@@ -3506,7 +3757,7 @@ const TimeEntryForm = ({ route, navigation }) => {
         notes: form.note || '',
         dayType,
         isFixedDay: form.isFixedDay || ['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType),
-        fixedEarnings: form.fixedEarnings || ((['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType)) ? (settings?.contract?.dailyRate || 109.19) : 0)
+        fixedEarnings: form.fixedEarnings || ((['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType)) ? HolidayService.calculateHolidayPay(settings) : 0)
       };
 
       const settingsObj = settings || {};
@@ -3728,65 +3979,174 @@ const TimeEntryForm = ({ route, navigation }) => {
     
     // Analizza tutti i turni: viaggi principali + interventi reperibilità
     const allShifts = [...form.viaggi, ...form.interventi];
+
+    const evaluatePauseForMeals = (endTime, shiftType, shiftNumber, index, whichEnd) => {
+      if (!endTime) return { autoPranzoHit: false, autoCenaHit: false };
+
+      const parseMinutes = (t) => {
+        if (!t || typeof t !== 'string' || !t.includes(':')) return null;
+        const [h, m] = t.split(':').map(Number);
+        if (Number.isNaN(h) || Number.isNaN(m)) return null;
+        return h * 60 + m;
+      };
+
+      const endMinutes = parseMinutes(endTime);
+      if (endMinutes === null) return { autoPranzoHit: false, autoCenaHit: false };
+
+      const v = allShifts[index];
+
+      // 1) Candidati nello stesso turno: sempre prima gli inizi lavoro (es. tra work_end_1 e work_start_2)
+      const sameShiftCandidates = [];
+      if (whichEnd === 'end1') {
+        sameShiftCandidates.push({
+          field: 'work_start_2',
+          time: v.work_start_2,
+          source: `${shiftType} #${shiftNumber}`,
+          kind: 'work'
+        });
+      }
+      // Fallback: orari viaggio/ritorno nello stesso turno (meno prioritari per i pasti)
+      sameShiftCandidates.push(
+        { field: 'departure_return', time: v.departure_return, source: `${shiftType} #${shiftNumber}`, kind: 'travel' },
+        { field: 'arrival_company', time: v.arrival_company, source: `${shiftType} #${shiftNumber}`, kind: 'travel' }
+      );
+
+      // 2) Se non bastano, cerca nei turni successivi: preferisci SEMPRE l'inizio lavoro (non la partenza viaggio)
+      const nextShiftCandidates = [];
+      if (index < allShifts.length - 1) {
+        for (let nextIndex = index + 1; nextIndex < allShifts.length; nextIndex++) {
+          const nextShift = allShifts[nextIndex];
+          const nextShiftType = nextIndex < form.viaggi.length ? 'turno' : 'intervento';
+          const nextShiftNumber = nextIndex < form.viaggi.length ? nextIndex + 1 : nextIndex - form.viaggi.length + 1;
+
+          const hasAnyTime =
+            nextShift.departure_company ||
+            nextShift.arrival_site ||
+            nextShift.work_start_1 ||
+            nextShift.work_start_2 ||
+            nextShift.work_end_1 ||
+            nextShift.work_end_2;
+          if (!hasAnyTime) continue;
+
+          // Preferisci inizio lavoro
+          if (nextShift.work_start_1) {
+            nextShiftCandidates.push({
+              field: 'next_shift_work_start_1',
+              time: nextShift.work_start_1,
+              source: `${nextShiftType} #${nextShiftNumber}`,
+              kind: 'work'
+            });
+          }
+          if (nextShift.work_start_2) {
+            nextShiftCandidates.push({
+              field: 'next_shift_work_start_2',
+              time: nextShift.work_start_2,
+              source: `${nextShiftType} #${nextShiftNumber}`,
+              kind: 'work'
+            });
+          }
+
+          // Fallback: partenza/arrivo viaggio se manca l'inizio lavoro
+          if (!nextShift.work_start_1 && !nextShift.work_start_2) {
+            if (nextShift.departure_company) {
+              nextShiftCandidates.push({
+                field: 'next_shift_departure_company',
+                time: nextShift.departure_company,
+                source: `${nextShiftType} #${nextShiftNumber}`,
+                kind: 'travel'
+              });
+            }
+            if (nextShift.arrival_site) {
+              nextShiftCandidates.push({
+                field: 'next_shift_arrival_site',
+                time: nextShift.arrival_site,
+                source: `${nextShiftType} #${nextShiftNumber}`,
+                kind: 'travel'
+              });
+            }
+          }
+
+          // Prendi il primo turno successivo che contiene qualcosa, non andare oltre.
+          break;
+        }
+      }
+
+      const candidates = [...sameShiftCandidates, ...nextShiftCandidates]
+        .filter(c => c.time)
+        .map(c => ({
+          ...c,
+          minutes: parseMinutes(c.time)
+        }))
+        .filter(c => c.minutes !== null)
+        .map(c => ({
+          ...c,
+          pausa: c.minutes - endMinutes
+        }))
+        .filter(c => c.pausa > 0);
+
+      if (candidates.length === 0) {
+        console.log(`Nessun orario successivo valido dopo fine ${whichEnd} ${shiftType} #${shiftNumber} - nessun rimborso automatico`);
+        return { autoPranzoHit: false, autoCenaHit: false };
+      }
+
+      // IMPORTANT: per i pasti consideriamo solo la pausa tra fine lavoro e il PROSSIMO INIZIO LAVORO.
+      // Gli orari di viaggio (es. arrival_company) non sono una pausa e non devono far scattare pranzo/cena.
+      const workCandidates = candidates.filter(c => c.kind === 'work');
+      if (workCandidates.length === 0) {
+        candidates.sort((a, b) => a.pausa - b.pausa);
+        const bestAny = candidates[0];
+        console.log(
+          `Pausa pasti ignorata: prossimo orario dopo fine ${whichEnd} ${shiftType} #${shiftNumber} è di tipo '${bestAny.kind}' (${bestAny.time} da ${bestAny.source}) - considerato non-pausa`
+        );
+        return { autoPranzoHit: false, autoCenaHit: false };
+      }
+
+      // Se ci sono più candidati, scegli quello con la pausa positiva più piccola.
+      // Questo rende robusto il passaggio tra turni (es. fine lavoro → prossimo inizio lavoro).
+      workCandidates.sort((a, b) => a.pausa - b.pausa);
+      const best = workCandidates[0];
+
+      const endHour = Math.floor(endMinutes / 60);
+      const startHour = Math.floor(best.minutes / 60);
+      const pausa = best.pausa;
+
+      console.log(
+        `Analisi pausa ${shiftType} #${shiftNumber} (${whichEnd}): Fine ${endTime} → Prossimo orario ${best.time} (da ${best.source}) = ${pausa} min`
+      );
+
+      let pranzo = false;
+      let cena = false;
+
+      // Pausa pranzo (11:00-15:00, minimo 30 min)
+      if (pausa >= 30 && endHour >= 11 && endHour <= 14 && startHour >= 12 && startHour <= 15) {
+        pranzo = true;
+        console.log(`✅ Rilevata pausa pranzo automatica da ${shiftType} #${shiftNumber} (${whichEnd}) → ${best.source}`);
+      }
+      // Pausa cena (18:00-22:00, minimo 30 min)
+      if (pausa >= 30 && endHour >= 18 && endHour <= 21 && startHour >= 19 && startHour <= 22) {
+        cena = true;
+        console.log(`✅ Rilevata pausa cena automatica da ${shiftType} #${shiftNumber} (${whichEnd}) → ${best.source}`);
+      }
+
+      return { autoPranzoHit: pranzo, autoCenaHit: cena };
+    };
     
     allShifts.forEach((v, index) => {
       const shiftType = index < form.viaggi.length ? 'turno' : 'intervento';
       const shiftNumber = index < form.viaggi.length ? index + 1 : index - form.viaggi.length + 1;
-      
+
+      // Valuta pausa dopo fine 1° turno
       if (v.work_end_1) {
-        // Trova il prossimo orario inserito dopo la fine del 1° turno
-        const nextTimeSlots = [
-          { field: 'work_start_2', time: v.work_start_2, source: `${shiftType} #${shiftNumber}` },
-          { field: 'departure_return', time: v.departure_return, source: `${shiftType} #${shiftNumber}` },
-          { field: 'arrival_company', time: v.arrival_company, source: `${shiftType} #${shiftNumber}` }
-        ].filter(slot => slot.time); // Solo orari effettivamente inseriti
-        
-        // Se non ci sono orari nel turno corrente, cerca nel turno successivo
-        if (nextTimeSlots.length === 0 && index < allShifts.length - 1) {
-          for (let nextIndex = index + 1; nextIndex < allShifts.length; nextIndex++) {
-            const nextShift = allShifts[nextIndex];
-            const nextShiftType = nextIndex < form.viaggi.length ? 'turno' : 'intervento';
-            const nextShiftNumber = nextIndex < form.viaggi.length ? nextIndex + 1 : nextIndex - form.viaggi.length + 1;
-            
-            if (nextShift.departure_company || nextShift.arrival_site || nextShift.work_start_1) {
-              // Prendi il primo orario disponibile del turno successivo
-              const firstAvailableTime = nextShift.departure_company || nextShift.arrival_site || nextShift.work_start_1;
-              nextTimeSlots.push({ 
-                field: 'next_shift_start', 
-                time: firstAvailableTime, 
-                source: `${nextShiftType} #${nextShiftNumber}` 
-              });
-              break;
-            }
-          }
-        }
-        
-        if (nextTimeSlots.length > 0) {
-          // Prendi il primo orario inserito dopo fine 1° turno
-          const nextTime = nextTimeSlots[0].time;
-          const nextSource = nextTimeSlots[0].source;
-          
-          const [h1, m1] = v.work_end_1.split(':').map(Number);
-          const [h2, m2] = nextTime.split(':').map(Number);
-          const end1 = h1 * 60 + m1;
-          const start2 = h2 * 60 + m2;
-          const pausa = start2 - end1;
-          
-          console.log(`Analisi pausa ${shiftType} #${shiftNumber}: Fine 1° turno ${v.work_end_1} → Prossimo orario ${nextTime} (da ${nextSource}) = ${pausa} min`);
-          
-          // Pausa pranzo (11:00-15:00, minimo 30 min)
-          if (pausa >= 30 && h1 >= 11 && h1 <= 14 && h2 >= 12 && h2 <= 15) {
-            autoPranzo = true;
-            console.log(`✅ Rilevata pausa pranzo automatica da ${shiftType} #${shiftNumber} → ${nextSource}`);
-          }
-          // Pausa cena (18:00-22:00, minimo 30 min)
-          if (pausa >= 30 && h1 >= 18 && h1 <= 21 && h2 >= 19 && h2 <= 22) {
-            autoCena = true;
-            console.log(`✅ Rilevata pausa cena automatica da ${shiftType} #${shiftNumber} → ${nextSource}`);
-          }
-        } else {
-          console.log(`Nessun orario successivo inserito dopo fine 1° turno ${shiftType} #${shiftNumber} - nessun rimborso automatico`);
-        }
+        const hit = evaluatePauseForMeals(v.work_end_1, shiftType, shiftNumber, index, 'end1');
+        if (hit.autoPranzoHit) autoPranzo = true;
+        if (hit.autoCenaHit) autoCena = true;
+      }
+
+      // Valuta pausa dopo fine 2° turno (caso tipico: 19:00-20:00 tra cantieri)
+      if (v.work_end_2) {
+        const hit = evaluatePauseForMeals(v.work_end_2, shiftType, shiftNumber, index, 'end2');
+        if (hit.autoPranzoHit) autoPranzo = true;
+        if (hit.autoCenaHit) autoCena = true;
       }
     });
     
@@ -3897,10 +4257,10 @@ const TimeEntryForm = ({ route, navigation }) => {
                   const workEntry = {
                     date: (() => {
                       const [d, m, y] = form.date.split('/');
-                      return `${y}-${m}-${d}`;
+                      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                     })(),
-                    siteName: form.site_name || '',
-                    vehicleDriven: form.veicolo || '',
+                    siteName: primaryShift.site_name || form.site_name || '',
+                    vehicleDriven: primaryShift.veicolo || form.veicolo || '',
                     departureCompany: primaryShift.departure_company || '',
                     arrivalSite: primaryShift.arrival_site || '',
                     workStart1: primaryShift.work_start_1 || '',
@@ -3909,7 +4269,19 @@ const TimeEntryForm = ({ route, navigation }) => {
                     workEnd2: primaryShift.work_end_2 || '',
                     departureReturn: primaryShift.departure_return || '',
                     arrivalCompany: primaryShift.arrival_company || '',
-                    viaggi: additionalShifts,
+                    viaggi: (additionalShifts || []).map(s => ({
+                      site_name: s?.site_name ?? s?.siteName ?? '',
+                      veicolo: s?.veicolo ?? s?.vehicleDriven ?? 'andata_ritorno',
+                      targa_veicolo: s?.targa_veicolo ?? s?.vehiclePlate ?? '',
+                      departure_company: s?.departure_company ?? '',
+                      arrival_site: s?.arrival_site ?? '',
+                      work_start_1: s?.work_start_1 ?? '',
+                      work_end_1: s?.work_end_1 ?? '',
+                      work_start_2: s?.work_start_2 ?? '',
+                      work_end_2: s?.work_end_2 ?? '',
+                      departure_return: s?.departure_return ?? '',
+                      arrival_company: s?.arrival_company ?? '',
+                    })),
                     interventi: form.interventi || [],
                     mealLunchVoucher: form.pasti.pranzo ? 1 : 0,
                     mealLunchCash: 0,
@@ -4611,7 +4983,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                               
                             // Dettaglio calcolo
                             const standardWorkDayHours = 8;
-                            const dailyRate = settings.contract?.dailyRate || 109.19;
+                            const dailyRate = HolidayService.calculateHolidayPay(settings);
                             if (totalOrdinaryHours >= standardWorkDayHours) {
                               calcHtml += `<div style="font-size: 10px; color: #666; margin: 4px 0;">${dailyRate.toFixed(2).replace('.', ',')} € x 1 giorno = ${breakdown?.ordinary?.earnings?.giornaliera?.toFixed(2).replace('.', ',')} €</div>`;
                             } else {
@@ -5133,66 +5505,6 @@ const TimeEntryForm = ({ route, navigation }) => {
           )}
         </ModernCard>
 
-        {/* Informazioni Sito Card */}
-        <ModernCard style={styles.cardSpacing} styles={styles}>
-          <SectionHeader 
-            title="Informazioni Sito" 
-            icon="map-marker" 
-            iconColor="#FF9800" 
-            styles={styles}
-          />
-          <InputRow label="Nome cantiere" styles={styles}>
-            <TextInput
-              style={styles.modernInput}
-              value={form.site_name}
-              onChangeText={v => handleChange('site_name', v)}
-              placeholder="Facoltativo"
-              placeholderTextColor={styles.inputText.color}
-            />
-          </InputRow>
-          
-          <InputRow label="Veicolo usato" required styles={styles}>
-            <View style={styles.vehicleGrid}>
-              {veicoloOptions.map(opt => (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={[
-                    styles.vehicleGridButton,
-                    form.veicolo === opt.value && styles.vehicleGridButtonActive
-                  ]}
-                  onPress={() => handleChange('veicolo', opt.value)}
-                >
-                  <MaterialCommunityIcons 
-                    name={opt.icon} 
-                    size={20} 
-                    color={form.veicolo === opt.value ? 'white' : styles.iconSecondary.color} 
-                  />
-                  <Text style={[
-                    styles.vehicleGridButtonText,
-                    form.veicolo === opt.value && styles.vehicleGridButtonTextActive
-                  ]}>
-                    {opt.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </InputRow>
-          
-          {/* Campo targa/numero veicolo - mostra solo se ha guidato */}
-          {form.veicolo !== 'non_guidato' && (
-            <InputRow label="Targa/Numero veicolo" icon="card-text-outline" styles={styles}>
-              <TextInput
-                style={styles.modernInput}
-                value={form.targa_veicolo}
-                onChangeText={v => handleChange('targa_veicolo', v)}
-                placeholder="es. AB123CD o numero aziendale"
-                placeholderTextColor={styles.inputText.color}
-                autoCapitalize="characters"
-              />
-            </InputRow>
-          )}
-        </ModernCard>
-
         {/* Orari Viaggio/Lavoro Card */}
         <ModernCard style={styles.cardSpacing} styles={styles}>
           <SectionHeader 
@@ -5203,15 +5515,25 @@ const TimeEntryForm = ({ route, navigation }) => {
           />
           {form.viaggi.map((v, idx) => (
             <View key={idx} style={styles.timeShiftContainer}>
+              {(() => {
+                const currentVeicoloValue = v.veicolo || 'andata_ritorno';
+                const currentVeicoloLabel = veicoloOptions.find(o => o.value === currentVeicoloValue)?.label || '';
+                const vehicleDetailsVisible = idx === 0 ? true : cantiereVehicleDetailsOpen[idx] === true;
+                return (
+                  <>
               <View style={styles.shiftHeader}>
                 <MaterialCommunityIcons name="briefcase-outline" size={18} color="#4CAF50" />
-                <Text style={styles.shiftTitle}>Turno #{idx + 1}</Text>
+                <Text style={styles.shiftTitle}>Cantiere #{idx + 1}</Text>
                 <TouchableOpacity
                   style={styles.removeShiftButton}
                   onPress={() => {
                     const newViaggi = form.viaggi.filter((_, i) => i !== idx);
+                    const newDetailsOpen = (Array.isArray(cantiereVehicleDetailsOpen) ? cantiereVehicleDetailsOpen : []).filter((_, i) => i !== idx);
                     // Se rimane solo un turno vuoto, mantienilo, altrimenti se rimangono 0 turni, crea un turno vuoto
                     const finalViaggi = newViaggi.length === 0 ? [{
+                      site_name: '',
+                      veicolo: 'andata_ritorno',
+                      targa_veicolo: '',
                       departure_company: '',
                       arrival_site: '',
                       work_start_1: '',
@@ -5221,12 +5543,152 @@ const TimeEntryForm = ({ route, navigation }) => {
                       departure_return: '',
                       arrival_company: '',
                     }] : newViaggi;
-                    setForm({ ...form, viaggi: finalViaggi });
+                    const nextPrimarySite = finalViaggi?.[0]?.site_name ?? '';
+                    const nextPrimaryVeicolo = finalViaggi?.[0]?.veicolo ?? 'andata_ritorno';
+                    const nextPrimaryTarga = finalViaggi?.[0]?.targa_veicolo ?? '';
+                    setCantiereVehicleDetailsOpen(() => {
+                      const normalized = finalViaggi.map((_, i) => (i === 0 ? true : (newDetailsOpen[i] === true)));
+                      if (normalized.length > 0) normalized[0] = true;
+                      return normalized;
+                    });
+                    setForm({
+                      ...form,
+                      viaggi: finalViaggi,
+                      site_name: nextPrimarySite,
+                      veicolo: nextPrimaryVeicolo,
+                      targa_veicolo: nextPrimaryTarga,
+                    });
                   }}
                 >
                   <MaterialCommunityIcons name="close" size={16} color="#f44336" />
                 </TouchableOpacity>
               </View>
+
+              {/* Card Informazioni Cantiere (per-cantiere) */}
+              <View style={styles.shiftSiteCard}>
+                <View style={styles.shiftSiteHeader}>
+                  <MaterialCommunityIcons name="map-marker" size={16} color="#FF9800" />
+                  <Text style={styles.shiftSiteTitle}>Informazioni Cantiere</Text>
+                </View>
+                <Text style={styles.shiftSiteLabel}>Nome cantiere</Text>
+                <TextInput
+                  style={styles.shiftSiteInput}
+                  value={v.site_name || ''}
+                  onChangeText={(text) => {
+                    const viaggi = [...form.viaggi];
+                    viaggi[idx] = { ...viaggi[idx], site_name: text };
+                    // Mantieni compatibilità: il campo "site_name" dell'entry resta il primo cantiere
+                    setForm(prev => ({
+                      ...prev,
+                      site_name: idx === 0 ? text : prev.site_name,
+                      viaggi
+                    }));
+                  }}
+                  placeholder="Es. Cantiere Milano - Via Roma"
+                  placeholderTextColor={styles.iconSecondary.color}
+                />
+
+                {idx > 0 && (
+                  <TouchableOpacity
+                    style={styles.shiftSiteToggleRow}
+                    onPress={() => {
+                      setCantiereVehicleDetailsOpen(prev => {
+                        const next = Array.isArray(prev) ? [...prev] : [];
+                        while (next.length < form.viaggi.length) next.push(false);
+                        next[idx] = !(next[idx] === true);
+                        next[0] = true;
+                        return next;
+                      });
+                    }}
+                  >
+                    <Text style={styles.shiftSiteToggleText}>
+                      {vehicleDetailsVisible
+                        ? 'Nascondi dettagli veicolo'
+                        : `Mostra dettagli veicolo${currentVeicoloLabel ? ` (${currentVeicoloLabel})` : ''}`}
+                    </Text>
+                    <MaterialCommunityIcons
+                      name={vehicleDetailsVisible ? 'chevron-up' : 'chevron-down'}
+                      size={18}
+                      color={styles.iconSecondary.color}
+                    />
+                  </TouchableOpacity>
+                )}
+
+                {vehicleDetailsVisible && (
+                  <>
+                    <View style={{ height: 6 }} />
+
+                    <Text style={styles.shiftSiteLabel}>Veicolo usato</Text>
+                    <View style={styles.vehicleGrid}>
+                      {veicoloOptions.map(opt => {
+                        const selected = (v.veicolo || 'andata_ritorno') === opt.value;
+                        return (
+                          <TouchableOpacity
+                            key={`${idx}-${opt.value}`}
+                            style={[
+                              styles.vehicleGridButton,
+                              selected && styles.vehicleGridButtonActive
+                            ]}
+                            onPress={() => {
+                              const viaggi = [...form.viaggi];
+                              viaggi[idx] = { ...viaggi[idx], veicolo: opt.value };
+
+                              setForm(prev => ({
+                                ...prev,
+                                veicolo: idx === 0 ? opt.value : prev.veicolo,
+                                targa_veicolo: idx === 0 && opt.value === 'non_guidato' ? '' : prev.targa_veicolo,
+                                viaggi: viaggi.map((s, i) => (i === idx && opt.value === 'non_guidato')
+                                  ? { ...s, veicolo: opt.value, targa_veicolo: '' }
+                                  : s
+                                )
+                              }));
+                            }}
+                          >
+                            <MaterialCommunityIcons
+                              name={opt.icon}
+                              size={20}
+                              color={selected ? 'white' : styles.iconSecondary.color}
+                            />
+                            <Text style={[
+                              styles.vehicleGridButtonText,
+                              selected && styles.vehicleGridButtonTextActive
+                            ]}>
+                              {opt.label}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {(v.veicolo || 'andata_ritorno') !== 'non_guidato' && (
+                      <>
+                        <View style={{ height: 6 }} />
+                        <Text style={styles.shiftSiteLabel}>Targa/Numero veicolo</Text>
+                        <TextInput
+                          style={styles.shiftSiteInput}
+                          value={v.targa_veicolo || ''}
+                          onChangeText={(text) => {
+                            const viaggi = [...form.viaggi];
+                            viaggi[idx] = { ...viaggi[idx], targa_veicolo: text };
+                            setForm(prev => ({
+                              ...prev,
+                              targa_veicolo: idx === 0 ? text : prev.targa_veicolo,
+                              viaggi
+                            }));
+                          }}
+                          placeholder="Es. AB123CD o numero aziendale"
+                          placeholderTextColor={styles.iconSecondary.color}
+                          autoCapitalize="characters"
+                        />
+                      </>
+                    )}
+                  </>
+                )}
+              </View>
+
+                  </>
+                );
+              })()}
               
               <View style={styles.timeFieldsGrid}>
                 <TimeFieldModern 
@@ -5363,7 +5825,7 @@ const TimeEntryForm = ({ route, navigation }) => {
           
           <TouchableOpacity style={styles.addButton} onPress={addViaggio}>
             <MaterialCommunityIcons name="plus" size={20} color="#4CAF50" />
-            <Text style={styles.addButtonText}>Aggiungi turno</Text>
+            <Text style={styles.addButtonText}>Aggiungi cantiere</Text>
           </TouchableOpacity>
         </ModernCard>
 
@@ -5847,10 +6309,11 @@ const TimeEntryForm = ({ route, navigation }) => {
               const entry = {
                 date: (() => {
                   const [d, m, y] = form.date.split('/');
-                  return `${y}-${m}-${d}`;
+                  return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
                 })(),
-                siteName: form.site_name || '',
-                vehicleDriven: form.veicolo || '',                targaVeicolo: form.targa_veicolo || '',
+                siteName: (form?.viaggi?.[0]?.site_name || form.site_name || ''),
+                vehicleDriven: (form?.viaggi?.[0]?.veicolo || form.veicolo || ''),
+                targaVeicolo: (form?.viaggi?.[0]?.targa_veicolo || form.targa_veicolo || ''),
                 departureCompany: viaggi.departure_company || '',
                 arrivalSite: viaggi.arrival_site || '',
                 workStart1: viaggi.work_start_1 || '',
@@ -5860,7 +6323,19 @@ const TimeEntryForm = ({ route, navigation }) => {
                 departureReturn: viaggi.departure_return || '',
                 arrivalCompany: viaggi.arrival_company || '',
                 // 🚀 MULTI-TURNO: Salva turni aggiuntivi
-                viaggi: additionalShifts,
+                viaggi: (additionalShifts || []).map(s => ({
+                  site_name: s?.site_name ?? s?.siteName ?? '',
+                  veicolo: s?.veicolo ?? s?.vehicleDriven ?? 'andata_ritorno',
+                  targa_veicolo: s?.targa_veicolo ?? s?.vehiclePlate ?? '',
+                  departure_company: s?.departure_company ?? '',
+                  arrival_site: s?.arrival_site ?? '',
+                  work_start_1: s?.work_start_1 ?? '',
+                  work_end_1: s?.work_end_1 ?? '',
+                  work_start_2: s?.work_start_2 ?? '',
+                  work_end_2: s?.work_end_2 ?? '',
+                  departure_return: s?.departure_return ?? '',
+                  arrival_company: s?.arrival_company ?? '',
+                })),
                 interventi: form.interventi || [],
                 mealLunchVoucher: form.pasti.pranzo && !(mealCash.pranzo && parseFloat(mealCash.pranzo) > 0) ? 1 : 0,
                 mealLunchCash: mealCash.pranzo && parseFloat(mealCash.pranzo) > 0 ? parseFloat(mealCash.pranzo.replace(',','.')) : 0,
@@ -5878,7 +6353,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                 dayType,
                 // Nuovi campi per giorni fissi
                 isFixedDay: form.isFixedDay || ['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType),
-                fixedEarnings: form.fixedEarnings || ((['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType)) ? (settings?.contract?.dailyRate || 109.19) : 0)
+                fixedEarnings: form.fixedEarnings || ((['ferie', 'malattia', 'riposo', 'permesso'].includes(dayType)) ? HolidayService.calculateHolidayPay(settings) : 0)
               };
               
               const settingsObj = settings || {};
@@ -5940,18 +6415,18 @@ const TimeEntryForm = ({ route, navigation }) => {
               }
 
               if (isEdit) {
-                console.log('🔥 FORM: Aggiornando entry esistente ID:', entryId);
+                // console.log('🔥 FORM: Aggiornando entry esistente ID:', entryId);
                 await DatabaseService.updateWorkEntry(entryId, entry);
                 Alert.alert('Aggiornamento', 'Inserimento aggiornato con successo!');
               } else {
-                console.log('🔥 FORM: Inserendo nuovo entry nel database:', {
-                  date: entry.date,
-                  siteName: entry.siteName,
-                  totalEarnings: entry.totalEarnings,
-                  formComplete: true
-                });
+                // console.log('🔥 FORM: Inserendo nuovo entry nel database:', {
+                //   date: entry.date,
+                //   siteName: entry.siteName,
+                //   totalEarnings: entry.totalEarnings,
+                //   formComplete: true
+                // });
                 const insertResult = await DatabaseService.insertWorkEntry(entry);
-                console.log('🔥 FORM: Risultato inserimento:', insertResult);
+                // console.log('🔥 FORM: Risultato inserimento:', insertResult);
                 // Recupera l'ID della nuova entry per un update immediato della lista
                 if (insertResult && (insertResult.lastInsertRowId || insertResult.insertId)) {
                   savedId = insertResult.lastInsertRowId || insertResult.insertId;
@@ -5978,9 +6453,9 @@ const TimeEntryForm = ({ route, navigation }) => {
               // 🔄 Backup automatico al salvataggio (se abilitato)
               try {
                 const backupSuccess = await AutoBackupService.performAutoBackupIfEnabled();
-                if (backupSuccess) {
-                  console.log('✅ TimeEntryForm: Backup automatico completato');
-                }
+                // if (backupSuccess) {
+                //   console.log('✅ TimeEntryForm: Backup automatico completato');
+                // }
               } catch (backupError) {
                 console.log('Info: Errore backup automatico (non critico):', backupError.message);
               }
@@ -6286,6 +6761,53 @@ const createStyles = (theme) => StyleSheet.create({
     marginBottom: 12,
     borderLeftWidth: 4,
     borderLeftColor: theme.colors.success,
+  },
+  shiftSiteCard: {
+    backgroundColor: theme.colors.card,
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    marginBottom: 6,
+  },
+  shiftSiteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 6,
+  },
+  shiftSiteTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.colors.text,
+  },
+  shiftSiteLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: theme.colors.textSecondary,
+    marginBottom: 4,
+  },
+  shiftSiteInput: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    color: theme.colors.text,
+  },
+  shiftSiteToggleRow: {
+    marginTop: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+  shiftSiteToggleText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: theme.colors.primary,
   },
   shiftHeader: {
     flexDirection: 'row',

@@ -10,13 +10,14 @@ const path = require('path');
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const res = { channel: 'production', auto: false };
+  const res = { channel: 'production', auto: false, skipGit: false };
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--message' || a === '-m') res.message = args[++i];
     else if (a === '--version' || a === '-v') res.version = args[++i];
     else if (a === '--channel' || a === '-c') res.channel = args[++i];
     else if (a === '--auto') res.auto = true;
+    else if (a === '--skip-git') res.skipGit = true;
   }
   return res;
 }
@@ -67,6 +68,7 @@ function syncVersions(newVersion) {
 
 function main() {
   const args = parseArgs();
+  const skipGit = args.skipGit || process.env.OTA_SKIP_GIT === '1' || process.env.OTA_SKIP_GIT === 'true';
   // Prefer message from environment (npm forwards --message as npm_config_message)
   const envMessage = process.env.OTA_MESSAGE || process.env.npm_config_message;
   if (envMessage) args.message = envMessage;
@@ -90,13 +92,17 @@ function main() {
   // Prepend changelog in AppInfoScreen
   prependChangelogAppInfo(newVersion, bullets);
 
-  // Commit modifiche
-  try {
-    execSync('git add -A', { stdio: 'inherit' });
-    execSync(`git commit -m "📋 OTA: v${newVersion} changelog & metadata"`, { stdio: 'inherit' });
-    execSync('git push', { stdio: 'inherit' });
-  } catch (e) {
-    console.log('ℹ️ Nessuna modifica da committare o push già aggiornato.');
+  if (!skipGit) {
+    // Commit modifiche
+    try {
+      execSync('git add -A', { stdio: 'inherit' });
+      execSync(`git commit -m "📋 OTA: v${newVersion} changelog & metadata"`, { stdio: 'inherit' });
+      execSync('git push', { stdio: 'inherit' });
+    } catch (e) {
+      console.log('ℹ️ Nessuna modifica da committare o push già aggiornato.');
+    }
+  } else {
+    console.log('ℹ️ OTA_SKIP_GIT attivo: salto git add/commit/push.');
   }
 
   // Pubblica OTA

@@ -1,6 +1,6 @@
 // 📍 BACKUP PATH INSPECTOR - Visualizza percorsi e dettagli backup
 import AutoBackupService from './src/services/AutoBackupService';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 
 /**
  * Mostra tutti i backup con percorsi dettagliati

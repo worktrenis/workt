@@ -27,6 +27,38 @@ import { useTheme } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
+const getEffectiveDailyRateFromSettings = (settings) => {
+  const contract = settings?.contract || {};
+
+  const explicitDailyRate = Number(contract.dailyRate);
+  if (Number.isFinite(explicitDailyRate) && explicitDailyRate > 0) {
+    return explicitDailyRate;
+  }
+
+  const monthlySalary = Number(contract.monthlySalary);
+  const workingDaysPerMonthRaw = Number(contract.workingDaysPerMonth);
+  const workingDaysPerMonth = Number.isFinite(workingDaysPerMonthRaw) && workingDaysPerMonthRaw > 0
+    ? workingDaysPerMonthRaw
+    : 26;
+
+  if (Number.isFinite(monthlySalary) && monthlySalary > 0) {
+    return monthlySalary / workingDaysPerMonth;
+  }
+
+  return 109.19;
+};
+
+const normalizeCcnlAmountInNotes = (notes, settings) => {
+  if (!notes || typeof notes !== 'string') return notes;
+
+  // Applica solo alle note generate automaticamente (non vogliamo toccare note libere dell'utente)
+  if (!/\bCCNL\b/i.test(notes)) return notes;
+  if (!/Retribuzione secondo CCNL|retribuito secondo CCNL/i.test(notes)) return notes;
+
+  const dailyRate = getEffectiveDailyRateFromSettings(settings);
+  return notes.replace(/CCNL\s*\(€\s*\d+(?:[\.,]\d{2})\)/i, `CCNL (€${dailyRate.toFixed(2)})`);
+};
+
 const dayTypeLabels = {
   lavorativa: { label: 'Lavoro', color: '#2196F3', icon: 'briefcase' },
   ferie: { label: 'Ferie', color: '#43a047', icon: 'beach' },
@@ -314,7 +346,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
                   calculation={(() => {
                     const totalOrdinaryHours = (breakdown.ordinary.hours.lavoro_giornaliera || 0) + 
                                              (breakdown.ordinary.hours.viaggio_giornaliera || 0);
-                    const dailyRate = settings.contract?.dailyRate || 109.19;
+                    const dailyRate = getEffectiveDailyRateFromSettings(settings);
                     if (totalOrdinaryHours >= 8) {
                       return `${dailyRate.toFixed(2).replace('.', ',')} € × 1 giorno = ${breakdown.ordinary.earnings.giornaliera.toFixed(2).replace('.', ',')} €`;
                     } else {
@@ -987,6 +1019,38 @@ const TimeEntryScreen = () => {
     
     // Crea workEntry per accedere ai dati dell'entry
     const workEntry = createWorkEntryFromData(item, calculationService);
+
+    const cantieri = (() => {
+      const result = [];
+
+      const primaryName = item.site_name || item.siteName || '';
+      const primaryVehicle = item.vehicle_driven || item.vehicleDriven || '';
+      const primaryPlate = item.targa_veicolo || item.vehiclePlate || '';
+      if (primaryName && String(primaryName).trim()) {
+        result.push({
+          name: String(primaryName).trim(),
+          vehicle: primaryVehicle,
+          plate: primaryPlate,
+        });
+      }
+
+      const additional = Array.isArray(workEntry?.viaggi) ? workEntry.viaggi : [];
+      for (const s of additional) {
+        const name = s?.site_name ?? s?.siteName ?? '';
+        const vehicle = s?.veicolo ?? s?.vehicleDriven ?? '';
+        const plate = s?.targa_veicolo ?? s?.vehiclePlate ?? '';
+        if (name && String(name).trim()) {
+          result.push({
+            name: String(name).trim(),
+            vehicle,
+            plate,
+          });
+        }
+      }
+
+      // Dedup preservando ordine (per nome)
+      return result.filter((v, i) => result.findIndex(x => x.name === v.name) === i);
+    })();
     
     const dayTypeInfo = dayTypeLabels[item.day_type] || dayTypeLabels.lavorativa;
     const isSpecialDay = item.day_type !== 'lavorativa';
@@ -1032,29 +1096,101 @@ const TimeEntryScreen = () => {
         </View>
 
         {/* Sezione Sito e Veicolo */}
-        {(item.site_name || item.vehicle_driven || item.targa_veicolo || item.vehiclePlate) && (
+        {(cantieri.length > 0 || item.vehicle_driven || item.targa_veicolo || item.vehiclePlate) && (
           <DetailSection
             title="Informazioni Lavoro"
             icon="briefcase"
             iconColor="#2196F3"
             styles={styles}
           >
-            {item.site_name && (
-              <DetailRow label="Sito" value={item.site_name} styles={styles} />
-            )}
-            {item.vehicle_driven && (
-              <DetailRow 
-                label="Veicolo" 
-                value={item.vehicle_driven === 'andata_ritorno' ? 'Andata/Ritorno' : item.vehicle_driven} 
+            {cantieri.length > 0 && (() => {
+              const formatVehicleLabel = (value) => {
+                if (!value) return '';
+                if (value === 'andata_ritorno') return 'Andata/Ritorno';
+                if (value === 'solo_andata') return 'Solo andata';
+                if (value === 'solo_ritorno') return 'Solo ritorno';
+                if (value === 'non_guidato') return 'Non ho guidato';
+                return value;
+              };
+
+              const base = cantieri[0] || {};
+              const baseVehicle = base.vehicle || '';
+              const basePlate = base.plate || '';
+
+              const commonVehicle = !!baseVehicle && cantieri.slice(1).every(c => (c.vehicle || '') === baseVehicle);
+              const commonPlate = !!basePlate && cantieri.slice(1).every(c => (c.plate || '') === basePlate);
+
+              return (
+                <>
+                  {cantieri.map((c, idx) => (
+                    <React.Fragment key={`cantiere-${item.id}-${idx}`}>
+                      <DetailRow label={`Cantiere ${idx + 1}`} value={c.name} styles={styles} />
+                    </React.Fragment>
+                  ))}
+
+                  {/* Veicolo: mostra una sola volta se uguale per tutti i cantieri */}
+                  {cantieri.length === 1 && !!baseVehicle && (
+                    <DetailRow label="Veicolo" value={formatVehicleLabel(baseVehicle)} styles={styles} />
+                  )}
+                  {cantieri.length > 1 && commonVehicle && (
+                    <DetailRow label="Veicolo (tutti i cantieri)" value={formatVehicleLabel(baseVehicle)} styles={styles} />
+                  )}
+                  {cantieri.length > 1 && !commonVehicle && !!baseVehicle && (
+                    <DetailRow label="Veicolo 1" value={formatVehicleLabel(baseVehicle)} styles={styles} />
+                  )}
+                  {cantieri.length > 1 && !commonVehicle && cantieri.slice(1).map((c, idx) => {
+                    const absoluteIdx = idx + 1;
+                    const value = c.vehicle || '';
+                    if (!value) return null;
+                    if (value === baseVehicle) return null;
+                    return (
+                      <DetailRow
+                        key={`cantiere-vehicle-${item.id}-${absoluteIdx}`}
+                        label={`Veicolo ${absoluteIdx + 1}`}
+                        value={formatVehicleLabel(value)}
+                        styles={styles}
+                      />
+                    );
+                  })}
+
+                  {/* Targa: mostra una sola volta se uguale per tutti i cantieri */}
+                  {cantieri.length === 1 && !!basePlate && (
+                    <DetailRow label="Targa" value={basePlate} styles={styles} />
+                  )}
+                  {cantieri.length > 1 && commonPlate && (
+                    <DetailRow label="Targa (tutti i cantieri)" value={basePlate} styles={styles} />
+                  )}
+                  {cantieri.length > 1 && !commonPlate && !!basePlate && (
+                    <DetailRow label="Targa 1" value={basePlate} styles={styles} />
+                  )}
+                  {cantieri.length > 1 && !commonPlate && cantieri.slice(1).map((c, idx) => {
+                    const absoluteIdx = idx + 1;
+                    const value = c.plate || '';
+                    if (!value) return null;
+                    if (value === basePlate) return null;
+                    return (
+                      <DetailRow
+                        key={`cantiere-plate-${item.id}-${absoluteIdx}`}
+                        label={`Targa ${absoluteIdx + 1}`}
+                        value={value}
+                        styles={styles}
+                      />
+                    );
+                  })}
+                </>
+              );
+            })()}
+
+            {/* Fallback retro-compatibilità: se non ci sono cantieri ma ci sono dati veicolo */}
+            {cantieri.length === 0 && item.vehicle_driven && (
+              <DetailRow
+                label="Veicolo"
+                value={item.vehicle_driven === 'andata_ritorno' ? 'Andata/Ritorno' : item.vehicle_driven}
                 styles={styles}
               />
             )}
-            {(item.targa_veicolo || item.vehiclePlate) && (
-              <DetailRow 
-                label="Targa Veicolo" 
-                value={item.targa_veicolo || item.vehiclePlate} 
-                styles={styles}
-              />
+            {cantieri.length === 0 && (item.targa_veicolo || item.vehiclePlate) && (
+              <DetailRow label="Targa Veicolo" value={item.targa_veicolo || item.vehiclePlate} styles={styles} />
             )}
           </DetailSection>
         )}
@@ -1549,7 +1685,7 @@ const TimeEntryScreen = () => {
             isLast={true}
             styles={styles}
           >
-            <Text style={styles.notesText}>{item.notes}</Text>
+            <Text style={styles.notesText}>{normalizeCcnlAmountInNotes(item.notes, settings)}</Text>
           </DetailSection>
         )}
       </TouchableOpacity>

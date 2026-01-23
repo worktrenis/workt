@@ -54,19 +54,19 @@ export const createWorkEntryFromData = (entry, calculationServiceInstance = null
           
           // Se la stringa non inizia con [ o è vuota, restituisci array vuoto
           if (!cleanData || (!cleanData.startsWith('[') && !cleanData.startsWith('{'))) {
-            console.warn('🚨 PARSING: Dati interventi non validi:', cleanData);
+            // console.warn('🚨 PARSING: Dati interventi non validi:', cleanData);
             return [];
           }
           
           const parsed = JSON.parse(cleanData);
           return Array.isArray(parsed) ? parsed : [];
         } catch (error) {
-          console.warn('🚨 PARSING: Errore parsing interventi:', error);
-          console.warn('🚨 PARSING: Dati originali:', workEntryData.interventi);
+          // console.warn('🚨 PARSING: Errore parsing interventi:', error);
+          // console.warn('🚨 PARSING: Dati originali:', workEntryData.interventi);
           
           // Tentativo di riparazione automatica per formati corrotti
           try {
-            console.warn('🚨 PARSING: Tentativo riparazione automatica...');
+            // console.warn('🚨 PARSING: Tentativo riparazione automatica...');
             
             let cleaned = String(workEntryData.interventi)
               .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Rimuovi caratteri di controllo
@@ -78,7 +78,7 @@ export const createWorkEntryFromData = (entry, calculationServiceInstance = null
             
             // Gestione formato specifico: [{departure_company=19:25, arrival_site=22:25...}]
             if (cleaned.includes('=') && cleaned.includes('{') && cleaned.includes('}')) {
-              console.warn('🔧 PARSING: Rilevato formato oggetto, tentativo conversione...');
+              // console.warn('🔧 PARSING: Rilevato formato oggetto, tentativo conversione...');
               
               // Converto il formato = in formato JSON
               let jsonString = cleaned
@@ -97,24 +97,24 @@ export const createWorkEntryFromData = (entry, calculationServiceInstance = null
                   return `{${pairs.join(',')}}`;
                 });
               
-              console.warn('🔧 PARSING: JSON convertito:', jsonString);
+              // console.warn('🔧 PARSING: JSON convertito:', jsonString);
               const repaired = JSON.parse(jsonString);
-              console.log('✅ PARSING: Conversione formato oggetto riuscita');
+              // console.log('✅ PARSING: Conversione formato oggetto riuscita');
               return Array.isArray(repaired) ? repaired : [repaired];
             }
             
             // Se non è il formato oggetto, prova pulizia standard
             if (cleaned.startsWith('[') || cleaned.startsWith('{')) {
               const repaired = JSON.parse(cleaned);
-              console.log('✅ PARSING: Riparazione automatica riuscita');
+              // console.log('✅ PARSING: Riparazione automatica riuscita');
               return Array.isArray(repaired) ? repaired : [];
             }
             
-            console.warn('🚨 PARSING: Formato non riconosciuto, ritorno array vuoto');
+            // console.warn('🚨 PARSING: Formato non riconosciuto, ritorno array vuoto');
             return [];
             
           } catch (secondError) {
-            console.warn('🚨 PARSING: Anche la riparazione automatica è fallita:', secondError.message);
+            // console.warn('🚨 PARSING: Anche la riparazione automatica è fallita:', secondError.message);
             return [];
           }
         }

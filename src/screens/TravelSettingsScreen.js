@@ -233,9 +233,9 @@ const TravelSettingsScreen = ({ navigation }) => {
           {travelOptions.map(renderOption)}
         </View>
 
-        {/* Sezione Opzioni Multi-turno */}
+        {/* Sezione Opzioni Multi-cantiere */}
         <View style={styles.multiShiftContainer}>
-          <Text style={styles.sectionTitle}>Opzioni Multi-turno</Text>
+          <Text style={styles.sectionTitle}>Opzioni Multi-cantiere</Text>
           <TouchableOpacity
             style={[
               styles.multiShiftCard,
@@ -253,7 +253,7 @@ const TravelSettingsScreen = ({ navigation }) => {
                 )}
               </View>
               <Text style={styles.multiShiftTitle}>
-                🔄 Viaggi multi-turno come ore lavoro
+                🔄 Viaggi multi-cantiere come ore lavoro
               </Text>
             </View>
             <Text style={styles.multiShiftDescription}>

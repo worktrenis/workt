@@ -545,6 +545,71 @@ class DatabaseService {
       throw error;
     }
   }
+
+  // 🍽️ Statistiche storico pasti (cash standard = contanti standard legati al buono pasto)
+  async getAllTimeMealCashStandardCounts() {
+    await this.ensureInitialized();
+
+    try {
+      const result = await this.db.getFirstAsync(
+        `SELECT
+          COALESCE(SUM(CASE WHEN meal_lunch_voucher > 0 THEN 1 ELSE 0 END), 0) AS lunchVoucherCount,
+          COALESCE(SUM(CASE WHEN meal_dinner_voucher > 0 THEN 1 ELSE 0 END), 0) AS dinnerVoucherCount
+         FROM work_entries`
+      );
+
+      return {
+        lunchVoucherCount: Number(result?.lunchVoucherCount || 0),
+        dinnerVoucherCount: Number(result?.dinnerVoucherCount || 0)
+      };
+    } catch (error) {
+      console.error('Error getting all-time meal cash standard counts:', error);
+      return { lunchVoucherCount: 0, dinnerVoucherCount: 0 };
+    }
+  }
+
+  // 🍽️ Statistiche pasti (cash standard) filtrate per intervallo date (YYYY-MM-DD)
+  async getMealCashStandardCountsByDateRange(startDate, endDate) {
+    await this.ensureInitialized();
+
+    try {
+      // NOTE: Alcune installazioni storiche hanno date salvate come "YYYY-M-D" (senza zero padding).
+      // I confronti lessicografici (date >= ? AND date <= ?) possono fallire per mesi 2-9.
+      // Per intervalli che rappresentano un anno intero, filtriamo per anno usando il prefisso.
+      const startYear = typeof startDate === 'string' ? startDate.slice(0, 4) : '';
+      const endYear = typeof endDate === 'string' ? endDate.slice(0, 4) : '';
+      const isWholeYear =
+        startYear && endYear && startYear === endYear &&
+        typeof startDate === 'string' && typeof endDate === 'string' &&
+        startDate.endsWith('-01-01') && endDate.endsWith('-12-31');
+
+      const result = isWholeYear
+        ? await this.db.getFirstAsync(
+            `SELECT
+              COALESCE(SUM(CASE WHEN meal_lunch_voucher > 0 THEN 1 ELSE 0 END), 0) AS lunchVoucherCount,
+              COALESCE(SUM(CASE WHEN meal_dinner_voucher > 0 THEN 1 ELSE 0 END), 0) AS dinnerVoucherCount
+             FROM work_entries
+             WHERE substr(date, 1, 4) = ? OR substr(date, -4) = ?`,
+            [startYear, startYear]
+          )
+        : await this.db.getFirstAsync(
+            `SELECT
+              COALESCE(SUM(CASE WHEN meal_lunch_voucher > 0 THEN 1 ELSE 0 END), 0) AS lunchVoucherCount,
+              COALESCE(SUM(CASE WHEN meal_dinner_voucher > 0 THEN 1 ELSE 0 END), 0) AS dinnerVoucherCount
+             FROM work_entries
+             WHERE date >= ? AND date <= ?`,
+            [startDate, endDate]
+          );
+
+      return {
+        lunchVoucherCount: Number(result?.lunchVoucherCount || 0),
+        dinnerVoucherCount: Number(result?.dinnerVoucherCount || 0)
+      };
+    } catch (error) {
+      console.error('Error getting meal cash standard counts by date range:', error);
+      return { lunchVoucherCount: 0, dinnerVoucherCount: 0 };
+    }
+  }
   
   async getWorkEntriesByDateRange(startDate, endDate) {
     await this.ensureInitialized();
@@ -1816,13 +1881,23 @@ class DatabaseService {
             console.log(`⚙️ Ripristino ${settings.length} impostazioni...`);
             
             for (const setting of settings) {
+              const key = setting?.key;
+              if (!key) continue;
+
+              // Alcuni formati di backup possono contenere `value` già parsato come oggetto.
+              // In DB deve essere sempre una string JSON.
+              const rawValue = setting?.value;
+              const valueString = (typeof rawValue === 'string')
+                ? rawValue
+                : JSON.stringify(rawValue ?? null);
+
               await this.db.runAsync(`
                 INSERT INTO ${DATABASE_TABLES.SETTINGS} (
                   key, value, created_at, updated_at
                 ) VALUES (?, ?, ?, ?)
               `, [
-                setting.key,
-                setting.value,
+                key,
+                valueString,
                 setting.created_at || new Date().toISOString(),
                 new Date().toISOString()
               ]);

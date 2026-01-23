@@ -63,7 +63,7 @@ class VacationService {
       
       // Se le impostazioni non esistono, creale con valori di default
       if (!settings) {
-        console.log('⚠️ Impostazioni ferie non trovate, creo impostazioni di default');
+        // console.log('⚠️ Impostazioni ferie non trovate, creo impostazioni di default');
         settings = {
           annualVacationDays: 26,
           carryOverDays: 0,
@@ -87,13 +87,13 @@ class VacationService {
         approvedAt: status === 'approved' ? new Date().toISOString() : null,
       };
       
-      console.log('🔍 VacationService.addVacationRequest:', {
-        settingsExist: !!settings,
-        autoApprovalEnabled: settings?.autoApprovalEnabled,
-        autoApprovalType: typeof settings?.autoApprovalEnabled,
-        requestStatus: status,
-        newRequestId: newRequest.id
-      });
+      // console.log('🔍 VacationService.addVacationRequest:', {
+      //   settingsExist: !!settings,
+      //   autoApprovalEnabled: settings?.autoApprovalEnabled,
+      //   autoApprovalType: typeof settings?.autoApprovalEnabled,
+      //   requestStatus: status,
+      //   newRequestId: newRequest.id
+      // });
       
       requests.push(newRequest);
       await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(requests));
@@ -111,7 +111,7 @@ class VacationService {
       
       // Se le impostazioni non esistono o sono incomplete, creale/aggiornale
       if (!settings || settings.autoApprovalEnabled === undefined) {
-        console.log('🔧 Aggiorno impostazioni ferie con campi mancanti');
+        // console.log('🔧 Aggiorno impostazioni ferie con campi mancanti');
         
         const defaultSettings = {
           annualVacationDays: 26,
@@ -142,7 +142,7 @@ class VacationService {
       const settings = await this.getVacationSettings();
       
       if (settings?.autoApprovalEnabled !== true) {
-        console.log('⚠️ Auto-approvazione non attiva, non procedo');
+        // console.log('⚠️ Auto-approvazione non attiva, non procedo');
         return { approved: 0, message: 'Auto-approvazione non attivata' };
       }
       
@@ -153,12 +153,12 @@ class VacationService {
         return { approved: 0, message: 'Nessuna richiesta in attesa' };
       }
       
-      console.log(`🔄 Approvo automaticamente ${pendingRequests.length} richieste in attesa`);
+      // console.log(`🔄 Approvo automaticamente ${pendingRequests.length} richieste in attesa`);
       
       pendingRequests.forEach(req => {
         req.status = 'approved';
         req.approvedAt = new Date().toISOString();
-        console.log(`✅ Approvata automaticamente richiesta ${req.id} (${req.type})`);
+        // console.log(`✅ Approvata automaticamente richiesta ${req.id} (${req.type})`);
       });
       
       await AsyncStorage.setItem(this.STORAGE_KEY, JSON.stringify(requests));

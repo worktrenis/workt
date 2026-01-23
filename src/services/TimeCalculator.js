@@ -57,9 +57,18 @@ export class TimeCalculator {
     }
 
     // Additional work shifts from viaggi array
-    if (workEntry.viaggi && Array.isArray(workEntry.viaggi)) {
-      console.log(`[TimeCalculator] 🔥 PROCESSING ${workEntry.viaggi.length} VIAGGI:`, workEntry.viaggi);
-      workEntry.viaggi.forEach((viaggio, index) => {
+    let viaggiArray = workEntry.viaggi;
+    if (typeof viaggiArray === 'string') {
+      try {
+        viaggiArray = JSON.parse(viaggiArray);
+      } catch (e) {
+        viaggiArray = null;
+      }
+    }
+
+    if (viaggiArray && Array.isArray(viaggiArray)) {
+      console.log(`[TimeCalculator] 🔥 PROCESSING ${viaggiArray.length} VIAGGI:`, viaggiArray);
+      viaggiArray.forEach((viaggio, index) => {
         if (viaggio.work_start_1 && viaggio.work_end_1) {
           const minutes = this.calculateTimeDifference(viaggio.work_start_1, viaggio.work_end_1);
           totalWorkMinutes += minutes;
@@ -104,9 +113,18 @@ export class TimeCalculator {
     }
 
     // Additional travel from viaggi array
-    if (workEntry.viaggi && Array.isArray(workEntry.viaggi)) {
-      console.log(`[TimeCalculator] 🔥 PROCESSING TRAVEL FOR ${workEntry.viaggi.length} VIAGGI:`);
-      workEntry.viaggi.forEach((viaggio, index) => {
+    let viaggiArray = workEntry.viaggi;
+    if (typeof viaggiArray === 'string') {
+      try {
+        viaggiArray = JSON.parse(viaggiArray);
+      } catch (e) {
+        viaggiArray = null;
+      }
+    }
+
+    if (viaggiArray && Array.isArray(viaggiArray)) {
+      console.log(`[TimeCalculator] 🔥 PROCESSING TRAVEL FOR ${viaggiArray.length} VIAGGI:`);
+      viaggiArray.forEach((viaggio, index) => {
         if (viaggio.departure_company && viaggio.arrival_site) {
           const minutes = this.calculateTimeDifference(viaggio.departure_company, viaggio.arrival_site);
           totalTravelMinutes += minutes;
@@ -160,9 +178,18 @@ export class TimeCalculator {
     }
     
     // Controlla tutti i viaggi aggiuntivi per trovare l'ultimo con viaggio di ritorno
-    if (workEntry.viaggi && Array.isArray(workEntry.viaggi)) {
-      for (let i = workEntry.viaggi.length - 1; i >= 0; i--) {
-        const viaggio = workEntry.viaggi[i];
+    let viaggiArray = workEntry.viaggi;
+    if (typeof viaggiArray === 'string') {
+      try {
+        viaggiArray = JSON.parse(viaggiArray);
+      } catch (e) {
+        viaggiArray = null;
+      }
+    }
+
+    if (viaggiArray && Array.isArray(viaggiArray)) {
+      for (let i = viaggiArray.length - 1; i >= 0; i--) {
+        const viaggio = viaggiArray[i];
         if (viaggio.departure_return && viaggio.arrival_company) {
           lastReturnTravel = {
             departure: viaggio.departure_return,
@@ -192,8 +219,8 @@ export class TimeCalculator {
     }
     
     // Viaggi di tutti i turni aggiuntivi (eccetto l'ultimo viaggio di ritorno se è quello finale)
-    if (workEntry.viaggi && Array.isArray(workEntry.viaggi)) {
-      workEntry.viaggi.forEach((viaggio, index) => {
+    if (viaggiArray && Array.isArray(viaggiArray)) {
+      viaggiArray.forEach((viaggio, index) => {
         // Viaggio di andata (sempre interno, mai il primo)
         if (viaggio.departure_company && viaggio.arrival_site) {
           const minutes = this.calculateTimeDifference(viaggio.departure_company, viaggio.arrival_site);

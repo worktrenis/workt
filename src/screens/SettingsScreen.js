@@ -196,7 +196,7 @@ const SettingsScreen = ({ navigation }) => {
       title: 'Notifiche',
       subtitle: 'Gestione completa di tutte le notifiche',
       icon: 'bell-ring',
-      screen: 'NotificationMainMenu',
+      screen: 'NotificationSettings',
       color: '#FF5722',
       showNotificationBadge: true
     },

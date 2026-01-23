@@ -27,6 +27,115 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.37',
+      date: '24 gennaio 2026',
+      changes: [
+        'UI cantieri: card compatta, dettagli veicolo a scomparsa',
+        'TimeEntryScreen no duplicati',
+        'fix pausa cena su viaggio'
+      ]
+    },
+    {
+      version: '1.0.36',
+      date: '17 gennaio 2026',
+      changes: [
+        'Fix backup JSON parsing e migrate FileSystem API to legacy SDK 54'
+      ]
+    },
+    {
+      version: '1.0.35',
+      date: '01 gennaio 2026',
+      changes: [
+        'Chore: riduzione log Dashboard (solo __DEV__)'
+      ]
+    },
+    {
+      version: '1.0.34',
+      date: '01 gennaio 2026',
+      changes: [
+        'HOTFIX Dashboard: cambio mese senza refresh (queue calcolo + stop duplicate loadData)'
+      ]
+    },
+    {
+      version: '1.0.33',
+      date: '01 gennaio 2026',
+      changes: [
+        'HOTFIX Dashboard: fix riepilogo mese-mese (race condition load/aggregation)'
+      ]
+    },
+    {
+      version: '1.0.32',
+      date: '01 gennaio 2026',
+      changes: [
+        'HOTFIX Dashboard: cash standard scala residuo anno prec.',
+        'riordino card',
+        'Totale Netto Stimato in cima'
+      ]
+    },
+    {
+      version: '1.0.31',
+      date: '01 gennaio 2026',
+      changes: [
+        'HOTFIX: evita wipe impostazioni (updatePartialSettings) + restore backup ripristina settings'
+      ]
+    },
+    {
+      version: '1.0.30',
+      date: '01 gennaio 2026',
+      changes: [
+        'Dashboard: rollover cash standard (reset anno corrente) + card anno precedente + residuo complessivo'
+      ]
+    },
+    {
+      version: '1.0.29',
+      date: '01 gennaio 2026',
+      changes: [
+        'Dashboard: rollover annuale rimborso pasti (cash standard) + residuo anno precedente'
+      ]
+    },
+    {
+      version: '1.0.28',
+      date: '01 gennaio 2026',
+      changes: [
+        'Fix completamento Dashboard: range date (timezone)'
+      ]
+    },
+    {
+      version: '1.0.27',
+      date: '01 gennaio 2026',
+      changes: [
+        'Fix giorni in completamento (no falsi positivi)'
+      ]
+    },
+    {
+      version: '1.0.26',
+      date: '01 gennaio 2026',
+      changes: [
+        'Fix Dashboard mese vuoto + fix nota CCNL form (Capodanno)'
+      ]
+    },
+    {
+      version: '1.0.25',
+      date: '01 gennaio 2026',
+      changes: [
+        'Fix riepilogo form: anti-stale breakdown CCNL'
+      ]
+    },
+    {
+      version: '1.0.24',
+      date: '31 dicembre 2025',
+      changes: [
+        'Fix pasti auto (pranzo/cena) tutti i turni + Rimborso cash standard: inserimenti incrementali + modifica/elimina'
+      ]
+    },
+    {
+      version: '1.0.23',
+      date: '31 dicembre 2025',
+      changes: [
+        'Multi-cantiere + fix regola ore viaggio'
+      ]
+    },
+    {
       version: '1.0.22',
       date: '28 dicembre 2025',
       changes: [

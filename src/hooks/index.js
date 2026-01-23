@@ -67,6 +67,18 @@ export const useDatabase = () => {
           updatedSettings.showEffectiveEarningsOnSpecialNoWorkDays = DEFAULT_SETTINGS.showEffectiveEarningsOnSpecialNoWorkDays;
           needsUpdate = true;
         }
+
+        // 🍽️ Migrazione: rimborsi pasti cash standard incrementali
+        // Nuovo formato: array di importi rimborsati nel tempo.
+        if (updatedSettings.mealCashStandardReimbursements === undefined) {
+          const legacyTotal = Number(existingSettings.mealCashStandardReimbursed || 0);
+          if (Number.isFinite(legacyTotal) && legacyTotal !== 0) {
+            updatedSettings.mealCashStandardReimbursements = [legacyTotal];
+          } else {
+            updatedSettings.mealCashStandardReimbursements = [];
+          }
+          needsUpdate = true;
+        }
         
         // Pulisci le vecchie proprietà se esistono
         if (existingSettings.netCalculationMethod !== undefined) {
@@ -461,13 +473,20 @@ export const useSettings = () => {
 
   const updatePartialSettings = async (partialSettings) => {
     try {
+      // ⚠️ IMPORTANTE: non usare solo lo state `settings` come base.
+      // All'avvio `settings` parte da DEFAULT_SETTINGS e `isLoading` può essere false:
+      // se una schermata chiama updatePartialSettings troppo presto rischiamo di sovrascrivere
+      // le impostazioni reali nel DB con i default.
+      // Per sicurezza, prendiamo sempre la versione corrente dal DB come base.
+      const baseSettings = await DatabaseService.getSetting('appSettings', DEFAULT_SETTINGS);
+
       // Perform deep merge for nested settings we know can be partially updated
-      const updatedSettings = { ...settings };
+      const updatedSettings = { ...(baseSettings || DEFAULT_SETTINGS) };
 
       // If standbySettings provided, merge its fields instead of replacing whole object
       if (partialSettings.standbySettings) {
         updatedSettings.standbySettings = {
-          ...(settings.standbySettings || DEFAULT_SETTINGS.standbySettings), // Usa i default se non esiste
+          ...((baseSettings?.standbySettings) || DEFAULT_SETTINGS.standbySettings), // Usa i default se non esiste
           ...(partialSettings.standbySettings || {})
         };
       }

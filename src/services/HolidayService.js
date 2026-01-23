@@ -186,8 +186,26 @@ class HolidayService {
    * @returns {number} - Retribuzione giornaliera
    */
   calculateHolidayPay(settings) {
-    // Per i giorni festivi feriali si applica la retribuzione giornaliera normale
-    return settings?.contract?.dailyRate || 109.19;
+    // Per i giorni festivi feriali si applica la retribuzione giornaliera normale.
+    // Coerenza con il resto dell'app: se dailyRate non è presente, deriva da monthlySalary.
+    const contract = settings?.contract || {};
+
+    const explicitDailyRate = Number(contract.dailyRate);
+    if (Number.isFinite(explicitDailyRate) && explicitDailyRate > 0) {
+      return explicitDailyRate;
+    }
+
+    const monthlySalary = Number(contract.monthlySalary);
+    const workingDaysPerMonthRaw = Number(contract.workingDaysPerMonth);
+    const workingDaysPerMonth = Number.isFinite(workingDaysPerMonthRaw) && workingDaysPerMonthRaw > 0
+      ? workingDaysPerMonthRaw
+      : 26;
+
+    if (Number.isFinite(monthlySalary) && monthlySalary > 0) {
+      return monthlySalary / workingDaysPerMonth;
+    }
+
+    return 109.19;
   }
 
   /**

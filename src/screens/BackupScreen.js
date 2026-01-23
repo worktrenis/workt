@@ -15,7 +15,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { formatDate } from '../utils';
@@ -662,13 +662,13 @@ const BackupScreen = ({ navigation }) => {
       
       if (backup.type === 'auto') {
         // Backup automatico - leggi dal file system
-        const FileSystem = await import('expo-file-system');
+        const FileSystem = await import('expo-file-system/legacy');
         backupContent = await FileSystem.readAsStringAsync(backup.filePath);
       } else {
         // Backup manuale - leggi da AsyncStorage
-  const storageKey = backup.storageKey || backup.key;
-  backupContent = await AsyncStorage.getItem(storageKey);
-  console.log('📤 EXPORT manuale - uso storageKey:', storageKey, 'length:', backupContent?.length || 0);
+        const storageKey = backup.storageKey || backup.key;
+        backupContent = await AsyncStorage.getItem(storageKey);
+        console.log('📤 EXPORT manuale - uso storageKey:', storageKey, 'length:', backupContent?.length || 0);
         if (!backupContent) {
           throw new Error('Dati backup non trovati');
         }
@@ -677,7 +677,7 @@ const BackupScreen = ({ navigation }) => {
       // Salva come file per l'esportazione
       const fileName = `${backup.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
       
-      const FileSystem = await import('expo-file-system');
+      const FileSystem = await import('expo-file-system/legacy');
       const Sharing = await import('expo-sharing');
       
       const fileUri = FileSystem.documentDirectory + fileName;
