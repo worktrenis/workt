@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.38',
+      date: '24 gennaio 2026',
+      changes: [
+        'Fix affidabilità notifiche (trigger ripetitivi)'
+      ]
+    },
+    {
       version: '1.0.37',
       date: '24 gennaio 2026',
       changes: [

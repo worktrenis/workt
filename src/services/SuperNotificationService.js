@@ -185,21 +185,51 @@ class SuperNotificationService {
 
       const scheduled = await this.getScheduledNotifications();
       console.log(`📅 Notifiche attualmente programmate: ${scheduled.length}`);
-      
-      // Se ci sono meno di 5 notifiche programmate, riprogramma
-      if (scheduled.length < 5) {
-        console.log('⚠️ Poche notifiche programmate, riprogrammo automaticamente...');
-        
-        const settings = await this.getSettings();
+
+      const settings = await this.getSettings();
+
+      const shouldReprogram = (() => {
+        // Fallback: se non riusciamo a leggere le impostazioni, manteniamo la vecchia euristica.
+        if (!settings || typeof settings !== 'object') return scheduled.length < 5;
+        if (!settings.enabled) return false;
+
+        const workSettings = settings.workReminder || settings.workReminders;
+        const timeSettings = settings.timeEntryReminder || settings.timeEntryReminders;
+
+        let expectedMin = 0;
+
+        if (workSettings?.enabled) {
+          expectedMin += workSettings.weekendsEnabled ? 7 : 5;
+        }
+
+        if (timeSettings?.enabled) {
+          expectedMin += timeSettings.weekendsEnabled ? 7 : 5;
+        }
+
+        // Backup: con trigger ripetitivo giornaliero ci aspettiamo almeno 1 notifica.
+        if (settings.backupReminder?.enabled) {
+          expectedMin += 1;
+        }
+
+        // Standby: dipende dal calendario DB (non imponiamo soglia minima fissa qui).
+
+        // Se nessun tipo è abilitato, non riprogrammare.
+        if (expectedMin === 0) return false;
+
+        // Se siamo sotto la soglia minima attesa, riprogramma.
+        return scheduled.length < expectedMin;
+      })();
+
+      if (shouldReprogram) {
+        console.log('⚠️ Notifiche programmate sotto soglia attesa, riprogrammo automaticamente...');
         if (settings && (settings.enabled || settings.workEnabled || settings.timeEnabled || settings.standbyReminder?.enabled || settings.standbyReminders?.enabled)) {
           const result = await this.scheduleNotifications(settings, true);
           console.log(`✅ Riprogrammate ${result.totalScheduled} notifiche automaticamente (cancellate: ${result.cancelled})`);
-          
           this.isReprogramming = false;
           return { ...result, action: 'reprogrammed' };
         }
       } else {
-        console.log('✅ Numero adeguato di notifiche programmate, nessuna azione necessaria');
+        console.log('✅ Notifiche programmate OK, nessuna azione necessaria');
       }
       
       this.isReprogramming = false;
@@ -371,7 +401,7 @@ class SuperNotificationService {
     }
   }
 
-  // 📅 PROMEMORIA INIZIO LAVORO (7 giorni per continuità automatica)
+  // 📅 PROMEMORIA INIZIO LAVORO (ripetizione settimanale per affidabilità)
   async scheduleMorningReminders(settings) {
     if (!settings.morningTime) {
       console.error('❌ Orario promemoria mattutino non configurato');
@@ -380,33 +410,24 @@ class SuperNotificationService {
     
     try {
       const [hours, minutes] = settings.morningTime.split(':').map(Number);
-      const daysToSchedule = settings.weekendsEnabled ? [0,1,2,3,4,5,6] : [1,2,3,4,5];
       let scheduledCount = 0;
-      
-      // 🎯 PROGRAMMA PER 7 GIORNI (una settimana completa per continuità)
-      for (let day = 0; day <= 7; day++) {
-        const targetDate = new Date();
-        targetDate.setDate(targetDate.getDate() + day);
-        
-        if (!daysToSchedule.includes(targetDate.getDay())) continue;
-        
-        targetDate.setHours(hours, minutes, 0, 0);
-        
-        if (targetDate <= new Date()) continue;
-        
-        const now = new Date();
-        const timeDiff = targetDate.getTime() - now.getTime();
-        
-        // PROGRAMMA SEMPRE LA NOTIFICA COME IL TEST
-        console.log(`📅 [NO FILTER] Programmando promemoria lavoro per: ${targetDate.toLocaleString('it-IT')} (tra ${Math.round(timeDiff/1000/60)} min)`);
+
+      // Expo calendar trigger: weekday 1=Sunday ... 7=Saturday
+      const weekdays = settings.weekendsEnabled
+        ? [1, 2, 3, 4, 5, 6, 7]
+        : [2, 3, 4, 5, 6];
+
+      for (const weekday of weekdays) {
+        console.log(`📅 Programmando promemoria lavoro ripetitivo: weekday=${weekday}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`);
         await Notifications.scheduleNotificationAsync({
           content: {
             title: '🌅 Buongiorno! Inizio Lavoro',
             body: 'È ora di iniziare la giornata lavorativa. Ricordati di registrare l\'orario di inizio.',
             data: { 
-              type: 'work_reminder', 
-              date: targetDate.toISOString().split('T')[0],
-              timestamp: targetDate.getTime()
+              type: 'work_reminder',
+              weekday,
+              hour: hours,
+              minute: minutes,
             },
             sound: Platform.OS === 'android' ? 'default' : true,
             priority: Platform.OS === 'android' ? 'high' : undefined,
@@ -415,11 +436,12 @@ class SuperNotificationService {
             ...(Platform.OS === 'android' && { channelId: 'default' }),
           },
           trigger: {
-            type: 'date',
-            date: targetDate,
+            weekday,
+            hour: hours,
+            minute: minutes,
+            repeats: true,
           },
         });
-        
         scheduledCount++;
       }
       
@@ -431,7 +453,7 @@ class SuperNotificationService {
     }
   }
 
-  // ⏰ PROMEMORIA INSERIMENTO ORARI (7 giorni per continuità automatica)
+  // ⏰ PROMEMORIA INSERIMENTO ORARI (ripetizione settimanale per affidabilità)
   async scheduleTimeEntryReminders(settings) {
     if (!settings.time && !settings.eveningTime) {
       console.error('❌ Orario promemoria inserimento orari non configurato');
@@ -441,33 +463,23 @@ class SuperNotificationService {
     try {
       const timeString = settings.time || settings.eveningTime;
       const [hours, minutes] = timeString.split(':').map(Number);
-      const daysToSchedule = settings.weekendsEnabled ? [0,1,2,3,4,5,6] : [1,2,3,4,5];
       let scheduledCount = 0;
-      
-      // 🎯 PROGRAMMA PER 7 GIORNI (una settimana completa per continuità)
-      for (let day = 0; day <= 7; day++) {
-        const targetDate = new Date();
-        targetDate.setDate(targetDate.getDate() + day);
-        
-        if (!daysToSchedule.includes(targetDate.getDay())) continue;
-        
-        targetDate.setHours(hours, minutes, 0, 0);
-        
-        if (targetDate <= new Date()) continue;
-        
-        const now = new Date();
-        const timeDiff = targetDate.getTime() - now.getTime();
-        
-        // PROGRAMMA SEMPRE LA NOTIFICA COME IL TEST
-        console.log(`📅 [NO FILTER] Programmando time entry per: ${targetDate.toLocaleString('it-IT')} (tra ${Math.round(timeDiff/1000/60)} min)`);
+
+      const weekdays = settings.weekendsEnabled
+        ? [1, 2, 3, 4, 5, 6, 7]
+        : [2, 3, 4, 5, 6];
+
+      for (const weekday of weekdays) {
+        console.log(`⏰ Programmando time entry ripetitivo: weekday=${weekday}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`);
         await Notifications.scheduleNotificationAsync({
           content: {
             title: '⏰ Promemoria Inserimento Orari',
             body: 'Ricordati di inserire le ore di lavoro di oggi prima di finire.',
             data: { 
-              type: 'time_entry_reminder', 
-              date: targetDate.toISOString().split('T')[0],
-              timestamp: targetDate.getTime()
+              type: 'time_entry_reminder',
+              weekday,
+              hour: hours,
+              minute: minutes,
             },
             sound: Platform.OS === 'android' ? 'default' : true,
             priority: Platform.OS === 'android' ? 'high' : undefined,
@@ -476,11 +488,12 @@ class SuperNotificationService {
             ...(Platform.OS === 'android' && { channelId: 'default' }),
           },
           trigger: {
-            type: 'date',
-            date: targetDate,
+            weekday,
+            hour: hours,
+            minute: minutes,
+            repeats: true,
           },
         });
-        
         scheduledCount++;
       }
       
@@ -492,51 +505,38 @@ class SuperNotificationService {
     }
   }
 
-  // 💾 BACKUP AUTOMATICO - Programmazione promemoria backup ogni 24 ore
+  // 💾 BACKUP AUTOMATICO - Promemoria ripetitivo giornaliero (più affidabile)
   async scheduleBackupReminders(settings) {
     if (!settings.enabled) return 0;
 
     try {
-      const [hours, minutes] = settings.time.split(':');
-      let scheduledCount = 0;
-      const now = new Date();
-      
-      // 🎯 PROGRAMMA BACKUP OGNI 24 ORE per i prossimi 7 giorni
-      for (let day = 0; day < 7; day++) {
-        const targetDate = new Date(now);
-        
-        // Ogni giorno alla stessa ora
-        targetDate.setDate(now.getDate() + day);
-        targetDate.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-        
-        // PROGRAMMA SEMPRE LA NOTIFICA COME IL TEST
-        console.log(`💾 [NO FILTER] Programmando backup automatico GIORNALIERO per: ${targetDate.toLocaleString('it-IT')}`);
-        await Notifications.scheduleNotificationAsync({
-          content: {
-            title: '💾 Backup Automatico Giornaliero WorkT',
-            body: 'È ora di creare il backup giornaliero dei tuoi dati lavorativi. Tap per aprire.',
-            data: { 
-              type: 'backup_reminder',
-              timestamp: targetDate.getTime(),
-              day: day,
-              frequency: 'daily'
-            },
-            sound: Platform.OS === 'android' ? 'default' : true,
-            priority: Platform.OS === 'android' ? 'high' : undefined,
-            color: '#1E3A8A',
-            categoryIdentifier: 'backup_reminder',
-            ...(Platform.OS === 'android' && { channelId: 'default' }),
+      const [hours, minutes] = String(settings.time || '02:00').split(':').map(Number);
+
+      console.log(`💾 Programmando promemoria backup ripetitivo giornaliero: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`);
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '💾 Promemoria Backup WorkT',
+          body: 'È ora di creare il backup dei tuoi dati lavorativi. Tap per aprire.',
+          data: {
+            type: 'backup_reminder',
+            hour: hours,
+            minute: minutes,
+            frequency: settings.frequency || 'daily',
           },
-          trigger: {
-            type: 'date',
-            date: targetDate,
-          },
-        });
-        
-        scheduledCount++;
-      }
-      
-      return scheduledCount;
+          sound: Platform.OS === 'android' ? 'default' : true,
+          priority: Platform.OS === 'android' ? 'high' : undefined,
+          color: '#1E3A8A',
+          categoryIdentifier: 'backup_reminder',
+          ...(Platform.OS === 'android' && { channelId: 'default' }),
+        },
+        trigger: {
+          hour: hours,
+          minute: minutes,
+          repeats: true,
+        },
+      });
+
+      return 1;
       
     } catch (error) {
       console.error('❌ Errore programmazione backup automatico:', error);
