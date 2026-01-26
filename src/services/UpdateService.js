@@ -242,8 +242,11 @@ class UpdateService {
    */
   async showUpdateCompletedMessage(updateInfo) {
     try {
-      const version = updateInfo.targetVersion;
-      const fromVersion = updateInfo.previousVersion;
+      // Sanifica la versione: se è 'unknown', usa la versione corrente
+      const version = (updateInfo.targetVersion === 'unknown' || !updateInfo.targetVersion) 
+        ? this.currentVersion 
+        : updateInfo.targetVersion;
+      const fromVersion = updateInfo.previousVersion || 'precedente';
       
       // ✅ CONTROLLO POPUP DUPLICATI PER v1.3.1
       if (version === '1.3.1') {

@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.41',
+      date: '26 gennaio 2026',
+      changes: [
+        'Sanifica versione unknown nel popup aggiornamento completato'
+      ]
+    },
+    {
       version: '1.0.40',
       date: '26 gennaio 2026',
       changes: [
