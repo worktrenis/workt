@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.42',
+      date: '26 gennaio 2026',
+      changes: [
+        'Fix versioni uguali nel popup: cattura previousVersion prima del download'
+      ]
+    },
+    {
       version: '1.0.41',
       date: '26 gennaio 2026',
       changes: [

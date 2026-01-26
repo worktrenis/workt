@@ -97,17 +97,19 @@ class UpdateService {
    */
   async downloadAndApplyUpdate(update, newVersion) {
     try {
-      // console.log('⬇️ UPDATE SERVICE - Download aggiornamento...');
+      // Salva la versione corrente PRIMA di qualsiasi operazione
+      const previousVersion = this.currentVersion;
+      console.log(`⬇️ UPDATE SERVICE - Download aggiornamento da ${previousVersion} a ${newVersion || 'versione più recente'}`);
       
-      // Salva info pre-aggiornamento
-      await this.savePreUpdateInfo(newVersion);
+      // Salva info pre-aggiornamento con la versione corrente
+      await this.savePreUpdateInfo(newVersion, previousVersion);
       
       // Scarica l'aggiornamento
       await Updates.fetchUpdateAsync();
-      // console.log('✅ UPDATE SERVICE - Download completato');
+      console.log('✅ UPDATE SERVICE - Download completato');
 
       // Applica l'aggiornamento (riavvia l'app)
-      // console.log('🔄 UPDATE SERVICE - Applicazione aggiornamento e riavvio...');
+      console.log('🔄 UPDATE SERVICE - Applicazione aggiornamento e riavvio...');
       await Updates.reloadAsync();
       return true;
     } catch (error) {
@@ -195,13 +197,19 @@ class UpdateService {
   /**
    * Salva informazioni pre-aggiornamento
    */
-  async savePreUpdateInfo(newVersion) {
+  async savePreUpdateInfo(newVersion, previousVersion) {
     try {
+      // Se previousVersion non è fornita, prendi dalla versione salvata
+      let savedPreviousVersion = previousVersion;
+      if (!savedPreviousVersion) {
+        savedPreviousVersion = await AsyncStorage.getItem('last_known_version') || this.currentVersion;
+      }
+      
       const updateInfo = {
         pendingUpdate: true,
         targetVersion: newVersion || this.currentVersion, // Usa sempre una versione valida
         updateTime: new Date().toISOString(),
-        previousVersion: this.currentVersion
+        previousVersion: savedPreviousVersion
       };
       await AsyncStorage.setItem('pending_update_info', JSON.stringify(updateInfo));
       console.log('💾 UPDATE SERVICE - Info pre-aggiornamento salvate:', updateInfo);
@@ -330,13 +338,23 @@ class UpdateService {
         return update.manifest.version;
       }
       
-      // Fallback robusto: usa la versione corrente (che ora viene da package.json)
-      console.warn('⚠️ UPDATE SERVICE - Versione non trovata nel manifest, uso versione corrente');
-      return this.currentVersion;
+      // Fallback: prova a incrementare la versione corrente per deduzione
+      console.warn('⚠️ UPDATE SERVICE - Versione non trovata nel manifest, tento incremento');
+      try {
+        const versionParts = this.currentVersion.split('.');
+        if (versionParts.length === 3) {
+          versionParts[2] = (parseInt(versionParts[2]) + 1).toString();
+          return versionParts.join('.');
+        }
+      } catch (e) {
+        console.warn('⚠️ UPDATE SERVICE - Fallback incremento fallito');
+      }
+      
+      // Ultimo fallback: ritorna null per segnalare che non sappiamo la versione
+      return null;
     } catch (error) {
       console.warn('⚠️ UPDATE SERVICE - Errore estrazione versione:', error);
-      // Usa sempre la versione corrente come fallback sicuro
-      return this.currentVersion;
+      return null;
     }
   }
 
