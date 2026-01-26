@@ -16,6 +16,7 @@ class PersistentNotificationService {
     this.rescheduleInterval = 30 * 60 * 1000; // 30 minuti invece di 1 ora
     this.appStateSubscription = null;
     this.backgroundTaskId = null;
+    this.lastDynamicThreshold = null;
     
     console.log('🔔 PersistentNotificationService inizializzato');
   }
@@ -27,9 +28,12 @@ class PersistentNotificationService {
       // Setup handler notifiche
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
+          // Compatibile con SDK recenti: banner + lista attivi, suono attivo
           shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: false,
+          shouldShowBanner: true,
+          shouldShowList: true,
         }),
       });
 
@@ -121,12 +125,16 @@ class PersistentNotificationService {
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
       console.log(`📊 Notifiche attualmente programmate: ${scheduled.length}`);
 
-      // Se sotto la soglia minima, riprogramma SEMPRE
-      if (scheduled.length < this.minNotificationsThreshold) {
-        console.log(`🚨 SOGLIA CRITICA: Solo ${scheduled.length} notifiche programmate (min: ${this.minNotificationsThreshold})`);
+      // Soglia dinamica basata sulle impostazioni attive
+      const settings = await this.loadNotificationSettings();
+      const expectedMin = this.computeExpectedMinimum(settings);
+      this.lastDynamicThreshold = expectedMin;
+
+      if (scheduled.length < expectedMin) {
+        console.log(`🚨 SOGLIA CRITICA: ${scheduled.length} notifiche (< min dinamico ${expectedMin})`);
         await this.emergencyReschedule();
       } else {
-        console.log(`✅ Notifiche sufficienti: ${scheduled.length}/${this.minNotificationsThreshold}`);
+        console.log(`✅ Notifiche sufficienti: ${scheduled.length}/${expectedMin}`);
       }
 
       // Salva timestamp ultimo controllo
@@ -141,8 +149,19 @@ class PersistentNotificationService {
     try {
       console.log('🚨 RIPROGRAMMAZIONE EMERGENZA - Cancello e ricreo tutte le notifiche');
       
-      // Cancella tutte le notifiche esistenti
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // Cancella solo le notifiche persistenti già programmate, evitando di toccare altri canali
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const persistentIds = scheduled
+        .filter(notif => notif?.content?.data?.persistent)
+        .map(notif => notif.identifier || notif.id)
+        .filter(Boolean);
+
+      if (persistentIds.length > 0) {
+        await Promise.all(persistentIds.map(id => Notifications.cancelScheduledNotificationAsync(id)));
+      } else {
+        // fallback conservativo
+        await Notifications.cancelAllScheduledNotificationsAsync();
+      }
       await Notifications.dismissAllNotificationsAsync();
       
       // Carica impostazioni notifiche
@@ -300,6 +319,32 @@ class PersistentNotificationService {
     }
   }
 
+  // Calcola una soglia minima dinamica basata su cosa è attivo nelle impostazioni
+  computeExpectedMinimum(settings) {
+    if (!settings || settings.enabled === false) return 0;
+
+    const workMin = settings.workReminder?.enabled
+      ? (settings.workReminder.weekendsEnabled ? 14 : 10)
+      : 0;
+
+    const timeEntryMin = settings.timeEntryReminder?.enabled
+      ? (settings.timeEntryReminder.weekendsEnabled ? 14 : 10)
+      : 0;
+
+    const standbyNotifications = Array.isArray(settings.standbyReminder?.notifications)
+      ? settings.standbyReminder.notifications.filter(n => n.enabled).length
+      : 0;
+    const standbyMin = settings.standbyReminder?.enabled ? Math.min(standbyNotifications * 2, 14) : 0;
+
+    const backupMin = settings.backupReminder?.enabled ? 2 : 0;
+
+    const base = this.minNotificationsThreshold || 10;
+    const expected = Math.max(base, workMin + timeEntryMin + standbyMin + backupMin);
+
+    // Proteggi dal superare il limite massimo supportato dal sistema
+    return Math.min(expected, this.maxNotificationsScheduled - 2);
+  }
+
   async scheduleWorkReminders(settings) {
     if (!settings.morningTime) return 0;
     
@@ -334,10 +379,7 @@ class PersistentNotificationService {
             priority: Platform.OS === 'android' ? 'high' : undefined,
             color: '#1E3A8A',
           },
-          trigger: {
-            type: 'date',
-            date: targetDate,
-          },
+          trigger: { type: 'date', date: targetDate, channelId: 'default' },
         });
         
         scheduledCount++;
@@ -386,10 +428,7 @@ class PersistentNotificationService {
             priority: Platform.OS === 'android' ? 'high' : undefined,
             color: '#1E3A8A',
           },
-          trigger: {
-            type: 'date',
-            date: targetDate,
-          },
+          trigger: { type: 'date', date: targetDate, channelId: 'default' },
         });
         
         scheduledCount++;
@@ -508,10 +547,7 @@ class PersistentNotificationService {
                 priority: Platform.OS === 'android' ? 'high' : undefined,
                 color: '#9C27B0',
               },
-              trigger: {
-                type: 'date',
-                date: notificationDate,
-              },
+              trigger: { type: 'date', date: notificationDate, channelId: 'default' },
             });
             
             scheduledForThisNotification++;
@@ -579,10 +615,7 @@ class PersistentNotificationService {
                 priority: Platform.OS === 'android' ? 'high' : undefined,
                 color: '#9C27B0',
               },
-              trigger: {
-                type: 'date',
-                date: notificationTime,
-              },
+              trigger: { type: 'date', date: notificationTime, channelId: 'default' },
             });
             
             scheduledCount++;
@@ -681,10 +714,7 @@ class PersistentNotificationService {
               priority: Platform.OS === 'android' ? 'default' : undefined,
               color: '#607D8B',
             },
-            trigger: {
-              type: 'date',
-              date: targetDate,
-            },
+            trigger: { type: 'date', date: targetDate, channelId: 'default' },
           });
           
           scheduledCount++;
@@ -712,8 +742,8 @@ class PersistentNotificationService {
       
       return {
         totalScheduled: scheduled.length,
-        threshold: this.minNotificationsThreshold,
-        needsReschedule: scheduled.length < this.minNotificationsThreshold,
+        threshold: this.lastDynamicThreshold || this.minNotificationsThreshold,
+        needsReschedule: scheduled.length < (this.lastDynamicThreshold || this.minNotificationsThreshold),
         lastCheck: lastCheck ? new Date(parseInt(lastCheck)) : null,
         hasPermission: this.hasPermission,
         initialized: this.initialized

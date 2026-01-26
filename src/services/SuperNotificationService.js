@@ -440,6 +440,7 @@ class SuperNotificationService {
             hour: hours,
             minute: minutes,
             repeats: true,
+            channelId: 'default',
           },
         });
         scheduledCount++;
@@ -492,6 +493,7 @@ class SuperNotificationService {
             hour: hours,
             minute: minutes,
             repeats: true,
+            channelId: 'default',
           },
         });
         scheduledCount++;
@@ -533,6 +535,7 @@ class SuperNotificationService {
           hour: hours,
           minute: minutes,
           repeats: true,
+          channelId: 'default',
         },
       });
 
