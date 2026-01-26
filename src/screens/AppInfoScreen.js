@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.40',
+      date: '26 gennaio 2026',
+      changes: [
+        'Fix visualizzazione versione in popup aggiornamento - usa package.json'
+      ]
+    },
+    {
       version: '1.0.39',
       date: '26 gennaio 2026',
       changes: [

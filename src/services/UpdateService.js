@@ -1,11 +1,17 @@
 import * as Updates from 'expo-updates';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+
+// Importa la versione dal package.json
+const packageJson = require('../../package.json');
 
 class UpdateService {
   constructor() {
     this.isChecking = false;
-  this.currentVersion = '1.1.0'; // ✅ Allineato runtime OTA 1.1.0
+    // Usa la versione da package.json come fonte di verità
+    this.currentVersion = packageJson.version || Constants.expoConfig?.version || '1.0.0';
+    console.log(`📱 UPDATE SERVICE - Versione corrente: ${this.currentVersion}`);
   }
 
   /**
@@ -193,12 +199,12 @@ class UpdateService {
     try {
       const updateInfo = {
         pendingUpdate: true,
-        targetVersion: newVersion || 'unknown',
+        targetVersion: newVersion || this.currentVersion, // Usa sempre una versione valida
         updateTime: new Date().toISOString(),
         previousVersion: this.currentVersion
       };
       await AsyncStorage.setItem('pending_update_info', JSON.stringify(updateInfo));
-      // console.log('💾 UPDATE SERVICE - Info pre-aggiornamento salvate:', updateInfo);
+      console.log('💾 UPDATE SERVICE - Info pre-aggiornamento salvate:', updateInfo);
     } catch (error) {
       console.error('❌ UPDATE SERVICE - Errore salvataggio info pre-aggiornamento:', error);
     }
@@ -310,20 +316,24 @@ class UpdateService {
    */
   extractVersionFromUpdate(update) {
     try {
-      // Tenta di estrarre la versione dal manifest
-      if (update.manifest && update.manifest.extra && update.manifest.extra.version) {
+      // Tenta di estrarre la versione dal manifest in vari modi
+      if (update.manifest?.extra?.expoClient?.version) {
+        return update.manifest.extra.expoClient.version;
+      }
+      if (update.manifest?.extra?.version) {
         return update.manifest.extra.version;
       }
-      if (update.manifest && update.manifest.version) {
+      if (update.manifest?.version) {
         return update.manifest.version;
       }
-      // Fallback: incrementa versione corrente
-      const versionParts = this.currentVersion.split('.');
-      versionParts[2] = (parseInt(versionParts[2]) + 1).toString();
-      return versionParts.join('.');
+      
+      // Fallback robusto: usa la versione corrente (che ora viene da package.json)
+      console.warn('⚠️ UPDATE SERVICE - Versione non trovata nel manifest, uso versione corrente');
+      return this.currentVersion;
     } catch (error) {
-      console.warn('⚠️ UPDATE SERVICE - Impossibile estrarre versione, usando fallback');
-      return null;
+      console.warn('⚠️ UPDATE SERVICE - Errore estrazione versione:', error);
+      // Usa sempre la versione corrente come fallback sicuro
+      return this.currentVersion;
     }
   }
 
