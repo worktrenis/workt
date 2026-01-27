@@ -8,7 +8,11 @@ import {
   Switch,
   Alert,
   Platform,
-  SafeAreaView
+  SafeAreaView,
+  Modal,
+  KeyboardAvoidingView,
+  TouchableWithoutFeedback,
+  Keyboard
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
@@ -303,7 +307,33 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   const handleTimeChange = (section, field, time) => {
     console.log('🔍 DEBUG handleTimeChange chiamata:', { section, field, time });
-    const timeString = `${time.getHours().toString().padStart(2, '0')}:${time.getMinutes().toString().padStart(2, '0')}`;
+    const toTimeString = (t) => {
+      if (!t) return null;
+      if (typeof t === 'string') {
+        // Accetta HH:mm
+        const m = t.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+        return m ? t : null;
+      }
+      // DateTimePicker passa un Date
+      if (t instanceof Date) {
+        const hh = t.getHours().toString().padStart(2, '0');
+        const mm = t.getMinutes().toString().padStart(2, '0');
+        return `${hh}:${mm}`;
+      }
+      // Fallback: oggetto con getHours/getMinutes
+      if (typeof t.getHours === 'function' && typeof t.getMinutes === 'function') {
+        const hh = t.getHours().toString().padStart(2, '0');
+        const mm = t.getMinutes().toString().padStart(2, '0');
+        return `${hh}:${mm}`;
+      }
+      return null;
+    };
+
+    const timeString = toTimeString(time);
+    if (!timeString) {
+      console.warn('⚠️ Orario non valido in handleTimeChange:', time);
+      return;
+    }
     console.log('🔍 DEBUG timeString generata:', timeString);
     
     let newSettings = { ...settings };
@@ -791,27 +821,60 @@ const NotificationSettingsScreen = ({ navigation }) => {
       )}
 
       {/* Time Input replaces circular picker for numeric entry */}
-      {showTimePicker && (
-        <View style={{padding: 16}}>
-          <Text style={{marginBottom: 8}}>Inserisci orario (HH:mm)</Text>
-          <TimeInput
-            value={getCurrentTimeString()}
-            onChange={(t) => {
-              // t is string like '07:30' or partial
-              if (t && t.length === 5) {
-                const parts = timePickerField.split('.');
-                const section = parts[0];
-                const field = parts.slice(1).join('.');
-                handleTimeChange(section, field, t);
-                setShowTimePicker(false);
-              }
-            }}
-          />
-          <TouchableOpacity onPress={() => setShowTimePicker(false)} style={{marginTop:12}}>
-            <Text style={{color: theme.colors.primary}}>Chiudi</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      <Modal
+        visible={showTimePicker}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimePicker(false)}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.45)', justifyContent: 'center', padding: 16 }}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+            >
+              <View
+                style={{
+                  backgroundColor: theme.colors.surface,
+                  borderRadius: 12,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: theme.colors.border,
+                }}
+              >
+                <Text style={{ marginBottom: 8, color: theme.colors.text, fontWeight: '600' }}>
+                  Inserisci orario (HH:mm)
+                </Text>
+                <TimeInput
+                  value={getCurrentTimeString()}
+                  onChange={(t) => {
+                    // t is string like '07:30' or partial
+                    if (t && t.length === 5) {
+                      const parts = timePickerField.split('.');
+                      const section = parts[0];
+                      const field = parts.slice(1).join('.');
+                      handleTimeChange(section, field, t);
+                      setShowTimePicker(false);
+                    }
+                  }}
+                  inputStyle={{
+                    backgroundColor: theme.dark ? 'rgba(255,255,255,0.06)' : '#fff',
+                    color: theme.colors.text,
+                    borderColor: theme.colors.border,
+                    fontSize: 18,
+                    paddingVertical: 12,
+                  }}
+                />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+                  <TouchableOpacity onPress={() => setShowTimePicker(false)}>
+                    <Text style={{ color: theme.colors.primary, fontWeight: '600' }}>Chiudi</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </Modal>
     </SafeAreaView>
   );
 };

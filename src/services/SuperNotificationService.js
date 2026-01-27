@@ -44,6 +44,7 @@ class SuperNotificationService {
     this.hasPermission = false;
     this.databaseService = null; // Import dinamico per evitare loop
     this.isReprogramming = false; // Protezione contro chiamate multiple
+    this.SCHEDULED_IDS_STORAGE_KEY = 'superNotificationScheduledIds_v1';
     // Import del DatabaseService
     try {
       this.DatabaseServiceInstance = require('./DatabaseService').default;
@@ -53,6 +54,38 @@ class SuperNotificationService {
     }
     this.periodicNotificationTimer = null;
     console.log('🚀 SuperNotificationService inizializzato', this.isReactNativeEnvironment ? '(React Native)' : '(Node.js Mock)');
+  }
+
+  async getStoredScheduledIds() {
+    try {
+      const raw = await AsyncStorage.getItem(this.SCHEDULED_IDS_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async setStoredScheduledIds(ids) {
+    try {
+      await AsyncStorage.setItem(
+        this.SCHEDULED_IDS_STORAGE_KEY,
+        JSON.stringify(Array.isArray(ids) ? ids : [])
+      );
+    } catch {
+      // ignore
+    }
+  }
+
+  async getEffectiveScheduledCount() {
+    const scheduled = await this.getScheduledNotifications();
+    if (scheduled.length > 0) return { count: scheduled.length, source: 'system' };
+
+    const storedIds = await this.getStoredScheduledIds();
+    if (storedIds.length > 0) return { count: storedIds.length, source: 'stored' };
+
+    return { count: 0, source: 'none' };
   }
 
   // ✅ INIZIALIZZAZIONE
@@ -183,14 +216,15 @@ class SuperNotificationService {
         console.warn('⚠️ Impossibile leggere reprogramOnOpen:', settingErr.message);
       }
 
-      const scheduled = await this.getScheduledNotifications();
-      console.log(`📅 Notifiche attualmente programmate: ${scheduled.length}`);
+      const effective = await this.getEffectiveScheduledCount();
+      const scheduledCount = effective.count;
+      console.log(`📅 Notifiche attualmente programmate: ${scheduledCount} (source=${effective.source})`);
 
       const settings = await this.getSettings();
 
       const shouldReprogram = (() => {
         // Fallback: se non riusciamo a leggere le impostazioni, manteniamo la vecchia euristica.
-        if (!settings || typeof settings !== 'object') return scheduled.length < 5;
+        if (!settings || typeof settings !== 'object') return scheduledCount < 5;
         if (!settings.enabled) return false;
 
         const workSettings = settings.workReminder || settings.workReminders;
@@ -217,7 +251,7 @@ class SuperNotificationService {
         if (expectedMin === 0) return false;
 
         // Se siamo sotto la soglia minima attesa, riprogramma.
-        return scheduled.length < expectedMin;
+        return scheduledCount < expectedMin;
       })();
 
       if (shouldReprogram) {
@@ -233,7 +267,7 @@ class SuperNotificationService {
       }
       
       this.isReprogramming = false;
-      return { totalScheduled: scheduled.length, action: 'none' };
+      return { totalScheduled: scheduledCount, action: 'none', source: effective.source };
       
     } catch (error) {
       this.isReprogramming = false;
@@ -350,43 +384,53 @@ class SuperNotificationService {
       }
 
       let totalScheduled = 0;
+      const scheduledIds = [];
 
       if (settings.workReminder?.enabled || settings.workReminders?.enabled) {
         const workSettings = settings.workReminder || settings.workReminders;
-        const count = await this.scheduleMorningReminders(workSettings);
-        totalScheduled += count;
-        console.log(`📅 Programmati ${count} promemoria inizio lavoro`);
+        const result = await this.scheduleMorningReminders(workSettings);
+        totalScheduled += result.count;
+        scheduledIds.push(...result.ids);
+        console.log(`📅 Programmati ${result.count} promemoria inizio lavoro`);
       }
 
       if (settings.timeEntryReminder?.enabled || settings.timeEntryReminders?.enabled) {
         const timeSettings = settings.timeEntryReminder || settings.timeEntryReminders;
-        const count = await this.scheduleTimeEntryReminders(timeSettings);
-        totalScheduled += count;
-        console.log(`⏰ Programmati ${count} promemoria inserimento orari`);
+        const result = await this.scheduleTimeEntryReminders(timeSettings);
+        totalScheduled += result.count;
+        scheduledIds.push(...result.ids);
+        console.log(`⏰ Programmati ${result.count} promemoria inserimento orari`);
       }
 
       if (settings.backupReminder?.enabled) {
-        const count = await this.scheduleBackupReminders(settings.backupReminder);
-        totalScheduled += count;
-        console.log(`💾 Programmati ${count} promemoria backup automatico`);
+        const result = await this.scheduleBackupReminders(settings.backupReminder);
+        totalScheduled += result.count;
+        scheduledIds.push(...result.ids);
+        console.log(`💾 Programmati ${result.count} promemoria backup automatico`);
       }
 
       if (settings.standbyReminder?.enabled || settings.standbyReminders?.enabled) {
         const standbyNotificationSettings = settings.standbyReminder || settings.standbyReminders;
-        const count = await this.scheduleStandbyReminders(standbyNotificationSettings);
-        totalScheduled += count;
-        console.log(`📞 Programmati ${count} promemoria reperibilità`);
+        const result = await this.scheduleStandbyReminders(standbyNotificationSettings);
+        totalScheduled += result.count;
+        scheduledIds.push(...result.ids);
+        console.log(`📞 Programmati ${result.count} promemoria reperibilità`);
       }
 
       console.log(`✅ Totale notifiche programmate: ${totalScheduled} (cancellate: ${cancelledCount})`);
       await AsyncStorage.setItem('last_notification_schedule', new Date().toISOString());
+      await this.setStoredScheduledIds(scheduledIds);
       
       // Verifica finale per debug
       try {
+        await new Promise(resolve => setTimeout(resolve, 800));
         const finalCheck = await Notifications.getAllScheduledNotificationsAsync();
-        console.log(`🔍 VERIFICA FINALE: ${finalCheck.length} notifiche effettivamente programmate nel sistema`);
-        
-        if (finalCheck.length !== totalScheduled) {
+        const stored = await this.getStoredScheduledIds();
+        console.log(`🔍 VERIFICA FINALE: ${finalCheck.length} notifiche nel sistema, ${stored.length} ID salvati`);
+
+        if (finalCheck.length === 0 && stored.length > 0) {
+          console.log('ℹ️ Nota: in alcuni ambienti (es. Expo Go) la lista sistema può risultare vuota anche con notifiche attive');
+        } else if (finalCheck.length !== totalScheduled) {
           console.warn(`⚠️ MISMATCH: Programmato ${totalScheduled}, trovato ${finalCheck.length}`);
         }
       } catch (verifyError) {
@@ -411,6 +455,7 @@ class SuperNotificationService {
     try {
       const [hours, minutes] = settings.morningTime.split(':').map(Number);
       let scheduledCount = 0;
+      const ids = [];
 
       // Expo calendar trigger: weekday 1=Sunday ... 7=Saturday
       const weekdays = settings.weekendsEnabled
@@ -419,7 +464,7 @@ class SuperNotificationService {
 
       for (const weekday of weekdays) {
         console.log(`📅 Programmando promemoria lavoro ripetitivo: weekday=${weekday}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`);
-        await Notifications.scheduleNotificationAsync({
+        const id = await Notifications.scheduleNotificationAsync({
           content: {
             title: '🌅 Buongiorno! Inizio Lavoro',
             body: 'È ora di iniziare la giornata lavorativa. Ricordati di registrare l\'orario di inizio.',
@@ -436,21 +481,27 @@ class SuperNotificationService {
             ...(Platform.OS === 'android' && { channelId: 'default' }),
           },
           trigger: {
+            type: 'weekly',
             weekday,
             hour: hours,
             minute: minutes,
-            repeats: true,
             channelId: 'default',
           },
         });
-        scheduledCount++;
+
+        if (id) {
+          ids.push(id);
+          scheduledCount++;
+        } else {
+          console.warn('⚠️ scheduleNotificationAsync ha restituito un ID vuoto (work_reminder)');
+        }
       }
       
-      return scheduledCount;
+      return { count: scheduledCount, ids };
       
     } catch (error) {
       console.error('❌ Errore programmazione promemoria mattutini:', error);
-      return 0;
+      return { count: 0, ids: [] };
     }
   }
 
@@ -465,6 +516,7 @@ class SuperNotificationService {
       const timeString = settings.time || settings.eveningTime;
       const [hours, minutes] = timeString.split(':').map(Number);
       let scheduledCount = 0;
+      const ids = [];
 
       const weekdays = settings.weekendsEnabled
         ? [1, 2, 3, 4, 5, 6, 7]
@@ -472,7 +524,7 @@ class SuperNotificationService {
 
       for (const weekday of weekdays) {
         console.log(`⏰ Programmando time entry ripetitivo: weekday=${weekday}, ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`);
-        await Notifications.scheduleNotificationAsync({
+        const id = await Notifications.scheduleNotificationAsync({
           content: {
             title: '⏰ Promemoria Inserimento Orari',
             body: 'Ricordati di inserire le ore di lavoro di oggi prima di finire.',
@@ -489,33 +541,39 @@ class SuperNotificationService {
             ...(Platform.OS === 'android' && { channelId: 'default' }),
           },
           trigger: {
+            type: 'weekly',
             weekday,
             hour: hours,
             minute: minutes,
-            repeats: true,
             channelId: 'default',
           },
         });
-        scheduledCount++;
+
+        if (id) {
+          ids.push(id);
+          scheduledCount++;
+        } else {
+          console.warn('⚠️ scheduleNotificationAsync ha restituito un ID vuoto (time_entry_reminder)');
+        }
       }
       
-      return scheduledCount;
+      return { count: scheduledCount, ids };
       
     } catch (error) {
       console.error('❌ Errore programmazione promemoria inserimento:', error);
-      return 0;
+      return { count: 0, ids: [] };
     }
   }
 
   // 💾 BACKUP AUTOMATICO - Promemoria ripetitivo giornaliero (più affidabile)
   async scheduleBackupReminders(settings) {
-    if (!settings.enabled) return 0;
+    if (!settings.enabled) return { count: 0, ids: [] };
 
     try {
       const [hours, minutes] = String(settings.time || '02:00').split(':').map(Number);
 
       console.log(`💾 Programmando promemoria backup ripetitivo giornaliero: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`);
-      await Notifications.scheduleNotificationAsync({
+      const id = await Notifications.scheduleNotificationAsync({
         content: {
           title: '💾 Promemoria Backup WorkT',
           body: 'È ora di creare il backup dei tuoi dati lavorativi. Tap per aprire.',
@@ -532,18 +590,18 @@ class SuperNotificationService {
           ...(Platform.OS === 'android' && { channelId: 'default' }),
         },
         trigger: {
+          type: 'daily',
           hour: hours,
           minute: minutes,
-          repeats: true,
           channelId: 'default',
         },
       });
 
-      return 1;
+      return { count: id ? 1 : 0, ids: id ? [id] : [] };
       
     } catch (error) {
       console.error('❌ Errore programmazione backup automatico:', error);
-      return 0;
+      return { count: 0, ids: [] };
     }
   }
 
@@ -553,12 +611,12 @@ class SuperNotificationService {
     
     if (!settings || !settings.enabled) {
       console.log('⏹️ Promemoria reperibilità disabilitati (enabled=false)');
-      return 0;
+      return { count: 0, ids: [] };
     }
     
     if (!settings.notifications || !Array.isArray(settings.notifications)) {
       console.log('⏹️ Configurazione notifiche reperibilità non valida:', settings);
-      return 0;
+      return { count: 0, ids: [] };
     }
 
     try {
@@ -595,6 +653,7 @@ class SuperNotificationService {
       }
 
       let totalScheduled = 0;
+      const ids = [];
       const now = new Date();
 
       // Per ogni notifica configurata (oggi, domani, etc.)
@@ -632,7 +691,7 @@ class SuperNotificationService {
           
           console.log(`📞 [NO FILTER] Programmando reperibilità (${notification.daysInAdvance || 0} giorni prima) per: ${notificationDate.toLocaleString('it-IT')} - Reperibilità: ${standbyDate.toLocaleDateString('it-IT')} (tra ${Math.round(timeDiff/1000/60)} min)`);
           
-          await Notifications.scheduleNotificationAsync({
+          const id = await Notifications.scheduleNotificationAsync({
             content: {
               title: '📞 Promemoria Reperibilità',
               body: notification.message || `Turno di reperibilità ${notification.daysInAdvance === 0 ? 'oggi' : 'domani'}`,
@@ -653,6 +712,10 @@ class SuperNotificationService {
               date: notificationDate,
             },
           });
+
+          if (id) {
+            ids.push(id);
+          }
           
           scheduledForThisNotification++;
           totalScheduled++;
@@ -662,11 +725,11 @@ class SuperNotificationService {
       }
       
       console.log(`📞 [DEBUG] Totale notifiche reperibilità programmate: ${totalScheduled}`);
-      return totalScheduled;
+      return { count: totalScheduled, ids };
       
     } catch (error) {
       console.error('❌ Errore programmazione promemoria reperibilità:', error);
-      return 0;
+      return { count: 0, ids: [] };
     }
   }
 
@@ -780,16 +843,16 @@ class SuperNotificationService {
   async checkAndRecoverMissedNotifications() {
     try {
       console.log('🔍 Verifica notifiche perse...');
-      
-      const scheduled = await this.getScheduledNotifications();
-      
-      if (scheduled.length === 0) {
+
+      const effective = await this.getEffectiveScheduledCount();
+
+      if (effective.count === 0) {
         console.log('ℹ️ Nessuna notifica programmata. Usa Impostazioni → Notifiche per attivarle manualmente.');
         return { recovered: false, reason: 'no_auto_scheduling' };
       }
-      
-      console.log(`✅ Nessuna notifica persa trovata`);
-      return { recovered: false, scheduled: scheduled.length };
+
+      console.log(`✅ Nessuna notifica persa trovata (scheduled=${effective.count}, source=${effective.source})`);
+      return { recovered: false, scheduled: effective.count, source: effective.source };
       
     } catch (error) {
       console.error('❌ Errore verifica notifiche perse:', error);

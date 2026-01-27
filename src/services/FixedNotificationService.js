@@ -21,31 +21,40 @@ if (!TaskManager.isTaskDefined(BACKGROUND_NOTIFICATION_TASK)) {
       if (pendingNotifications) {
         const notifications = JSON.parse(pendingNotifications);
         const now = Date.now();
-        
-        // Verifica notifiche da mostrare
-        let triggered = false;
+
+        // NOTA: Non "recuperiamo" notifiche scadute generandole tutte insieme.
+        // Se il sistema nativo non le ha mostrate in tempo, preferiamo marcarle come scadute
+        // per evitare spam quando il task gira (spesso coincide con l'apertura dell'app).
+        let markedAny = false;
+
+        // Carica elenco gestite per deduplicazione
+        let handled = [];
+        try {
+          const handledRaw = await AsyncStorage.getItem('handledNotifications');
+          handled = handledRaw ? JSON.parse(handledRaw) : [];
+        } catch {
+          handled = [];
+        }
+
         for (const notification of notifications) {
           if (notification.scheduledTime <= now && !notification.shown) {
-            // Mostra notifica utilizzando expo-notifications
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: notification.title,
-                body: notification.body,
-                data: notification.data || {},
-              },
-              trigger: null, // Immediata
-            });
-            
-            triggered = true;
             notification.shown = true;
+            markedAny = true;
+
+            const handledId = notification?.data?.id;
+            if (handledId && !handled.includes(handledId)) {
+              handled.push(handledId);
+            }
           }
         }
-        
-        // Salva stato aggiornato
-        await AsyncStorage.setItem('pendingNotifications', JSON.stringify(notifications));
-        
-        return triggered ? BackgroundFetch.BackgroundFetchResult.NewData
-                         : BackgroundFetch.BackgroundFetchResult.NoData;
+
+        if (markedAny) {
+          await AsyncStorage.setItem('handledNotifications', JSON.stringify(handled));
+          await AsyncStorage.setItem('pendingNotifications', JSON.stringify(notifications));
+          return BackgroundFetch.BackgroundFetchResult.NewData;
+        }
+
+        return BackgroundFetch.BackgroundFetchResult.NoData;
       }
       return BackgroundFetch.BackgroundFetchResult.NoData;
     } catch (error) {
@@ -62,6 +71,7 @@ class FixedNotificationService {
     this.hasPermission = false;
     this.scheduledNotifications = new Map();
     this.pendingNotificationsForStorage = [];
+    this.listenerInitialized = false; // Previene duplicazione listener
     
     // Verifica disponibilità API
     this.isNotificationsAvailable = this.checkNotificationsAvailability();
@@ -214,6 +224,17 @@ class FixedNotificationService {
       
       // Carica notifiche pendenti
       await this.loadPendingNotifications();
+
+      // Configura listener Expo per marcare le notifiche come mostrate/gestite
+      if (this.isNotificationsAvailable && !this.listenerInitialized) {
+        try {
+          this.setupNotificationListener();
+          this.listenerInitialized = true;
+          console.log('👂 Listener notifiche configurati');
+        } catch (listenerErr) {
+          console.warn('⚠️ Errore configurazione listener notifiche:', listenerErr.message);
+        }
+      }
       
       this.initialized = true;
       console.log(`✅ Sistema notifiche inizializzato: ${this.hasPermission ? 'Permessi concessi' : 'Permessi negati'}`);
@@ -307,6 +328,20 @@ class FixedNotificationService {
       
       if (missedNotifications.length > 0) {
         console.log(`📱 Trovate ${missedNotifications.length} notifiche perse`);
+
+        // Se i permessi ci sono, assumiamo che le notifiche "scadute" non vadano recuperate
+        // mostrando tutto insieme all'apertura: le marchiamo come mostrate/gestite.
+        if (this.hasPermission) {
+          for (const notification of missedNotifications) {
+            notification.shown = true;
+            if (notification?.data?.id) {
+              await this.markNotificationAsHandled(notification.data.id);
+            }
+          }
+          await this.savePendingNotifications();
+          console.log('🧹 Notifiche scadute marcate come gestite (no spam)');
+          return;
+        }
         
         // Mostra notifiche perse
         for (const notification of missedNotifications) {
@@ -851,6 +886,10 @@ class FixedNotificationService {
       const notificationData = notification.request.content.data;
       if (notificationData && notificationData.id) {
         console.log(`📝 Notifica ricevuta con ID: ${notificationData.id}`);
+
+        // Marca come mostrata per evitare che venga considerata "persa" al prossimo avvio
+        // (specialmente se è presente nella lista persistente).
+        this.markNotificationAsShown(notificationData.id).catch(() => {});
       }
     });
     
@@ -859,6 +898,16 @@ class FixedNotificationService {
       
       // Estrai i dati dalla notifica
       const notificationData = response.notification.request.content.data;
+
+      // Marca subito come mostrata/gestita per deduplicazione
+      if (notificationData?.id) {
+        try {
+          await this.markNotificationAsShown(notificationData.id);
+          await this.markNotificationAsHandled(notificationData.id);
+        } catch {
+          // ignore
+        }
+      }
       
       // Gestisci l'azione solo se non è già stata gestita
       await this.handleNotificationAction(notificationData);

@@ -29,7 +29,6 @@ class PersistentNotificationService {
       Notifications.setNotificationHandler({
         handleNotification: async () => ({
           // Compatibile con SDK recenti: banner + lista attivi, suono attivo
-          shouldShowAlert: true,
           shouldPlaySound: true,
           shouldSetBadge: false,
           shouldShowBanner: true,

@@ -35,7 +35,10 @@ export const useNotifications = () => {
       
       setIsInitialized(true);
       
-      console.log('🔔 Hook notifiche inizializzato:', nativeStatus);
+      console.log('🔔 Hook notifiche inizializzato:', {
+        isNativeReady: hasPermissions,
+        systemType: hasPermissions ? 'expo-notifications' : 'javascript-fallback'
+      });
     } catch (error) {
       console.error('❌ Errore inizializzazione hook notifiche:', error);
       setNotificationStatus({

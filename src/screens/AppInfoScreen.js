@@ -30,6 +30,13 @@ const AppInfoScreen = ({ navigation }) => {
       version: '1.0.44',
       date: '27 gennaio 2026',
       changes: [
+        'Fix notifiche: stop doppio scheduler, trigger weekly/daily Android, dedup e UI orario'
+      ]
+    },
+    {
+      version: '1.0.44',
+      date: '27 gennaio 2026',
+      changes: [
         'Popup versioni: usa runningVersion/lastKnownVersion per evitare numeri uguali'
       ]
     },

@@ -866,22 +866,9 @@ export default function App() {
             const stats = await SuperNotificationService.getNotificationStats();
             console.log(`📊 App: Notifiche attive: ${stats.activeNotifications}, Programmate oggi: ${stats.scheduledToday}`);
             
-            // 🔔 NUOVO SISTEMA PERSISTENTE - Inizializza servizio anti-interruzione
-            try {
-              const PersistentNotificationService = require('./src/services/PersistentNotificationService').default;
-              const persistentInitialized = await PersistentNotificationService.initialize();
-              if (persistentInitialized) {
-                console.log('✅ Sistema notifiche persistenti attivato');
-                
-                // Controllo immediato e riprogrammazione se necessario
-                await PersistentNotificationService.checkAndMaintainNotifications();
-                
-                const persistentStats = await PersistentNotificationService.getStatistics();
-                console.log('📊 Statistiche sistema persistente:', persistentStats);
-              }
-            } catch (persistentError) {
-              console.error('❌ Errore inizializzazione sistema persistente:', persistentError);
-            }
+            // 🔕 DISATTIVATO: PersistentNotificationService
+            // Motivo: era un secondo scheduler aggressivo che causava duplicati e riprogrammazioni in parallelo.
+            console.log('ℹ️ App: PersistentNotificationService disattivato (uso solo SuperNotificationService)');
             
             // DISATTIVATA PROGRAMMAZIONE AUTOMATICA ALL'AVVIO (evita notifiche immediate)
             if (stats.activeNotifications === 0) {
@@ -995,31 +982,14 @@ export default function App() {
         try {
         // Gestisci possibili errori di importazione
         const notificationsModule = global.Notifications || Notifications;
-        
-        // CANCELLA TUTTO ALL'AVVIO - SOLUZIONE DRASTICA
+
+        // NOTA: Non cancellare le notifiche programmate all'avvio.
+        // Farlo qui causava: notifiche che non arrivano all'orario e "mismatch" immediato.
+        // Se serve pulire notifiche visibili, farlo manualmente o in una routine dedicata.
         if (notificationsModule) {
-          try {
-            console.log('🗑️ CANCELLAZIONE SELETTIVA ALL\'AVVIO - Rimuovo notifiche eccetto aggiornamenti');
-            
-            // Ottieni tutte le notifiche programmate
-            const scheduledNotifications = await notificationsModule.getAllScheduledNotificationsAsync();
-            
-            // Cancella solo quelle che NON sono aggiornamenti
-            for (const notif of scheduledNotifications) {
-              if (notif.content.data?.type !== 'update-available') {
-                await notificationsModule.cancelScheduledNotificationAsync(notif.identifier);
-              }
-            }
-            
-            // Per le notifiche visibili, rimuovi solo quelle non di aggiornamento
-            // (Non possiamo filtrare le dismissAll, ma almeno preserviamo le scheduled)
-            await notificationsModule.dismissAllNotificationsAsync();
-            
-            console.log('✅ App: Notifiche residue pulite (mantenendo aggiornamenti)');
-          } catch (notifError) {
-            console.warn('⚠️ App: Errore pulizia selettiva notifiche:', notifError.message);
-          }
-        }          
+          console.log('ℹ️ App: Skip pulizia selettiva notifiche programmate (preservo promemoria utente)');
+        }
+
           // Verifica stato backup
           const backupEnabled = await BackupService.isEnabled();
           console.log('💾 Backup automatico enabled:', backupEnabled);

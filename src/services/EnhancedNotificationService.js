@@ -24,31 +24,38 @@ if (!TaskManager.isTaskDefined(BACKGROUND_NOTIFICATION_TASK)) {
       if (pendingNotifications) {
         const notifications = JSON.parse(pendingNotifications);
         const now = Date.now();
-        
-        // Verifica notifiche da mostrare
-        let triggered = false;
+
+        // NON generare notifiche "recuperate" tutte insieme: marca come scadute/gestite
+        // per evitare spam quando il task gira (spesso coincide con apertura app).
+        let markedAny = false;
+
+        let handled = [];
+        try {
+          const handledRaw = await AsyncStorage.getItem('handledNotifications');
+          handled = handledRaw ? JSON.parse(handledRaw) : [];
+        } catch {
+          handled = [];
+        }
+
         for (const notification of notifications) {
           if (notification.scheduledTime <= now && !notification.shown) {
-            // Mostra notifica utilizzando expo-notifications
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: notification.title,
-                body: notification.body,
-                data: notification.data || {},
-              },
-              trigger: null, // Immediata
-            });
-            
-            triggered = true;
             notification.shown = true;
+            markedAny = true;
+
+            const handledId = notification?.data?.id;
+            if (handledId && !handled.includes(handledId)) {
+              handled.push(handledId);
+            }
           }
         }
-        
-        // Salva stato aggiornato
-        await AsyncStorage.setItem('pendingNotifications', JSON.stringify(notifications));
-        
-        return triggered ? BackgroundFetch.BackgroundFetchResult.NewData
-                         : BackgroundFetch.BackgroundFetchResult.NoData;
+
+        if (markedAny) {
+          await AsyncStorage.setItem('handledNotifications', JSON.stringify(handled));
+          await AsyncStorage.setItem('pendingNotifications', JSON.stringify(notifications));
+          return BackgroundFetch.BackgroundFetchResult.NewData;
+        }
+
+        return BackgroundFetch.BackgroundFetchResult.NoData;
       }
       return BackgroundFetch.BackgroundFetchResult.NoData;
     } catch (error) {
@@ -178,10 +185,10 @@ class EnhancedNotificationService {
         return true;
       }
       
-      // Pulisci tutte le notifiche di sistema all'avvio
-      await Notifications.dismissAllNotificationsAsync();
-      // Cancella tutte le notifiche programmate all'avvio
-      await Notifications.cancelAllScheduledNotificationsAsync();
+      // Evita cancellazioni globali all'avvio: altrimenti le notifiche non arriveranno mai
+      // quando l'app è chiusa.
+      // await Notifications.dismissAllNotificationsAsync();
+      // await Notifications.cancelAllScheduledNotificationsAsync();
       
       // Configura handler notifiche
       Notifications.setNotificationHandler({
