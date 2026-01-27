@@ -11,7 +11,35 @@ class UpdateService {
     this.isChecking = false;
     // Usa la versione da package.json come fonte di verità
     this.currentVersion = packageJson.version || Constants.expoConfig?.version || '1.0.0';
+    this.runningVersion = null; // Versione effettivamente in esecuzione prima di update
     console.log(`📱 UPDATE SERVICE - Versione corrente: ${this.currentVersion}`);
+  }
+
+  /**
+   * Inizializza e salva la versione in esecuzione all'avvio
+   * DEVE essere chiamato subito all'avvio dell'app
+   */
+  async initialize() {
+    try {
+      // Leggi la versione salvata precedentemente
+      const savedVersion = await AsyncStorage.getItem('app_running_version');
+      
+      if (savedVersion && savedVersion !== this.currentVersion) {
+        // Se diversa, significa che c'è stato un update
+        this.runningVersion = savedVersion;
+        console.log(`🔄 UPDATE SERVICE - Rilevato update: ${savedVersion} → ${this.currentVersion}`);
+      } else {
+        // Prima esecuzione o stessa versione
+        this.runningVersion = this.currentVersion;
+      }
+      
+      // Salva la versione corrente per il prossimo avvio
+      await AsyncStorage.setItem('app_running_version', this.currentVersion);
+      console.log(`💾 UPDATE SERVICE - Versione salvata: ${this.currentVersion}`);
+    } catch (error) {
+      console.error('❌ UPDATE SERVICE - Errore inizializzazione:', error);
+      this.runningVersion = this.currentVersion;
+    }
   }
 
   /**
@@ -97,11 +125,11 @@ class UpdateService {
    */
   async downloadAndApplyUpdate(update, newVersion) {
     try {
-      // Salva la versione corrente PRIMA di qualsiasi operazione
-      const previousVersion = this.currentVersion;
+      // Usa runningVersion come previousVersion (versione REALE prima dell'update)
+      const previousVersion = this.runningVersion || this.currentVersion;
       console.log(`⬇️ UPDATE SERVICE - Download aggiornamento da ${previousVersion} a ${newVersion || 'versione più recente'}`);
       
-      // Salva info pre-aggiornamento con la versione corrente
+      // Salva info pre-aggiornamento con la versione realmente in esecuzione
       await this.savePreUpdateInfo(newVersion, previousVersion);
       
       // Scarica l'aggiornamento
@@ -128,6 +156,9 @@ class UpdateService {
    * Controllo automatico all'avvio dell'app
    */
   async checkOnAppStart() {
+    // Inizializza e salva la versione corrente
+    await this.initialize();
+    
     // Prima controlla se è appena stato completato un aggiornamento
     const wasUpdated = await this.checkAndShowUpdateCompletedMessage();
     

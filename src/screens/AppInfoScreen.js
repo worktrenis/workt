@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.43',
+      date: '27 gennaio 2026',
+      changes: [
+        'Fix definitivo versioni popup: salva runningVersion all\'avvio'
+      ]
+    },
+    {
       version: '1.0.42',
       date: '26 gennaio 2026',
       changes: [
