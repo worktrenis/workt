@@ -281,11 +281,35 @@ class UpdateService {
    */
   async showUpdateCompletedMessage(updateInfo) {
     try {
-      // Sanifica la versione: se è 'unknown', usa la versione corrente
-      const version = (updateInfo.targetVersion === 'unknown' || !updateInfo.targetVersion) 
-        ? this.currentVersion 
+      // Sanifica la versione target
+      const version = (updateInfo.targetVersion === 'unknown' || !updateInfo.targetVersion)
+        ? this.currentVersion
         : updateInfo.targetVersion;
-      const fromVersion = updateInfo.previousVersion || 'precedente';
+
+      // Recupera possibili fonti per la versione precedente
+      const storedRunningVersion = this.runningVersion;
+      const savedRunningVersion = await AsyncStorage.getItem('app_running_version');
+      const lastKnownVersion = await AsyncStorage.getItem('last_known_version');
+
+      // Determina la fromVersion in ordine di affidabilità
+      let fromVersion = updateInfo.previousVersion
+        || storedRunningVersion
+        || savedRunningVersion
+        || lastKnownVersion
+        || 'precedente';
+
+      // Se coincidono, prova altri fallback per evitare numeri uguali
+      if (fromVersion === version) {
+        if (lastKnownVersion && lastKnownVersion !== version) {
+          fromVersion = lastKnownVersion;
+        } else if (savedRunningVersion && savedRunningVersion !== version) {
+          fromVersion = savedRunningVersion;
+        } else if (storedRunningVersion && storedRunningVersion !== version) {
+          fromVersion = storedRunningVersion;
+        } else {
+          fromVersion = 'precedente';
+        }
+      }
       
       // ✅ CONTROLLO POPUP DUPLICATI PER v1.3.1
       if (version === '1.3.1') {

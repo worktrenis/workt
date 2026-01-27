@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.44',
+      date: '27 gennaio 2026',
+      changes: [
+        'Popup versioni: usa runningVersion/lastKnownVersion per evitare numeri uguali'
+      ]
+    },
+    {
       version: '1.0.43',
       date: '27 gennaio 2026',
       changes: [
