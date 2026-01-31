@@ -971,6 +971,14 @@ const TimeEntryScreen = () => {
 
   // Funzione per determinare il nome del mese dall'entry
   const getMonthLabel = (dateString) => {
+    if (typeof dateString === 'string') {
+      const m = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (m) {
+        const year = Number(m[1]);
+        const monthIndex = Number(m[2]) - 1;
+        return `${mesiItaliani[Math.max(0, Math.min(11, monthIndex))]} ${year}`;
+      }
+    }
     const entryDate = new Date(dateString);
     return `${mesiItaliani[entryDate.getMonth()]} ${entryDate.getFullYear()}`;
   };
@@ -1702,10 +1710,24 @@ const TimeEntryScreen = () => {
     
     // Filtra solo gli entries del mese selezionato
     entries?.forEach(entry => {
-      const entryDate = new Date(entry.date);
-      const entryYear = entryDate.getFullYear();
-      const entryMonth = entryDate.getMonth() + 1;
-      
+      const dateStr = entry?.date;
+      let entryYear;
+      let entryMonth;
+      if (typeof dateStr === 'string') {
+        const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) {
+          entryYear = Number(m[1]);
+          entryMonth = Number(m[2]);
+        }
+      }
+
+      // Fallback (per eventuali record legacy non ISO)
+      if (!entryYear || !entryMonth) {
+        const entryDate = new Date(dateStr);
+        entryYear = entryDate.getFullYear();
+        entryMonth = entryDate.getMonth() + 1;
+      }
+
       if (entryYear === selectedYear && entryMonth === selectedMonth) {
         entriesForSelectedMonth.push({
           ...entry,
@@ -1716,10 +1738,23 @@ const TimeEntryScreen = () => {
 
     // Filtra anche i standby allowances per il mese selezionato
     standbyAllowances?.forEach(standby => {
-      const standbyDate = new Date(standby.date);
-      const standbyYear = standbyDate.getFullYear();
-      const standbyMonthNum = standbyDate.getMonth() + 1;
-      
+      const dateStr = standby?.date;
+      let standbyYear;
+      let standbyMonthNum;
+      if (typeof dateStr === 'string') {
+        const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) {
+          standbyYear = Number(m[1]);
+          standbyMonthNum = Number(m[2]);
+        }
+      }
+
+      if (!standbyYear || !standbyMonthNum) {
+        const standbyDate = new Date(dateStr);
+        standbyYear = standbyDate.getFullYear();
+        standbyMonthNum = standbyDate.getMonth() + 1;
+      }
+
       if (standbyYear === selectedYear && standbyMonthNum === selectedMonth) {
         const existingEntry = entriesForSelectedMonth.find(
           e => e.date === standby.date
@@ -1740,7 +1775,8 @@ const TimeEntryScreen = () => {
     // Restituisci sempre una sezione per il mese selezionato (anche se vuota)
     return [{
       title: selectedMonthLabel,
-      data: entriesForSelectedMonth.sort((a, b) => new Date(b.date) - new Date(a.date))
+      // Ordina per data ISO (YYYY-MM-DD) senza dipendere dal fuso
+      data: entriesForSelectedMonth.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))
     }];
   }, [entries, standbyAllowances, selectedYear, selectedMonth, formatMonthYear]);
 

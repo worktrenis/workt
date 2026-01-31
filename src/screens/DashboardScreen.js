@@ -364,7 +364,7 @@ const DashboardScreen = ({ navigation, route }) => {
       const month = targetDate.getMonth() + 1;
       let entries = await DatabaseService.getWorkEntries(year, month);
       // Ordina sempre per data crescente (dal giorno 1 in basso)
-      entries = entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+      entries = entries.sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
 
       // Se nel frattempo è partita una nuova loadData, ignora questo risultato
       if (seq !== loadSeqRef.current) return;

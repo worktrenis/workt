@@ -495,8 +495,17 @@ class DatabaseService {
       const result = await this.db.runAsync(query, values);
       
       // Calcola anno e mese dalla data per la notifica
-      const year = workEntry.date ? new Date(workEntry.date).getFullYear() : new Date().getFullYear();
-      const month = workEntry.date ? new Date(workEntry.date).getMonth() + 1 : new Date().getMonth() + 1;
+      // ⚠️ Evita new Date('YYYY-MM-DD'): viene interpretata come UTC e può spostare giorno/mese col fuso.
+      const now = new Date();
+      let year = now.getFullYear();
+      let month = now.getMonth() + 1;
+      if (typeof workEntry.date === 'string') {
+        const m = workEntry.date.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (m) {
+          year = Number(m[1]);
+          month = Number(m[2]);
+        }
+      }
       
       // Notifica l'aggiornamento dei work entries
       DataUpdateService.notifyWorkEntriesUpdated('insert', {
