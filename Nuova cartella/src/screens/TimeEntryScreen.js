@@ -675,8 +675,7 @@ const TimeEntryScreen = () => {
     const markedDates = {};
     
     // Marca la data odierna
-    const { getCurrentDate } = require('../utils');
-    const today = getCurrentDate();
+    const today = new Date().toISOString().split('T')[0];
     markedDates[today] = {
       marked: true,
       dotColor: '#4CAF50'
@@ -701,9 +700,7 @@ const TimeEntryScreen = () => {
 
   const onDateSelect = useCallback(async (day) => {
     console.log('🗓️ [CALENDAR] Data selezionata:', day.dateString);
-    // day.dateString è YYYY-MM-DD: parse locale per evitare shift col fuso
-    const [yy, mm, dd] = String(day.dateString).split('-').map(Number);
-    const selectedDate = new Date(yy, (mm || 1) - 1, dd || 1);
+    const selectedDate = new Date(day.dateString);
     const year = selectedDate.getFullYear();
     const month = selectedDate.getMonth() + 1;
     

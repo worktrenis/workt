@@ -1,43 +1,6 @@
 // Date and time utilities
-const parseDateOnlyToLocalDate = (value) => {
-  if (!value) return null;
-  if (value instanceof Date) return value;
-
-  if (typeof value === 'string') {
-    // ISO date-only: YYYY-MM-DD (⚠️ new Date('YYYY-MM-DD') viene trattata come UTC)
-    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (isoMatch) {
-      const year = Number(isoMatch[1]);
-      const month = Number(isoMatch[2]);
-      const day = Number(isoMatch[3]);
-      return new Date(year, month - 1, day);
-    }
-
-    // Italiano date-only: dd/MM/yyyy
-    const itMatch = value.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (itMatch) {
-      const day = Number(itMatch[1]);
-      const month = Number(itMatch[2]);
-      const year = Number(itMatch[3]);
-      return new Date(year, month - 1, day);
-    }
-  }
-
-  // Fallback: datetime ISO o altri formati
-  const parsed = new Date(value);
-  return parsed instanceof Date && !isNaN(parsed) ? parsed : null;
-};
-
-export const toISODateLocal = (date = new Date()) => {
-  const d = parseDateOnlyToLocalDate(date) || new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
-
 export const formatDate = (date, format = 'dd/MM/yyyy') => {
-  const d = parseDateOnlyToLocalDate(date) || new Date(date);
+  const d = new Date(date);
   const day = d.getDate().toString().padStart(2, '0');
   const month = (d.getMonth() + 1).toString().padStart(2, '0');
   const year = d.getFullYear();
@@ -83,8 +46,7 @@ export const formatTime = (time) => {
 };
 
 export const getCurrentDate = () => {
-  // Date-only in locale (non UTC) per evitare shift con il fuso
-  return toISODateLocal(new Date());
+  return new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 };
 
 // Formatta ore e minuti in modo sicuro
@@ -137,28 +99,27 @@ export const getMonthName = (monthNumber) => {
 
 export const getDayName = (date) => {
   const days = ['Domenica', 'Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato'];
-  const d = parseDateOnlyToLocalDate(date) || new Date(date);
+  const d = new Date(date);
   return days[d.getDay()];
 };
 
 export const isWeekend = (date) => {
-  const d = parseDateOnlyToLocalDate(date) || new Date(date);
+  const d = new Date(date);
   return d.getDay() === 0 || d.getDay() === 6; // Sunday = 0, Saturday = 6
 };
 
 export const addDays = (date, days) => {
-  const base = parseDateOnlyToLocalDate(date) || new Date(date);
-  const result = new Date(base);
+  const result = new Date(date);
   result.setDate(result.getDate() + days);
-  return toISODateLocal(result);
+  return result.toISOString().split('T')[0];
 };
 
 export const getFirstDayOfMonth = (year, month) => {
-  return toISODateLocal(new Date(year, month - 1, 1));
+  return new Date(year, month - 1, 1).toISOString().split('T')[0];
 };
 
 export const getLastDayOfMonth = (year, month) => {
-  return toISODateLocal(new Date(year, month, 0));
+  return new Date(year, month, 0).toISOString().split('T')[0];
 };
 
 export const getDaysInMonth = (year, month) => {
@@ -199,8 +160,7 @@ export const isValidTime = (timeString) => {
 };
 
 export const isValidDate = (dateString) => {
-  const date = parseDateOnlyToLocalDate(dateString);
-  if (!date) return false;
+  const date = new Date(dateString);
   return date instanceof Date && !isNaN(date);
 };
 

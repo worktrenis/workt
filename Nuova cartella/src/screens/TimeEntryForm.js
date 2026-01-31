@@ -2569,33 +2569,10 @@ const TimeEntryForm = ({ route, navigation }) => {
   let initialDate;
   if (route?.params?.isEditing && route?.params?.entry?.date) {
     // Modalità modifica: usa la data dell'entry esistente
-    const { parseISODateLocal } = (() => {
-      try {
-        const utils = require('../utils');
-        return {
-          parseISODateLocal: (iso) => {
-            if (typeof utils?.toISODateLocal === 'function') {
-              const [y, m, d] = String(iso).split('-').map(Number);
-              return new Date(y, (m || 1) - 1, d || 1);
-            }
-            const [y, m, d] = String(iso).split('-').map(Number);
-            return new Date(y, (m || 1) - 1, d || 1);
-          }
-        };
-      } catch {
-        return {
-          parseISODateLocal: (iso) => {
-            const [y, m, d] = String(iso).split('-').map(Number);
-            return new Date(y, (m || 1) - 1, d || 1);
-          }
-        };
-      }
-    })();
-    initialDate = parseISODateLocal(route.params.entry.date);
+    initialDate = new Date(route.params.entry.date);
   } else if (route?.params?.initialDate) {
     // Nuovo inserimento con data selezionata dal calendario
-    const [y, m, d] = String(route.params.initialDate).split('-').map(Number);
-    initialDate = new Date(y, (m || 1) - 1, d || 1);
+    initialDate = new Date(route.params.initialDate);
   } else {
     // Nuovo inserimento senza data specifica: usa oggi
     initialDate = today;

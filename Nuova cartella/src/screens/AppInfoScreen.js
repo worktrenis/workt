@@ -28,13 +28,6 @@ const AppInfoScreen = ({ navigation }) => {
   const changelog = [
     {
       version: '1.0.44',
-      date: '31 gennaio 2026',
-      changes: [
-        'Fix date fuso orario: date-only locale (no UTC shift)'
-      ]
-    },
-    {
-      version: '1.0.44',
       date: '27 gennaio 2026',
       changes: [
         'Fix notifiche: stop doppio scheduler, trigger weekly/daily Android, dedup e UI orario'

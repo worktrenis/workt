@@ -326,39 +326,13 @@ class SuperNotificationService {
     };
   }
 
-  // 🔧 NORMALIZZA IMPOSTAZIONI (gestisce chiavi legacy plurali)
-  normalizeSettings(settings) {
-    const normalized = { ...(settings || {}) };
-
-    // Se esistono le varianti plurali, preferiscile (sono tipicamente quelle della UI/legacy)
-    if (normalized.workReminders && typeof normalized.workReminders === 'object') {
-      normalized.workReminder = normalized.workReminders;
-      delete normalized.workReminders;
-    }
-
-    if (normalized.timeEntryReminders && typeof normalized.timeEntryReminders === 'object') {
-      normalized.timeEntryReminder = normalized.timeEntryReminders;
-      delete normalized.timeEntryReminders;
-    }
-
-    if (normalized.standbyReminders && typeof normalized.standbyReminders === 'object') {
-      normalized.standbyReminder = normalized.standbyReminders;
-      delete normalized.standbyReminders;
-    }
-
-    return normalized;
-  }
-
   // ✅ CARICA IMPOSTAZIONI
   async getSettings() {
     try {
       const saved = await AsyncStorage.getItem('superNotificationSettings');
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Merge + normalizzazione: evita che una chiave legacy (plurale) venga ignorata
-        // perché il codice legge la variante singolare.
-        const merged = { ...this.getDefaultSettings(), ...(parsed || {}) };
-        return this.normalizeSettings(merged);
+        return { ...this.getDefaultSettings(), ...parsed };
       }
       return this.getDefaultSettings();
     } catch (error) {
@@ -370,10 +344,7 @@ class SuperNotificationService {
   // ✅ SALVA IMPOSTAZIONI
   async saveSettings(settings) {
     try {
-      // Normalizza prima di salvare per evitare di mantenere entrambe le varianti
-      // (singolare/plurale) e ridurre ambiguità nella programmazione.
-      const normalized = this.normalizeSettings({ ...this.getDefaultSettings(), ...(settings || {}) });
-      await AsyncStorage.setItem('superNotificationSettings', JSON.stringify(normalized));
+      await AsyncStorage.setItem('superNotificationSettings', JSON.stringify(settings));
       return true;
     } catch (error) {
       console.error('❌ Errore salvataggio impostazioni:', error);
