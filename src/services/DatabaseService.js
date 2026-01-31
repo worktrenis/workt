@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { DATABASE_TABLES } from '../constants';
+import { toISODateLocal } from '../utils';
 import { executeDbOperation, withLockHandling } from './DatabaseLockManager';
 import DataUpdateService from './DataUpdateService';
 
@@ -960,7 +961,7 @@ class DatabaseService {
       // Usa una transazione per eseguire tutto in batch
       await this.db.withTransactionAsync(async () => {
         while (current <= end) {
-          const dateStr = current.toISOString().split('T')[0];
+          const dateStr = toISODateLocal(current);
           await this.db.runAsync(`
             INSERT OR REPLACE INTO ${DATABASE_TABLES.STANDBY_CALENDAR} (date, is_standby)
             VALUES (?, ?)
@@ -983,8 +984,8 @@ class DatabaseService {
       const nextWeek = new Date();
       nextWeek.setDate(today.getDate() + 7);
       
-      const todayStr = today.toISOString().split('T')[0];
-      const nextWeekStr = nextWeek.toISOString().split('T')[0];
+      const todayStr = toISODateLocal(today);
+      const nextWeekStr = toISODateLocal(nextWeek);
       
       const result = await this.db.getAllAsync(`
         SELECT * FROM ${DATABASE_TABLES.STANDBY_CALENDAR}
@@ -994,7 +995,9 @@ class DatabaseService {
       
       // Trasforma i dati nel formato atteso dal service di notifica
       return (result || []).map(record => {
-        const date = new Date(record.date);
+        // record.date è YYYY-MM-DD: parse locale per evitare shift con fuso
+        const [y, m, d] = String(record.date).split('-').map(Number);
+        const date = new Date(y, (m || 1) - 1, d || 1);
         
         // Crea oggetto con startDate alle 20:00 e endDate alle 8:00 del giorno dopo
         const startDate = new Date(date);
@@ -1564,10 +1567,11 @@ class DatabaseService {
       let syncCount = 0;
       for (const dateStr of activeDates) {
         try {
-          const date = new Date(dateStr);
-          const year = date.getFullYear();
-          const month = date.getMonth() + 1;
-          const day = date.getDate();
+          // dateStr è YYYY-MM-DD: parse locale per evitare shift col fuso
+          const [y, m, d] = String(dateStr).split('-').map(Number);
+          const year = y;
+          const month = m;
+          const day = d;
           
           // Controlla se la data esiste già nel database
           const existing = await executeDbOperation(async () => {

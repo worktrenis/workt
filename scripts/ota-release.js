@@ -68,7 +68,17 @@ function syncVersions(newVersion) {
 
 function main() {
   const args = parseArgs();
-  const skipGit = args.skipGit || process.env.OTA_SKIP_GIT === '1' || process.env.OTA_SKIP_GIT === 'true';
+  // npm (specialmente su Windows) spesso non passa le flag custom in argv ma le espone come env `npm_config_*`.
+  // Esempio: `npm run ota:release -- --message "..." --auto --skip-git` -> env: npm_config_message, npm_config_auto, npm_config_skip_git.
+  const envAuto = process.env.OTA_AUTO || process.env.npm_config_auto;
+  const envSkipGit = process.env.OTA_SKIP_GIT || process.env.npm_config_skip_git;
+  const envVersion = process.env.OTA_VERSION || process.env.npm_config_ota_version;
+
+  if (!args.auto && (envAuto === '1' || envAuto === 'true')) args.auto = true;
+  if (!args.version && envVersion) args.version = envVersion;
+
+  const skipGit = args.skipGit || envSkipGit === '1' || envSkipGit === 'true';
+
   // Prefer message from environment (npm forwards --message as npm_config_message)
   const envMessage = process.env.OTA_MESSAGE || process.env.npm_config_message;
   if (envMessage) args.message = envMessage;

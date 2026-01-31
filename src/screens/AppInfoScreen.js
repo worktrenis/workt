@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.45',
+      date: '31 gennaio 2026',
+      changes: [
+        'Fix mese: parsing ISO locale (1° del mese nel mese corretto)'
+      ]
+    },
+    {
       version: '1.0.44',
       date: '31 gennaio 2026',
       changes: [
