@@ -22,7 +22,7 @@ import { formatDate } from '../utils';
 import DatabaseService from '../services/DatabaseService';
 import BackupService from '../services/BackupService';
 import AutoBackupService from '../services/AutoBackupService';
-import { clearAllBackupsFromAsyncStorage } from '../../App';
+import { clearAllBackupsFromAsyncStorage } from '../services/BackupCleanupService';
 
 const BackupScreen = ({ navigation }) => {
   const { theme } = useTheme();

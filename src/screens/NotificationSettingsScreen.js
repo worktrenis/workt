@@ -8,12 +8,12 @@ import {
   Switch,
   Alert,
   Platform,
-  SafeAreaView,
   Modal,
   KeyboardAvoidingView,
   TouchableWithoutFeedback,
   Keyboard
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import { MaterialCommunityIcons } from '@expo/vector-icons';

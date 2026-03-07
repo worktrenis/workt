@@ -12,6 +12,7 @@ import {
   Dimensions
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { StackActions } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
@@ -3855,16 +3856,21 @@ const TimeEntryForm = ({ route, navigation }) => {
         setHasChanges(false);
       } catch {}
 
-      // Navigazione post-salvataggio
+      // Navigazione post-salvataggio. sostituisci la schermata corrente in modo che la
+      // form non rimanga nello stack: quando l'utente preme "indietro" non torni più al
+      // modulo appena salvato, ma venga portato alla dashboard (o all'ultimo livello
+      // precedente), con un successivo indietro che chiude l'app.
       if (navigateAfter) {
         allowLeaveRef.current = true; // evita prompt su blur
-        navigation.navigate('TimeEntryScreen', { 
-          refreshFromForm: true,
-          savedId,
-          savedDate: entry.date,
-          precomputedTotal: entry.totalEarnings,
-          precomputedBreakdown: result
-        });
+        navigation.dispatch(
+          StackActions.replace('TimeEntryScreen', { 
+            refreshFromForm: true,
+            savedId,
+            savedDate: entry.date,
+            precomputedTotal: entry.totalEarnings,
+            precomputedBreakdown: result
+          })
+        );
       } else if (dispatchAction) {
         allowLeaveRef.current = true; // consenti uscita intercettata
         // consenti navigazione originale intercettata

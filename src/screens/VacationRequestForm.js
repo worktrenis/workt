@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
-  SafeAreaView,
   StatusBar,
   Switch,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import DateTimePicker from '@react-native-community/datetimepicker';

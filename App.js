@@ -11,35 +11,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { initNativeBackgroundBackup } from './src/services/NativeBackgroundBackup';
-
-// 🧪 TEST BACKUP NATIVO - Carica il comando globale
-try {
-  require('./test-backup-app-closed');
-  
-  // Aggiungi comando per test backup silenzioso
-  const NativeBackupService = require('./src/services/NativeBackupService').default;
-  global.testSilentBackup = async () => {
-    try {
-      console.log('🔇 TEST: Simulazione backup silenzioso...');
-      const result = await NativeBackupService.executeSilentBackup('asyncstorage');
-      console.log('✅ TEST: Risultato backup silenzioso:', result);
-      return result;
-    } catch (error) {
-      console.error('❌ TEST: Errore backup silenzioso:', error);
-      return { success: false, error: error.message };
-    }
-  };
-  
-  // Aggiungi comando per test background backup task
-  const { testBackgroundBackupTask } = require('./src/services/BackgroundBackupTask');
-  global.testBackgroundBackup = testBackgroundBackupTask;
-  
-  console.log('🚀 Test backup nativo caricati!');
-  console.log('🚀 Comandi: testAppClosed(), testSilentBackup(), testBackgroundBackup()');
-} catch (testError) {
-  console.log('⚠️ Test backup app chiusa non caricato:', testError.message);
-}
+import { clearAllBackupsFromAsyncStorage as clearBackupsShared } from './src/services/BackupCleanupService';
 
 // 🧪 TEST AGGIORNAMENTI OTA - Carica i comandi globali
 try {
@@ -293,34 +265,7 @@ console.log('✅ Handler notifiche ripristinato: NOTIFICHE ABILITATE');
 // Configura i canali di notifica Android all'avvio
 // Funzione per eliminare tutte le chiavi di backup da AsyncStorage
 export async function clearAllBackupsFromAsyncStorage() {
-  try {
-    const allKeys = await AsyncStorage.getAllKeys();
-    // Elimina tutte le chiavi che iniziano con "backup_" o "manual_backup_"
-    const backupKeys = allKeys.filter(key => key.startsWith('backup_') || key.startsWith('manual_backup_'));
-    // Elimina anche la lista dei backup JS e la data ultimo backup
-    const extraKeys = ['javascript_backups', 'last_backup_date'];
-    const keysToRemove = [...backupKeys, ...extraKeys];
-    if (keysToRemove.length > 0) {
-      await AsyncStorage.multiRemove(keysToRemove);
-      console.log(`🗑️ Backup eliminati da AsyncStorage: ${keysToRemove.length}`);
-    } else {
-      console.log('ℹ️ Nessun backup trovato in AsyncStorage da eliminare');
-    }
-    // Ferma il timer automatico JS se presente
-    try {
-      const BackupService = require('./src/services/BackupService').default;
-      if (BackupService && BackupService.jsBackupService && BackupService.jsBackupService.stopAutoBackup) {
-        await BackupService.jsBackupService.stopAutoBackup();
-        console.log('🛑 Timer backup automatico JS fermato');
-      }
-    } catch (e) {
-      console.warn('⚠️ Impossibile fermare timer JS:', e.message);
-    }
-    return keysToRemove.length;
-  } catch (err) {
-    console.warn('❌ Errore durante la pulizia dei backup in AsyncStorage:', err.message);
-    return 0;
-  }
+  return clearBackupsShared();
 }
 async function setupAndroidNotificationChannels() {
   if (Platform.OS === 'android') {
@@ -385,9 +330,7 @@ import WelcomeModal from './src/components/WelcomeModal';
 import DatabaseHealthService from './src/services/DatabaseHealthService';
 // import NotificationService from './src/services/FixedNotificationService'; // DISATTIVATO - usando SuperNotificationService
 import BackupService from './src/services/BackupService';
-import { registerBackgroundBackupTask } from './src/services/BackgroundBackupTask';
 const SuperNotificationService = require('./src/services/SuperNotificationService');
-const SuperBackupService = require('./src/services/SuperBackupService');
 import UpdateService from './src/services/UpdateService';
 import ManualUpdateService from './src/services/ManualUpdateService';
 import UpdateNotificationService from './src/services/UpdateNotificationService';
@@ -925,48 +868,10 @@ export default function App() {
         }
       };
       
-      // ✅ INIZIALIZZA SUPER BACKUP SYSTEM + FALLBACK
+      // ✅ INIZIALIZZA BACKUP SOLO MANUALE + AUTO AL SALVATAGGIO
       const initializeBackupSystem = async () => {
         try {
-          console.log('💾 App: Inizializzazione SuperBackupService...');
-          // Attesa aggiuntiva per evitare conflitti database
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          // ✅ SISTEMA BACKUP SEMPLIFICATO - Solo NativeBackupService
-          console.log('App: Inizializzazione sistema backup ottimizzato...');
-          try {
-            console.log('App: Tentativo inizializzazione NativeBackupService...');
-            const NativeBackupService = require('./src/services/NativeBackupService').default;
-            if (NativeBackupService && typeof NativeBackupService.initialize === 'function') {
-              await NativeBackupService.initialize();
-              console.log('✅ App: NativeBackupService inizializzato (sistema principale)');
-            } else {
-              throw new Error('NativeBackupService.initialize is not a function');
-            }
-          } catch (nativeError) {
-            console.warn('❌ App: NativeBackupService non disponibile:', nativeError.message);
-            // Fallback al SuperBackupService
-            try {
-              const superInitialized = await SuperBackupService.initialize();
-              console.log(`🔄 App: SuperBackupService fallback: ${superInitialized ? '✅ OK' : '❌ FAILED'}`);
-            } catch (superError) {
-              console.error('❌ App: Errore anche nel SuperBackupService:', superError.message);
-            }
-          }
-          // REGISTRA IL TASK DI BACKUP AUTOMATICO IN BACKGROUND (solo build native)
-          try {
-            if (Platform.OS === 'android' || Platform.OS === 'ios') {
-              const ok = await registerBackgroundBackupTask();
-              if (ok) {
-                console.log('✅ App: Task di backup automatico in background registrato con successo');
-              } else {
-                console.warn('⚠️ App: Task di backup automatico NON registrato');
-              }
-            }
-          } catch (e) {
-            console.error('❌ App: Errore registrazione task di backup automatico:', e.message);
-          }
-          console.log('✅ App: Sistema backup completo inizializzato');
+          console.log('💾 App: Sistema backup ridotto attivo (manuale + auto al salvataggio)');
         } catch (error) {
           console.error('❌ App: Errore inizializzazione sistema backup:', error.message);
         }
@@ -1005,10 +910,6 @@ export default function App() {
       };
     }
   }, [isInitialized]);
-
-  useEffect(() => {
-    initNativeBackgroundBackup();
-  }, []);
 
   if (isLoading || !isInitialized || welcomeLoading) {
     return <LoadingScreen />;

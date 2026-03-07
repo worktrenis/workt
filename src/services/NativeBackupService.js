@@ -18,8 +18,7 @@ class NativeBackupService {
     this.notificationListenerSetup = false; // Flag per evitare listener multipli
     this.backupCheckInterval = null; // Interval per check periodico backup automatico
     console.log('🚀 NativeBackupService inizializzato con supporto destinazioni multiple');
-    // Avvia inizializzazione in background
-    this.initialize();
+    // Inizializzazione esplicita: non auto-avviare all'import per evitare side-effects.
   }
 
   // Metodo di inizializzazione pubblico

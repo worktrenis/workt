@@ -4,8 +4,16 @@
 
 let TaskManager, BackgroundFetch, SuperNotificationService;
 const TASK_NAME = 'WORKT_REPROGRAM_NOTIFS';
+let isExpoGo = false;
 
 SuperNotificationService = require('./SuperNotificationService');
+
+try {
+  const Constants = require('expo-constants').default;
+  isExpoGo = Constants?.executionEnvironment === 'storeClient';
+} catch (e) {
+  isExpoGo = false;
+}
 
 // Metro non permette require dinamici (require(name)). Usiamo require statici
 try {
@@ -15,11 +23,16 @@ try {
   TaskManager = null;
 }
 
-try {
-  BackgroundFetch = require('expo-background-fetch');
-} catch (e) {
-  console.warn('⚠️ Modulo expo-background-fetch non disponibile:', e.message);
+if (!isExpoGo) {
+  try {
+    BackgroundFetch = require('expo-background-fetch');
+  } catch (e) {
+    console.warn('⚠️ Modulo expo-background-fetch non disponibile:', e.message);
+    BackgroundFetch = null;
+  }
+} else {
   BackgroundFetch = null;
+  console.log('ℹ️ BackgroundReprogramService: Expo Go rilevato, background task disabilitati');
 }
 
 async function defineTask() {
