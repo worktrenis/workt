@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.46',
+      date: '31 gennaio 2026',
+      changes: [
+        'Fix Dashboard: date/mese corretti nei fusi negativi'
+      ]
+    },
+    {
       version: '1.0.45',
       date: '31 gennaio 2026',
       changes: [

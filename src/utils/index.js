@@ -1,5 +1,5 @@
 // Date and time utilities
-const parseDateOnlyToLocalDate = (value) => {
+export const parseDateOnlyToLocalDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
 

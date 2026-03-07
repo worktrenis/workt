@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { formatDate, formatCurrency } from '../utils';
+import { formatDate, formatCurrency, parseDateOnlyToLocalDate } from '../utils';
 import { useSettings, useCalculationService } from '../hooks';
 import { useTheme } from '../contexts/ThemeContext';
 import RealPayslipCalculator from '../services/RealPayslipCalculator';
@@ -256,8 +256,8 @@ const DashboardScreen = ({ navigation, route }) => {
       let entryMonth = data?.month;
 
       if ((!entryYear || !entryMonth) && data?.date) {
-        const d = new Date(data.date);
-        if (!Number.isNaN(d.getTime())) {
+        const d = parseDateOnlyToLocalDate(data.date);
+        if (d && !Number.isNaN(d.getTime())) {
           entryYear = d.getFullYear();
           entryMonth = d.getMonth() + 1;
         }
@@ -1004,7 +1004,7 @@ const DashboardScreen = ({ navigation, route }) => {
         }
 
         // Analizza tipo di giornata
-        const entryDate = new Date(entry.date);
+        const entryDate = parseDateOnlyToLocalDate(entry.date);
         const dayOfWeek = entryDate.getDay();
         const isHoliday = isItalianHoliday(entryDate);
         
@@ -1339,7 +1339,7 @@ const DashboardScreen = ({ navigation, route }) => {
           
           // Se c'è indennità reperibilità, categorizza per tipo di giorno
           if (standbyAmount > 0) {
-            const entryDate = new Date(entry.date);
+            const entryDate = parseDateOnlyToLocalDate(entry.date);
             const isSaturday = entryDate.getDay() === 6;
             const isSunday = entryDate.getDay() === 0;
             const isHoliday = isItalianHoliday(entryDate);
@@ -1652,11 +1652,15 @@ const DashboardScreen = ({ navigation, route }) => {
       // 1. Calcola giorni consecutivi lavorati
       let currentStreak = 0;
       let maxStreak = 0;
-      const sortedEntries = entries.sort((a, b) => new Date(a.date) - new Date(b.date));
+      const sortedEntries = entries.sort((a, b) => {
+        const da = parseDateOnlyToLocalDate(a.date);
+        const db = parseDateOnlyToLocalDate(b.date);
+        return (da ? da.getTime() : 0) - (db ? db.getTime() : 0);
+      });
       let lastDate = null;
       
       sortedEntries.forEach(entry => {
-        const currentDate = new Date(entry.date);
+        const currentDate = parseDateOnlyToLocalDate(entry.date);
         if (lastDate) {
           const dayDiff = (currentDate - lastDate) / (1000 * 60 * 60 * 24);
           if (dayDiff === 1) {
@@ -1796,7 +1800,7 @@ const DashboardScreen = ({ navigation, route }) => {
       
       // Aggiungi anche alla suddivisione per tipo
       standbyOnlyDays.forEach(allowance => {
-        const dateObj = new Date(allowance.date);
+        const dateObj = parseDateOnlyToLocalDate(allowance.date);
         const isSaturday = dateObj.getDay() === 6;
         const isSunday = dateObj.getDay() === 0;
         const isHoliday = isItalianHoliday(allowance.date);
@@ -4549,7 +4553,7 @@ const DashboardScreen = ({ navigation, route }) => {
       const saturdayWorkDays = hasEntries ? workEntries.filter(entry => {
         try {
           const workEntry = createWorkEntryFromData(entry);
-          const dateObj = new Date(entry.date);
+          const dateObj = parseDateOnlyToLocalDate(entry.date);
           const isSaturday = dateObj.getDay() === 6;
           return isSaturday && (workEntry?.workStart1 || workEntry?.workStart2);
         } catch (error) {
@@ -4561,7 +4565,7 @@ const DashboardScreen = ({ navigation, route }) => {
       const sundayWorkDays = hasEntries ? workEntries.filter(entry => {
         try {
           const workEntry = createWorkEntryFromData(entry);
-          const dateObj = new Date(entry.date);
+          const dateObj = parseDateOnlyToLocalDate(entry.date);
           const isSunday = dateObj.getDay() === 0;
           return isSunday && (workEntry?.workStart1 || workEntry?.workStart2);
         } catch (error) {
@@ -4596,7 +4600,7 @@ const DashboardScreen = ({ navigation, route }) => {
               return null; // Skip invalid entries
             }
             
-            const dateObj = new Date(entry.date);
+            const dateObj = parseDateOnlyToLocalDate(entry.date);
             if (isNaN(dateObj.getTime())) {
               return null; // Skip invalid dates
             }
@@ -4782,7 +4786,7 @@ const DashboardScreen = ({ navigation, route }) => {
             typeIcon = '🟠';
           } else if (workEntry?.workStart1 || workEntry?.workStart2) {
             // Lavoro - determina il tipo di giorno
-            const dateObj = new Date(entry.date);
+            const dateObj = parseDateOnlyToLocalDate(entry.date);
             const dayOfWeek = dateObj.getDay();
             const isHoliday = calculationService?.isItalianHoliday && calculationService.isItalianHoliday(entry.date);
             
@@ -4829,7 +4833,7 @@ const DashboardScreen = ({ navigation, route }) => {
       const standbyOnlyEntries = standbyAllowances
         .filter(allowance => !existingEntryDates.includes(allowance.date))
         .map(allowance => {
-          const dateObj = new Date(allowance.date);
+          const dateObj = parseDateOnlyToLocalDate(allowance.date);
           const dayOfMonth = dateObj.getDate();
           
           return {
