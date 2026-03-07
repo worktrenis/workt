@@ -20,6 +20,7 @@ import { useWorkEntries, useSettings, useCalculationService } from '../hooks';
 import { formatDate, formatTime, formatCurrency, getDayName, formatSafeHours } from '../utils';
 import { createWorkEntryFromData } from '../utils/earningsHelper';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import DatabaseService from '../services/DatabaseService';
 import DataUpdateService from '../services/DataUpdateService';
 import { PressableAnimated, FadeInCard, CardSkeleton, EnhancedTimeSlot, QuickStat } from '../components/AnimatedComponents';
@@ -57,6 +58,31 @@ const normalizeCcnlAmountInNotes = (notes, settings) => {
 
   const dailyRate = getEffectiveDailyRateFromSettings(settings);
   return notes.replace(/CCNL\s*\(€\s*\d+(?:[\.,]\d{2})\)/i, `CCNL (€${dailyRate.toFixed(2)})`);
+};
+
+const DUPLICATE_ENTRY_ALERT_KEY = '@workt:duplicateEntryAlert';
+
+const arraysEqual = (a, b) => {
+  if (!Array.isArray(a) || !Array.isArray(b)) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+};
+
+const getDuplicateDates = (entries) => {
+  if (!Array.isArray(entries)) return [];
+  const counts = entries.reduce((acc, entry) => {
+    const date = entry?.date;
+    if (!date) return acc;
+    acc[date] = (acc[date] || 0) + 1;
+    return acc;
+  }, {});
+
+  return Object.keys(counts)
+    .filter(date => counts[date] > 1)
+    .sort();
 };
 
 const dayTypeLabels = {
@@ -553,7 +579,75 @@ const TimeEntryScreen = () => {
       refreshEntries();
     }
   }, [settings, calculationService, entries, refreshEntries]);
-  
+
+  // Mostra avviso se esistono duplicati di date negli inserimenti
+  const duplicateAlertShownRef = useRef(false);
+  const checkDuplicateEntries = useCallback(async () => {
+    if (!entries || entries.length === 0) {
+      await AsyncStorage.removeItem(DUPLICATE_ENTRY_ALERT_KEY);
+      duplicateAlertShownRef.current = false;
+      return;
+    }
+
+    const duplicates = getDuplicateDates(entries);
+    if (duplicates.length === 0) {
+      await AsyncStorage.removeItem(DUPLICATE_ENTRY_ALERT_KEY);
+      duplicateAlertShownRef.current = false;
+      return;
+    }
+
+    if (duplicateAlertShownRef.current) return;
+
+    let stored = { suppress: false, lastNotified: [] };
+    try {
+      const raw = await AsyncStorage.getItem(DUPLICATE_ENTRY_ALERT_KEY);
+      if (raw) {
+        stored = JSON.parse(raw);
+      }
+    } catch (e) {
+      // ignore parsing errors
+    }
+
+    const sameAsBefore = arraysEqual(stored.lastNotified || [], duplicates);
+    const shouldShow = !sameAsBefore || stored.suppress === false;
+    if (!shouldShow) return;
+
+    duplicateAlertShownRef.current = true;
+    const dateList = duplicates.join(', ');
+
+    Alert.alert(
+      'Duplicato inserimenti',
+      `Sono stati trovati più inserimenti per le stesse date:\n${dateList}\n\nVuoi ripetere questo avviso al prossimo avvio?`,
+      [
+        {
+          text: 'No',
+          style: 'cancel',
+          onPress: async () => {
+            await AsyncStorage.setItem(
+              DUPLICATE_ENTRY_ALERT_KEY,
+              JSON.stringify({ suppress: true, lastNotified: duplicates })
+            );
+          }
+        },
+        {
+          text: 'Sì',
+          onPress: async () => {
+            await AsyncStorage.setItem(
+              DUPLICATE_ENTRY_ALERT_KEY,
+              JSON.stringify({ suppress: false, lastNotified: duplicates })
+            );
+          }
+        }
+      ]
+    );
+  }, [entries]);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkDuplicateEntries();
+    }, [checkDuplicateEntries])
+  );
+
   // Ref per tracciare l'ultimo refresh e debounce
   const lastRefreshRef = useRef(0);
   const refreshTimeoutRef = useRef(null);
