@@ -3857,20 +3857,26 @@ const TimeEntryForm = ({ route, navigation }) => {
       } catch {}
 
       // Navigazione post-salvataggio.
-      // Rimuove la form dallo stack e poi sostituisce la schermata corrente con la
-      // lista TimeEntryScreen, così il back button non torna all'inserimento salvato.
+      // Reinserisce esplicitamente Dashboard + TimeEntryScreen nello stack in modo
+      // che il back vada sempre alla Dashboard (e non al form salvato).
       if (navigateAfter) {
         allowLeaveRef.current = true; // evita prompt su blur
-        navigation.dispatch(StackActions.pop(1));
-        navigation.dispatch(
-          StackActions.replace('TimeEntryScreen', {
-            refreshFromForm: true,
-            savedId,
-            savedDate: entry.date,
-            precomputedTotal: entry.totalEarnings,
-            precomputedBreakdown: result
-          })
-        );
+        navigation.reset({
+          index: 1,
+          routes: [
+            { name: 'Dashboard' },
+            {
+              name: 'TimeEntryScreen',
+              params: {
+                refreshFromForm: true,
+                savedId,
+                savedDate: entry.date,
+                precomputedTotal: entry.totalEarnings,
+                precomputedBreakdown: result
+              }
+            }
+          ]
+        });
       } else if (dispatchAction) {
         allowLeaveRef.current = true; // consenti uscita intercettata
         // consenti navigazione originale intercettata
