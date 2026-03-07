@@ -3856,14 +3856,14 @@ const TimeEntryForm = ({ route, navigation }) => {
         setHasChanges(false);
       } catch {}
 
-      // Navigazione post-salvataggio. sostituisci la schermata corrente in modo che la
-      // form non rimanga nello stack: quando l'utente preme "indietro" non torni più al
-      // modulo appena salvato, ma venga portato alla dashboard (o all'ultimo livello
-      // precedente), con un successivo indietro che chiude l'app.
+      // Navigazione post-salvataggio.
+      // Rimuove la form dallo stack e poi sostituisce la schermata corrente con la
+      // lista TimeEntryScreen, così il back button non torna all'inserimento salvato.
       if (navigateAfter) {
         allowLeaveRef.current = true; // evita prompt su blur
+        navigation.dispatch(StackActions.pop(1));
         navigation.dispatch(
-          StackActions.replace('TimeEntryScreen', { 
+          StackActions.replace('TimeEntryScreen', {
             refreshFromForm: true,
             savedId,
             savedDate: entry.date,
