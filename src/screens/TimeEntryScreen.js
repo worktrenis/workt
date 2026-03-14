@@ -582,7 +582,20 @@ const TimeEntryScreen = () => {
 
   // Mostra avviso se esistono duplicati di date negli inserimenti
   const duplicateAlertShownRef = useRef(false);
+  const entriesLoadStartedRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoading) {
+      entriesLoadStartedRef.current = true;
+    }
+  }, [isLoading]);
+
   const checkDuplicateEntries = useCallback(async () => {
+    if (isLoading) return;
+
+    // Evita reset preferenze durante il primissimo render prima del caricamento reale.
+    if (!entriesLoadStartedRef.current && (!entries || entries.length === 0)) return;
+
     if (!entries || entries.length === 0) {
       await AsyncStorage.removeItem(DUPLICATE_ENTRY_ALERT_KEY);
       duplicateAlertShownRef.current = false;
@@ -602,7 +615,12 @@ const TimeEntryScreen = () => {
     try {
       const raw = await AsyncStorage.getItem(DUPLICATE_ENTRY_ALERT_KEY);
       if (raw) {
-        stored = JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        stored = {
+          // Compatibilita con formati precedenti.
+          suppress: Boolean(parsed?.suppress ?? parsed?.skipNextStartup),
+          lastNotified: Array.isArray(parsed?.lastNotified) ? parsed.lastNotified : []
+        };
       }
     } catch (e) {
       // ignore parsing errors
@@ -640,7 +658,7 @@ const TimeEntryScreen = () => {
         }
       ]
     );
-  }, [entries]);
+  }, [entries, isLoading]);
 
   useFocusEffect(
     useCallback(() => {
