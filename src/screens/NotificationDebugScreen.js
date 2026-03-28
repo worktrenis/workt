@@ -7,7 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
-  Switch
+  Switch,
+  Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -28,10 +29,14 @@ const NotificationDebugScreen = ({ navigation }) => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      // Carica statistiche sistema persistente
-      const PersistentNotificationService = require('../services/PersistentNotificationService').default;
-      const persistentStats = await PersistentNotificationService.getStatistics();
-      setStats(persistentStats);
+      // Carica statistiche dal servizio attivo (SuperNotificationService)
+      const SuperNotificationService = require('../services/SuperNotificationService');
+      const superStats = await SuperNotificationService.getNotificationStats();
+      const superSettings = await SuperNotificationService.getSettings();
+      setStats({
+        ...superStats,
+        savedSettings: superSettings
+      });
 
       // Carica notifiche programmate
       const scheduled = await Notifications.getAllScheduledNotificationsAsync();
@@ -90,12 +95,12 @@ const NotificationDebugScreen = ({ navigation }) => {
           onPress: async () => {
             setIsLoading(true);
             try {
-              const PersistentNotificationService = require('../services/PersistentNotificationService').default;
-              const count = await PersistentNotificationService.forceReschedule();
+              const SuperNotificationService = require('../services/SuperNotificationService');
+              const result = await SuperNotificationService.forceReschedule();
               
               Alert.alert(
                 'Riprogrammazione Completata',
-                `Sono state programmate ${count} nuove notifiche.`,
+                `Sono state programmate ${result.totalScheduled} nuove notifiche (cancellate: ${result.cancelled}).`,
                 [{ text: 'OK' }]
               );
               
@@ -382,6 +387,93 @@ const NotificationDebugScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
+        {/* Diagnostica Impostazioni Salvate */}
+        {stats?.savedSettings && (
+          <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="cog-outline" size={24} color={theme.colors.primary} />
+              <Text style={[styles.sectionTitle, { color: theme.colors.text }]}>
+                Impostazioni Salvate
+              </Text>
+            </View>
+            
+            {/* Allarmi Esatti */}
+            {Platform.OS === 'android' && Platform.Version >= 31 && (
+              <View style={{ 
+                flexDirection: 'row', alignItems: 'center', padding: 10, marginBottom: 8,
+                backgroundColor: stats.canScheduleExactAlarms ? 'rgba(76,175,80,0.1)' : 'rgba(244,67,54,0.15)',
+                borderRadius: 8, borderLeftWidth: 3, 
+                borderLeftColor: stats.canScheduleExactAlarms ? '#4CAF50' : '#F44336' 
+              }}>
+                <MaterialCommunityIcons 
+                  name={stats.canScheduleExactAlarms ? 'alarm-check' : 'alarm-off'} 
+                  size={20} color={stats.canScheduleExactAlarms ? '#4CAF50' : '#F44336'} 
+                />
+                <Text style={{ color: theme.colors.text, fontSize: 13, flex: 1, marginLeft: 8 }}>
+                  {stats.canScheduleExactAlarms 
+                    ? 'Allarmi esatti attivi — notifiche puntuali' 
+                    : 'Allarmi esatti NON attivi — le notifiche potrebbero arrivare in ritardo. Vai in Impostazioni > App > WorkT > Allarmi e promemoria e attiva la voce.'
+                  }
+                </Text>
+              </View>
+            )}
+            
+            {(() => {
+              const s = stats.savedSettings;
+              const sections = [];
+              
+              const wr = s.workReminder || s.workReminders;
+              if (wr) sections.push({ 
+                label: '💼 Promemoria Lavoro', 
+                enabled: wr.enabled, 
+                detail: `Orario: ${wr.morningTime || '—'}, Weekend: ${wr.weekendsEnabled ? 'Sì' : 'No'}` 
+              });
+              
+              const te = s.timeEntryReminder || s.timeEntryReminders;
+              if (te) sections.push({ 
+                label: '⏰ Inserimento Orari', 
+                enabled: te.enabled, 
+                detail: `Orario: ${te.time || te.eveningTime || '—'}, Weekend: ${te.weekendsEnabled ? 'Sì' : 'No'}` 
+              });
+              
+              if (s.backupReminder) sections.push({ 
+                label: '💾 Backup', 
+                enabled: s.backupReminder.enabled, 
+                detail: `Orario: ${s.backupReminder.time || '—'}` 
+              });
+              
+              const sr = s.standbyReminder || s.standbyReminders;
+              if (sr) sections.push({ 
+                label: '📞 Reperibilità', 
+                enabled: sr.enabled, 
+                detail: `Notifiche: ${sr.notifications?.length || 0} configurate` 
+              });
+              
+              return sections.map((sec, i) => (
+                <View key={i} style={{ 
+                  flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 4,
+                  borderBottomWidth: i < sections.length - 1 ? 1 : 0, borderBottomColor: theme.colors.border 
+                }}>
+                  <MaterialCommunityIcons 
+                    name={sec.enabled ? 'check-circle' : 'close-circle'} 
+                    size={16} color={sec.enabled ? '#4CAF50' : '#9E9E9E'} 
+                  />
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text style={{ color: theme.colors.text, fontSize: 13, fontWeight: '600' }}>{sec.label}</Text>
+                    <Text style={{ color: theme.colors.textSecondary, fontSize: 11 }}>{sec.detail}</Text>
+                  </View>
+                </View>
+              ));
+            })()}
+            
+            {stats.lastSchedule && (
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 11, marginTop: 8, fontStyle: 'italic' }}>
+                Ultima programmazione: {stats.lastSchedule.toLocaleString('it-IT')}
+              </Text>
+            )}
+          </View>
+        )}
+
         {/* Lista Notifiche Programmate */}
         <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
           <View style={styles.sectionHeader}>
@@ -402,23 +494,14 @@ const NotificationDebugScreen = ({ navigation }) => {
               let dateDisplay = 'Data non disponibile';
               let isValidDate = false;
               
+              const weekdayNames = ['', 'Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'];
+              
               try {
-                // Log dettagliato ma usa la logica originale che funzionava
-                console.log(`🔍 Debug notifica ${index}:`, {
-                  trigger: notif.trigger,
-                  triggerType: notif.trigger?.type,
-                  triggerDate: notif.trigger?.date,
-                  triggerValue: notif.trigger?.value,
-                  triggerDateType: typeof notif.trigger?.date,
-                  triggerValueType: typeof notif.trigger?.value
-                });
-                
-                // Ripristino la logica semplice che funzionava prima + fallback per trigger.value
                 const triggerValue = notif.trigger?.date || notif.trigger?.value;
-                if (notif.trigger?.type === 'date' && triggerValue != null) {
+                const triggerType = notif.trigger?.type;
+                
+                if (triggerType === 'date' && triggerValue != null) {
                   const dateValue = triggerValue;
-                  
-                  // Prova conversione semplice come prima
                   if (typeof dateValue === 'number') {
                     triggerDate = new Date(dateValue);
                   } else if (typeof dateValue === 'string') {
@@ -426,38 +509,34 @@ const NotificationDebugScreen = ({ navigation }) => {
                   } else if (dateValue instanceof Date) {
                     triggerDate = dateValue;
                   } else if (dateValue && typeof dateValue === 'object') {
-                    // Fallback per oggetti complessi (tipo timestamp Expo)
                     try {
-                      if (dateValue.seconds) {
-                        triggerDate = new Date(dateValue.seconds * 1000);
-                      } else if (dateValue._seconds) {
-                        triggerDate = new Date(dateValue._seconds * 1000);
-                      } else if (dateValue.valueOf && typeof dateValue.valueOf === 'function') {
-                        triggerDate = new Date(dateValue.valueOf());
-                      } else {
-                        triggerDate = new Date(dateValue.toString());
-                      }
-                    } catch (e) {
-                      console.warn('Fallback conversione fallito:', e);
-                    }
+                      if (dateValue.seconds) triggerDate = new Date(dateValue.seconds * 1000);
+                      else if (dateValue._seconds) triggerDate = new Date(dateValue._seconds * 1000);
+                      else if (typeof dateValue.valueOf === 'function') triggerDate = new Date(dateValue.valueOf());
+                    } catch (e) {}
                   }
-                  
-                  // Verifica validità come prima
                   if (triggerDate && !isNaN(triggerDate.getTime())) {
                     isValidDate = true;
                     dateDisplay = triggerDate.toLocaleString('it-IT', {
-                      weekday: 'short',
-                      day: '2-digit',
-                      month: '2-digit', 
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
+                      weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
                     });
                   } else {
-                    dateDisplay = `Formato non valido: ${typeof dateValue} = ${String(dateValue).substring(0, 30)}`;
+                    dateDisplay = `Formato non valido: ${String(dateValue).substring(0, 30)}`;
                   }
-                } else if (notif.trigger?.type) {
-                  dateDisplay = `Trigger tipo: ${notif.trigger.type}`;
+                } else if (triggerType === 'weekly') {
+                  const h = String(notif.trigger.hour ?? notif.content?.data?.hour ?? '?').padStart(2, '0');
+                  const m = String(notif.trigger.minute ?? notif.content?.data?.minute ?? '?').padStart(2, '0');
+                  const wd = notif.trigger.weekday ?? notif.content?.data?.weekday;
+                  const wdName = weekdayNames[wd] || `wd${wd}`;
+                  dateDisplay = `🔁 Ogni ${wdName} alle ${h}:${m}`;
+                  isValidDate = true;
+                } else if (triggerType === 'daily') {
+                  const h = String(notif.trigger.hour ?? notif.content?.data?.hour ?? '?').padStart(2, '0');
+                  const m = String(notif.trigger.minute ?? notif.content?.data?.minute ?? '?').padStart(2, '0');
+                  dateDisplay = `🔁 Ogni giorno alle ${h}:${m}`;
+                  isValidDate = true;
+                } else if (triggerType) {
+                  dateDisplay = `Trigger tipo: ${triggerType}`;
                 } else {
                   dateDisplay = 'Nessun trigger';
                 }

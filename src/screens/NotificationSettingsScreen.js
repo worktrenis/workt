@@ -457,7 +457,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <StatusBar style={theme.dark ? "light" : "dark"} />
         <View style={styles.loadingContainer}>
           <MaterialCommunityIcons name="bell-outline" size={48} color="#ccc" />
@@ -503,10 +503,10 @@ const NotificationSettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <StatusBar style={theme.dark ? "light" : "dark"} />
       
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false} automaticallyAdjustKeyboardInsets={false}>
         {/* Header principale */}
         <View style={styles.headerCard}>
           <MaterialCommunityIcons name="bell-ring" size={32} color="#2196F3" />
@@ -524,8 +524,11 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <Switch
               value={!!normalizedSettings.reprogramOnOpen}
               onValueChange={(value) => setSettings({ ...settings, reprogramOnOpen: value })}
-              trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-              thumbColor={normalizedSettings.reprogramOnOpen ? '#4CAF50' : '#f4f3f4'}
+              trackColor={{
+                false: theme.dark ? '#3A3A3C' : '#E0E0E0',
+                true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9'
+              }}
+              thumbColor={normalizedSettings.reprogramOnOpen ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
             />
           </View>
           <View style={styles.sectionContent}>
@@ -545,8 +548,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <Switch
               value={normalizedSettings.enabled}
               onValueChange={handleMainToggle}
-              trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-              thumbColor={normalizedSettings.enabled ? '#4CAF50' : '#f4f3f4'}
+              trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9' }}
+              thumbColor={normalizedSettings.enabled ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
             />
           </View>
           
@@ -571,8 +574,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
                 <Switch
                   value={normalizedSettings.workReminders.enabled}
                   onValueChange={(value) => handleSectionToggle('workReminders', value)}
-                  trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                  thumbColor={normalizedSettings.workReminders.enabled ? '#4CAF50' : '#f4f3f4'}
+                  trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9' }}
+                  thumbColor={normalizedSettings.workReminders.enabled ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
                 />
               </View>
               
@@ -597,8 +600,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
                         };
                         setSettings(newSettings);
                       }}
-                      trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                      thumbColor={normalizedSettings.workReminders.weekendsEnabled ? '#4CAF50' : '#f4f3f4'}
+                      trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9' }}
+                      thumbColor={normalizedSettings.workReminders.weekendsEnabled ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
                     />
                   </View>
                 </View>
@@ -613,8 +616,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
                 <Switch
                   value={normalizedSettings.timeEntryReminders.enabled}
                   onValueChange={(value) => handleSectionToggle('timeEntryReminders', value)}
-                  trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                  thumbColor={normalizedSettings.timeEntryReminders.enabled ? '#4CAF50' : '#f4f3f4'}
+                  trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9' }}
+                  thumbColor={normalizedSettings.timeEntryReminders.enabled ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
                 />
               </View>
               
@@ -639,8 +642,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
                         };
                         setSettings(newSettings);
                       }}
-                      trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                      thumbColor={normalizedSettings.timeEntryReminders.weekendsEnabled ? '#4CAF50' : '#f4f3f4'}
+                      trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9' }}
+                      thumbColor={normalizedSettings.timeEntryReminders.weekendsEnabled ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
                     />
                   </View>
                 </View>
@@ -655,8 +658,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
                 <Switch
                   value={normalizedSettings.standbyReminders && normalizedSettings.standbyReminders.enabled}
                   onValueChange={(value) => handleSectionToggle('standbyReminders', value)}
-                  trackColor={{ false: '#E0E0E0', true: '#C8E6C9' }}
-                  thumbColor={(normalizedSettings.standbyReminders && normalizedSettings.standbyReminders.enabled) ? '#4CAF50' : '#f4f3f4'}
+                  trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(76, 175, 80, 0.45)' : '#C8E6C9' }}
+                  thumbColor={(normalizedSettings.standbyReminders && normalizedSettings.standbyReminders.enabled) ? '#4CAF50' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
                 />
               </View>
               <View style={styles.sectionContent}>
@@ -749,8 +752,8 @@ const NotificationSettingsScreen = ({ navigation }) => {
                                 newSettings.standbyReminders.notifications[index].enabled = value;
                                 setSettings(newSettings);
                               }}
-                              trackColor={{ false: '#E0E0E0', true: '#E1BEE7' }}
-                              thumbColor={notification.enabled ? '#9C27B0' : '#f4f3f4'}
+                              trackColor={{ false: theme.dark ? '#3A3A3C' : '#E0E0E0', true: theme.dark ? 'rgba(156, 39, 176, 0.35)' : '#E1BEE7' }}
+                              thumbColor={notification.enabled ? '#9C27B0' : (theme.dark ? '#E5E5EA' : '#f4f3f4')}
                               style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }}
                             />
                           </View>
@@ -832,6 +835,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+              enabled={false}
             >
               <View
                 style={{
@@ -981,6 +985,11 @@ const createStyles = (theme) => StyleSheet.create({
     fontWeight: '600',
     color: theme.colors.text,
     marginLeft: 12,
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: theme.colors.textSecondary,
+    lineHeight: 20,
   },
   sectionContent: {
     paddingLeft: 36,

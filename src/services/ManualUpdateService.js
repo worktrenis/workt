@@ -74,6 +74,8 @@ class ManualUpdateService {
       } else {
         this.currentVersion = stored;
       }
+
+      await UpdateNotificationService.clearStaleUpdateNotifications(this.currentVersion);
     } catch (e) {
       // Fallback silenzioso
       this.currentVersion = appPkgVersion || this.currentVersion;
@@ -159,7 +161,12 @@ class ManualUpdateService {
     }
 
     if (__DEV__) {
-      return this.simulateUpdateCheckInDev();
+      await this.syncVersionFromStorage();
+      return {
+        hasUpdate: false,
+        reason: 'dev_simulation_disabled',
+        currentVersion: this.currentVersion,
+      };
     }
 
     try {
@@ -220,19 +227,33 @@ class ManualUpdateService {
    * Ottiene informazioni su aggiornamenti pendenti
    */
   async getPendingUpdates() {
+    await this.syncVersionFromStorage();
+
     if (__DEV__) {
-      // In development, simula un aggiornamento pendente
-      return [{
-        versionName: '1.3.2',
-        versionCode: 132,
-        releaseDate: '2024-01-20',
-        changelog: this.versionDatabase['1.3.2'].changelog,
-        currentVersion: this.currentVersion,
-        simulatedInDev: true
-      }];
+      return [];
     }
 
-    return await UpdateNotificationService.getPendingUpdates();
+    const updates = await UpdateNotificationService.getPendingUpdates();
+    return updates.filter(update => {
+      const versionName = update?.versionName;
+      if (!versionName) {
+        return false;
+      }
+
+      const currentParts = String(this.currentVersion || '0').split('.').map(part => parseInt(part, 10) || 0);
+      const updateParts = String(versionName).split('.').map(part => parseInt(part, 10) || 0);
+      const maxLength = Math.max(currentParts.length, updateParts.length);
+
+      for (let index = 0; index < maxLength; index += 1) {
+        const currentValue = currentParts[index] || 0;
+        const updateValue = updateParts[index] || 0;
+
+        if (updateValue > currentValue) return true;
+        if (updateValue < currentValue) return false;
+      }
+
+      return false;
+    });
   }
 
   /**

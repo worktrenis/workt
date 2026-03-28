@@ -65,25 +65,7 @@ const NotificationMainMenu = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity 
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <MaterialCommunityIcons 
-            name="arrow-left" 
-            size={28} 
-            color={theme.colors.text} 
-          />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          Gestione Notifiche
-        </Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Sezione introduttiva */}
         <View style={[styles.introSection, { backgroundColor: theme.colors.card }]}>
@@ -134,26 +116,6 @@ const NotificationMainMenu = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(0,0,0,0.1)'
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 12
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    flex: 1
-  },
-  headerSpacer: {
-    width: 44
   },
   scrollView: {
     flex: 1

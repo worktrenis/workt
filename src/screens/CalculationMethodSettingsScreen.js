@@ -211,14 +211,6 @@ const CalculationMethodSettingsScreen = ({ navigation }) => {
             Conformità CCNL: {CALCULATION_METHODS[calculationMethod].ccnlCompliant ? '✅ Conforme' : '⚠️ Non standard'}
           </Text>
         </View>
-
-        {/* Test Button */}
-        <TouchableOpacity
-          style={[styles.testButton, { backgroundColor: theme.colors.primary }]}
-          onPress={() => navigation.navigate('CheckEntry25Luglio')}
-        >
-          <Text style={styles.testButtonText}>🧪 Test Calcolo 25 Luglio</Text>
-        </TouchableOpacity>
       </View>
     </ScrollView>
   );
@@ -340,17 +332,6 @@ const styles = StyleSheet.create({
   summaryText: {
     fontSize: 14,
     marginBottom: 4,
-  },
-  testButton: {
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  testButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
   },
 });
 

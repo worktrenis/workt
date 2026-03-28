@@ -2,7 +2,7 @@
   "expo": {
     "name": "WorkT - Tracker Ore Lavoro",
     "slug": "workt",
-    "version": "1.0.50",
+    "version": "1.0.71",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -37,6 +37,7 @@
         "backgroundColor": "#1E3A8A"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.workt.production",
       "versionCode": 12,
       "permissions": [

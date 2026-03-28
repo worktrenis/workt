@@ -204,7 +204,7 @@ const VacationManagementScreen = ({ navigation, route }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
@@ -213,23 +213,6 @@ const VacationManagementScreen = ({ navigation, route }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Ferie e Permessi</Text>
-          <TouchableOpacity 
-            style={styles.configButton}
-            onPress={() => navigation.navigate('VacationSettings')}
-          >
-            <MaterialCommunityIcons name="cog" size={24} color="#2196F3" />
-          </TouchableOpacity>
-        </View>
-
         {/* Riepilogo Annuale */}
         {summary && (
           <ModernCard style={styles.cardSpacing} theme={theme}>
@@ -269,14 +252,24 @@ const VacationManagementScreen = ({ navigation, route }) => {
             iconColor="#FF9800" 
             theme={theme}
           />
-          
-          <TouchableOpacity 
-            style={styles.newRequestButton}
-            onPress={handleNewRequest}
-          >
-            <MaterialCommunityIcons name="plus-circle" size={24} color="white" />
-            <Text style={styles.newRequestButtonText}>Nuova Richiesta</Text>
-          </TouchableOpacity>
+
+          <View style={styles.quickActionsRow}>
+            <TouchableOpacity 
+              style={styles.newRequestButton}
+              onPress={handleNewRequest}
+            >
+              <MaterialCommunityIcons name="plus-circle" size={24} color="white" />
+              <Text style={styles.newRequestButtonText}>Nuova Richiesta</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryActionButton}
+              onPress={() => navigation.navigate('VacationSettings')}
+            >
+              <MaterialCommunityIcons name="cog" size={22} color="#2196F3" />
+              <Text style={styles.secondaryActionButtonText}>Configurazione</Text>
+            </TouchableOpacity>
+          </View>
         </ModernCard>
 
         {/* Lista Richieste */}
@@ -322,33 +315,8 @@ const createStyles = (theme) => StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    paddingTop: 12,
     paddingBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: theme.colors.background,
-  },
-  backButton: {
-    padding: 8,
-    marginRight: 8,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.colors.text,
-    textAlign: 'center',
-  },
-  headerSpacer: {
-    width: 40,
-  },
-  configButton: {
-    padding: 8,
-    borderRadius: 8,
-    backgroundColor: theme.dark ? 'rgba(33, 150, 243, 0.15)' : '#e3f2fd',
   },
   cardSpacing: {
     marginHorizontal: 16,
@@ -383,32 +351,55 @@ const createStyles = (theme) => StyleSheet.create({
   summaryItem: {
     width: '48%',
     backgroundColor: theme.colors.inputBackground,
-    borderRadius: 8,
-    padding: 16,
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    marginBottom: 10,
     alignItems: 'center',
-    marginBottom: 8,
   },
   summaryValue: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#E91E63',
-    marginBottom: 4,
+    color: theme.colors.text,
   },
   summaryLabel: {
+    marginTop: 4,
     fontSize: 12,
     color: theme.colors.textSecondary,
     textAlign: 'center',
   },
+  quickActionsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
   newRequestButton: {
-    backgroundColor: '#E91E63',
-    borderRadius: 8,
-    padding: 16,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#4CAF50',
+    paddingVertical: 16,
+    borderRadius: 12,
   },
   newRequestButtonText: {
     color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  secondaryActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#2196F3',
+    backgroundColor: theme.dark ? 'rgba(33, 150, 243, 0.12)' : '#E3F2FD',
+  },
+  secondaryActionButtonText: {
+    color: '#2196F3',
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,

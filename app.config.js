@@ -11,6 +11,17 @@ function loadExpoConfigFromJson(configFile) {
   return expo;
 }
 
+function loadPackageVersion(projectRoot) {
+  const packagePath = path.resolve(projectRoot, 'package.json');
+  if (!fs.existsSync(packagePath)) {
+    return null;
+  }
+
+  const raw = fs.readFileSync(packagePath, 'utf8');
+  const pkg = JSON.parse(raw);
+  return typeof pkg.version === 'string' ? pkg.version : null;
+}
+
 module.exports = () => {
   const configName = (process.env && process.env.APP_CONFIG) || 'app.json';
   const projectRoot = __dirname;
@@ -24,6 +35,20 @@ module.exports = () => {
   }
 
   const expoConfig = loadExpoConfigFromJson(resolved);
+  const packageVersion = loadPackageVersion(projectRoot);
+
+  if (packageVersion && expoConfig.version !== packageVersion) {
+    console.log(
+      `[app.config.js] Syncing expo version ${expoConfig.version} -> ${packageVersion} from package.json`
+    );
+    expoConfig.version = packageVersion;
+  }
+
   console.log(`[app.config.js] Using ${configName} (version ${expoConfig.version})`);
+
+  // Inject plugin per adjustNothing
+  expoConfig.plugins = expoConfig.plugins || [];
+  expoConfig.plugins.push('./withAdjustNothing.js');
+
   return expoConfig;
 };

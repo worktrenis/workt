@@ -119,7 +119,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
   
   // Rendering delle impostazioni
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
       <ScrollView>
         {loading ? (
           <View style={styles.loadingContainer}>

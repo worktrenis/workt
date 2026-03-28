@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettings } from '../hooks';
 import { useTheme } from '../contexts/ThemeContext';
@@ -124,16 +125,8 @@ const NetCalculationSettingsScreen = ({ navigation }) => {
   const preview = getPreviewCalculation();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
       <ScrollView style={[styles.scrollContainer, { backgroundColor: theme.colors.background }]}>
-        {/* Header */}
-        <View style={[styles.header, { backgroundColor: theme.colors.surface, borderBottomColor: theme.colors.border }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={theme.colors.primary} />
-          </TouchableOpacity>
-          <Text style={[styles.title, { color: theme.colors.text }]}>Calcolo Netto</Text>
-          <View style={{ width: 24 }} />
-        </View>
 
       {/* Descrizione */}
       <View style={[styles.section, { backgroundColor: theme.colors.card }]}>
@@ -351,15 +344,15 @@ const NetCalculationSettingsScreen = ({ navigation }) => {
           </View>
         </View>
       )}
-      </ScrollView>
-      
-      {/* Pulsante Salva in basso */}
-      <View style={[styles.bottomSection, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border }]}>
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: theme.colors.primary }]} onPress={handleSave}>
-          <Text style={[styles.saveButtonText, { color: '#FFFFFF' }]}>Salva Impostazioni</Text>
+
+        {/* Pulsante Salva */}
+        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
+          <Ionicons name="save-outline" size={20} color="white" />
+          <Text style={styles.saveButtonText}>Salva Impostazioni</Text>
         </TouchableOpacity>
-      </View>
-    </View>
+
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
@@ -371,36 +364,22 @@ const styles = StyleSheet.create({
   scrollContainer: {
     flex: 1,
   },
-  bottomSection: {
-    backgroundColor: '#fff',
-    padding: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-  },
   saveButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 10,
-    padding: 16,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#007AFF',
+    padding: 16,
+    borderRadius: 12,
+    gap: 10,
+    marginHorizontal: 16,
+    marginTop: 24,
+    marginBottom: 32,
   },
   saveButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '600',
   },
   section: {
     backgroundColor: '#fff',

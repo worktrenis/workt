@@ -10,20 +10,20 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
-  SafeAreaView,
   Modal,
   TextInput,
   Switch,
   FlatList,
   Dimensions
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../contexts/ThemeContext';
 import SystemNotificationPersistence from '../services/SystemNotificationPersistenceService';
 
 const { width } = Dimensions.get('window');
 
-const SystemNotificationMenuScreen = ({ navigation }) => {
+const SystemNotificationMenuScreen = () => {
   const { theme } = useTheme();
   const styles = createStyles(theme);
   
@@ -661,7 +661,7 @@ const SystemNotificationMenuScreen = ({ navigation }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <MaterialCommunityIcons name="bell" size={48} color={theme.colors.primary} />
           <Text style={styles.loadingText}>Caricamento notifiche...</Text>
@@ -671,40 +671,31 @@ const SystemNotificationMenuScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
+      <View style={styles.topActions}>
         <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          style={styles.topActionButton}
+          onPress={loadHistory}
         >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.text} />
+          <MaterialCommunityIcons name="history" size={20} color={theme.colors.text} />
+          <Text style={styles.topActionText}>Cronologia</Text>
         </TouchableOpacity>
-        
-        <Text style={styles.headerTitle}>Notifiche Sistema</Text>
-        
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={loadHistory}
-          >
-            <MaterialCommunityIcons name="history" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => setShowSettings(true)}
-          >
-            <MaterialCommunityIcons name="cog" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={clearAllNotifications}
-          >
-            <MaterialCommunityIcons name="delete-sweep" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-        </View>
+
+        <TouchableOpacity
+          style={styles.topActionButton}
+          onPress={() => setShowSettings(true)}
+        >
+          <MaterialCommunityIcons name="cog" size={20} color={theme.colors.text} />
+          <Text style={styles.topActionText}>Impostazioni</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.topActionButton, styles.topActionButtonDanger]}
+          onPress={clearAllNotifications}
+        >
+          <MaterialCommunityIcons name="delete-sweep" size={20} color="#D32F2F" />
+          <Text style={styles.topActionTextDanger}>Cancella</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Statistiche */}
@@ -780,31 +771,35 @@ const createStyles = (theme) => StyleSheet.create({
     fontSize: 16,
     color: theme.colors.textSecondary,
   },
-  header: {
+  topActions: {
     flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    gap: 8,
   },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
+  topActionButton: {
     flex: 1,
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: theme.colors.text,
-    textAlign: 'center',
-    marginHorizontal: 16,
-  },
-  headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: theme.colors.card,
   },
-  headerButton: {
-    padding: 8,
-    marginLeft: 8,
+  topActionButtonDanger: {
+    backgroundColor: theme.dark ? 'rgba(211, 47, 47, 0.12)' : '#FFEBEE',
+  },
+  topActionText: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: theme.colors.text,
+  },
+  topActionTextDanger: {
+    marginLeft: 6,
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#D32F2F',
   },
   statsContainer: {
     flexDirection: 'row',

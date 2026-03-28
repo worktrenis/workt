@@ -62,6 +62,17 @@ const normalizeCcnlAmountInNotes = (notes, settings) => {
 
 const DUPLICATE_ENTRY_ALERT_KEY = '@workt:duplicateEntryAlert';
 
+const formatCurrencyWithEuro = (amount) => `${formatCurrency(amount)} €`;
+
+const formatDurationWithUnit = (duration) => {
+  if (!duration) return duration;
+  if (/\bh\b|ore/i.test(duration)) return duration;
+  if (/^\d+:\d{2}$/.test(duration)) return `${duration} h`;
+  return duration;
+};
+
+const formatHoursWithUnit = (hours) => `${formatSafeHours(hours)} h`;
+
 const arraysEqual = (a, b) => {
   if (!Array.isArray(a) || !Array.isArray(b)) return false;
   if (a.length !== b.length) return false;
@@ -182,7 +193,7 @@ const EarningsBreakdown = ({ breakdown, onPress, styles }) => {
     >
       <View style={styles.earningsHeader}>
         <Text style={styles.earningsTotal}>
-          {formatCurrency(breakdown.totalEarnings)}
+          {formatCurrencyWithEuro(breakdown.totalEarnings)}
         </Text>
         <MaterialCommunityIcons 
           name={expanded ? 'chevron-up' : 'chevron-down'} 
@@ -197,7 +208,7 @@ const EarningsBreakdown = ({ breakdown, onPress, styles }) => {
             <View key={index} style={styles.earningsComponent}>
               <View style={[styles.componentDot, { backgroundColor: comp.color }]} />
               <Text style={styles.componentLabel}>{comp.label}</Text>
-              <Text style={styles.componentValue}>{formatCurrency(comp.value)}</Text>
+              <Text style={styles.componentValue}>{formatCurrencyWithEuro(comp.value)}</Text>
             </View>
           ))}
         </View>
@@ -308,7 +319,7 @@ const DetailRow = ({ label, value, duration, highlight = false, isSubitem = fals
         {value}
       </Text>
       {duration && (
-        <Text style={styles.durationText}>({duration})</Text>
+        <Text style={styles.durationText}>({formatDurationWithUnit(duration)})</Text>
       )}
     </View>
     {calculation && (
@@ -365,7 +376,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
               <View style={styles.breakdownItemContainer}>
                 <DetailRow 
                   label="Giornaliero (prime 8h)" 
-                  value={formatSafeHours(
+                  value={formatHoursWithUnit(
                     (breakdown.ordinary.hours.lavoro_giornaliera || 0) +
                     (breakdown.ordinary.hours.viaggio_giornaliera || 0)
                   )}
@@ -385,7 +396,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
                 {breakdown.ordinary.hours.lavoro_giornaliera > 0 && (
                   <DetailRow 
                     label="- Lavoro" 
-                    value={formatSafeHours(breakdown.ordinary.hours.lavoro_giornaliera)}
+                    value={formatHoursWithUnit(breakdown.ordinary.hours.lavoro_giornaliera)}
                     isSubitem={true}
                     styles={styles}
                   />
@@ -393,7 +404,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
                 {breakdown.ordinary.hours.viaggio_giornaliera > 0 && (
                   <DetailRow 
                     label="- Viaggio" 
-                    value={formatSafeHours(breakdown.ordinary.hours.viaggio_giornaliera)}
+                    value={formatHoursWithUnit(breakdown.ordinary.hours.viaggio_giornaliera)}
                     isSubitem={true}
                     styles={styles}
                   />
@@ -407,7 +418,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
               <DetailRow 
                 label={`Lavoro ordinario ${breakdown.details?.isSunday ? 'domenica' : 
                        breakdown.details?.isHoliday ? 'festivo' : 'sabato'}`}
-                value={formatSafeHours((breakdown.ordinary.hours.lavoro_giornaliera || 0) + 
+                value={formatHoursWithUnit((breakdown.ordinary.hours.lavoro_giornaliera || 0) + 
                                       (breakdown.ordinary.hours.viaggio_giornaliera || 0))}
                 calculation={(() => {
                   const base = settings.contract?.hourlyRate || 16.41;
@@ -428,7 +439,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
               label={`Lavoro extra (oltre 8h)${breakdown.details?.isSaturday ? ' (Sabato)' : 
                      breakdown.details?.isSunday ? ' (Domenica)' : 
                      breakdown.details?.isHoliday ? ' (Festivo)' : ''}`}
-              value={formatSafeHours(breakdown.ordinary.hours.lavoro_extra)}
+              value={formatHoursWithUnit(breakdown.ordinary.hours.lavoro_extra)}
               calculation={(() => {
                 const base = settings.contract?.hourlyRate || 16.41;
                 let overtime;
@@ -449,7 +460,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
           {breakdown.ordinary.hours.viaggio_extra > 0 && (
             <DetailRow 
               label="Viaggio extra (oltre 8h)"
-              value={formatSafeHours(breakdown.ordinary.hours.viaggio_extra)}
+              value={formatHoursWithUnit(breakdown.ordinary.hours.viaggio_extra)}
               calculation={(() => {
                 const base = settings.contract?.hourlyRate || 16.41;
                 const rate = base * (settings.travelCompensationRate || 1.0);
@@ -476,7 +487,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
           {breakdown.standby.workHours?.ordinary > 0 && (
             <DetailRow 
               label="Lavoro diurno"
-              value={formatSafeHours(breakdown.standby.workHours.ordinary)}
+              value={formatHoursWithUnit(breakdown.standby.workHours.ordinary)}
               calculation={formatRateCalc(
                 breakdown.standby.workHours.ordinary,
                 settings.contract?.hourlyRate || 16.41,
@@ -489,7 +500,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
           {breakdown.standby.workHours?.night > 0 && (
             <DetailRow 
               label="Lavoro notturno (+25%)"
-              value={formatSafeHours(breakdown.standby.workHours.night)}
+              value={formatHoursWithUnit(breakdown.standby.workHours.night)}
               calculation={formatRateCalc(
                 breakdown.standby.workHours.night,
                 (settings.contract?.hourlyRate || 16.41) * 1.25,
@@ -502,7 +513,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
           {breakdown.standby.travelHours?.ordinary > 0 && (
             <DetailRow 
               label="Viaggio diurno"
-              value={formatSafeHours(breakdown.standby.travelHours.ordinary)}
+              value={formatHoursWithUnit(breakdown.standby.travelHours.ordinary)}
               duration={`Durata: ${formatSafeHours(breakdown.standby.travelHours.ordinary)}`}
               calculation={formatRateCalc(
                 breakdown.standby.travelHours.ordinary,
@@ -516,7 +527,7 @@ const AdvancedHoursBreakdown = ({ breakdown, settings, styles }) => {
           {breakdown.standby.travelHours?.night > 0 && (
             <DetailRow 
               label="Viaggio notturno (+25%)"
-              value={formatSafeHours(breakdown.standby.travelHours.night)}
+              value={formatHoursWithUnit(breakdown.standby.travelHours.night)}
               duration={`Durata: ${formatSafeHours(breakdown.standby.travelHours.night)}`}
               calculation={formatRateCalc(
                 breakdown.standby.travelHours.night,
@@ -560,6 +571,7 @@ const TimeEntryScreen = () => {
   const [standbyAllowances, setStandbyAllowances] = useState([]);
   const [breakdowns, setBreakdowns] = useState({});
   const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
 
   const { entries, isLoading, error, refreshEntries, canRetry } = useWorkEntries(selectedYear, selectedMonth, true);
   const { settings } = useSettings();
@@ -1118,7 +1130,7 @@ const TimeEntryScreen = () => {
           
           <View style={styles.standbySimpleContent}>
             <Text style={styles.standbySimpleAmount}>
-              Indennità: {formatCurrency(item.standbyAllowance || 0)}
+              Indennità: {formatCurrencyWithEuro(item.standbyAllowance || 0)}
             </Text>
           </View>
         </View>
@@ -1214,7 +1226,7 @@ const TimeEntryScreen = () => {
                 <Text style={styles.dayTypeBadgeText}>{dayTypeInfo.label}</Text>
               </View>
             )}
-            <Text style={styles.totalEarnings}>{formatCurrency(breakdown.totalEarnings)}</Text>
+            <Text style={styles.totalEarnings}>{formatCurrencyWithEuro(breakdown.totalEarnings)}</Text>
           </View>
         </View>
 
@@ -1413,7 +1425,7 @@ const TimeEntryScreen = () => {
           {calculationService.calculateWorkHours && (
             <DetailRow 
               label="Totale Ore Lavoro" 
-              value={formatSafeHours(calculationService.calculateWorkHours(workEntry))}
+              value={formatHoursWithUnit(calculationService.calculateWorkHours(workEntry))}
               highlight={true}
               styles={styles}
             />
@@ -1498,7 +1510,7 @@ const TimeEntryScreen = () => {
             {calculationService.calculateTravelHours && (
               <DetailRow 
                 label="Totale Viaggio" 
-                value={formatSafeHours(calculationService.calculateTravelHours(workEntry))}
+                value={formatHoursWithUnit(calculationService.calculateTravelHours(workEntry))}
                 highlight={true}
                 styles={styles}
               />
@@ -1605,7 +1617,7 @@ const TimeEntryScreen = () => {
                     return (
                       <DetailRow 
                         label={label}
-                        value={formatSafeHours(totalAllInterventiHours)}
+                        value={formatHoursWithUnit(totalAllInterventiHours)}
                         highlight={true}
                         styles={styles}
                       />
@@ -1616,7 +1628,7 @@ const TimeEntryScreen = () => {
                 {calculationService.calculateStandbyTravelHours && (
                   <DetailRow 
                     label="Totale Ore Viaggio Interventi" 
-                    value={formatSafeHours(calculationService.calculateStandbyTravelHours(workEntry))}
+                    value={formatHoursWithUnit(calculationService.calculateStandbyTravelHours(workEntry))}
                     highlight={true}
                     styles={styles}
                   />
@@ -1637,7 +1649,7 @@ const TimeEntryScreen = () => {
           {breakdown.ordinary?.total > 0 && (
             <DetailRow 
               label="Attività Ordinarie" 
-              value={formatCurrency(breakdown.ordinary.total)}
+              value={formatCurrencyWithEuro(breakdown.ordinary.total)}
               styles={styles}
             />
           )}
@@ -1646,13 +1658,13 @@ const TimeEntryScreen = () => {
             <>
               <DetailRow 
                 label="Interventi Reperibilità" 
-                value={formatCurrency((breakdown.standby.totalEarnings || 0) - (breakdown.standby.dailyIndemnity || 0))}
+                value={formatCurrencyWithEuro((breakdown.standby.totalEarnings || 0) - (breakdown.standby.dailyIndemnity || 0))}
                 styles={styles}
               />
               {breakdown.allowances?.standby > 0 && (
                 <DetailRow 
                   label="Indennità Reperibilità" 
-                  value={formatCurrency(breakdown.allowances.standby)}
+                  value={formatCurrencyWithEuro(breakdown.allowances.standby)}
                   styles={styles}
                 />
               )}
@@ -1662,7 +1674,7 @@ const TimeEntryScreen = () => {
           {!breakdown.standby?.totalEarnings && breakdown.allowances?.standby > 0 && (
             <DetailRow 
               label="Indennità Reperibilità" 
-              value={formatCurrency(breakdown.allowances.standby)}
+              value={formatCurrencyWithEuro(breakdown.allowances.standby)}
               styles={styles}
             />
           )}
@@ -1670,7 +1682,7 @@ const TimeEntryScreen = () => {
           {breakdown.allowances?.travel > 0 && (
             <DetailRow 
               label="Indennità Trasferta" 
-              value={formatCurrency(breakdown.allowances.travel)}
+              value={formatCurrencyWithEuro(breakdown.allowances.travel)}
               styles={styles}
             />
           )}
@@ -1688,7 +1700,7 @@ const TimeEntryScreen = () => {
               return (
                 <View style={styles.hoursRow}>
                   <Text style={styles.hoursLabel}>TOTALE ORE GIORNATA</Text>
-                  <Text style={styles.hoursValue}>{formatSafeHours(totalDayHours)}</Text>
+                  <Text style={styles.hoursValue}>{formatHoursWithUnit(totalDayHours)}</Text>
                 </View>
               );
             }
@@ -1715,7 +1727,7 @@ const TimeEntryScreen = () => {
           
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>TOTALE GIORNATA</Text>
-            <Text style={styles.totalValue}>{formatCurrency(breakdown.totalEarnings)}</Text>
+            <Text style={styles.totalValue}>{formatCurrencyWithEuro(breakdown.totalEarnings)}</Text>
           </View>
           
           {/* Rimborsi Pasti sotto il totale con dettaglio cash/buono */}
@@ -1724,7 +1736,7 @@ const TimeEntryScreen = () => {
               <View style={styles.mealSeparator} />
               <DetailRow 
                 label="Rimborsi Pasti (non tassabili)" 
-                value={formatCurrency(breakdown.allowances.meal)}
+                value={formatCurrencyWithEuro(breakdown.allowances.meal)}
                 styles={styles}
               />
               {/* Dettaglio composizione rimborsi pasti con logica uguale al form */}
@@ -1734,7 +1746,7 @@ const TimeEntryScreen = () => {
                   value={(() => {
                     // Se nel form è stato specificato un rimborso cash specifico, mostra solo quello
                     if (workEntry.mealLunchCash > 0) {
-                      return `${formatCurrency(workEntry.mealLunchCash)} (contanti - valore specifico)`;
+                      return `${formatCurrencyWithEuro(workEntry.mealLunchCash)} (contanti - valore specifico)`;
                     }
                     
                     // Altrimenti usa i valori dalle impostazioni (standard)
@@ -1742,11 +1754,11 @@ const TimeEntryScreen = () => {
                     const cash = parseFloat(settings?.mealAllowances?.lunch?.cashAmount) || 0;
                     
                     if (voucher > 0 && cash > 0) {
-                      return `${formatCurrency(voucher)} (buono) + ${formatCurrency(cash)} (contanti)`;
+                      return `${formatCurrencyWithEuro(voucher)} (buono) + ${formatCurrencyWithEuro(cash)} (contanti)`;
                     } else if (voucher > 0) {
-                      return `${formatCurrency(voucher)} (buono)`;
+                      return `${formatCurrencyWithEuro(voucher)} (buono)`;
                     } else if (cash > 0) {
-                      return `${formatCurrency(cash)} (contanti)`;
+                      return `${formatCurrencyWithEuro(cash)} (contanti)`;
                     } else {
                       return "Valore non impostato";
                     }
@@ -1762,7 +1774,7 @@ const TimeEntryScreen = () => {
                   value={(() => {
                     // Se nel form è stato specificato un rimborso cash specifico, mostra solo quello
                     if (workEntry.mealDinnerCash > 0) {
-                      return `${formatCurrency(workEntry.mealDinnerCash)} (contanti - valore specifico)`;
+                      return `${formatCurrencyWithEuro(workEntry.mealDinnerCash)} (contanti - valore specifico)`;
                     }
                     
                     // Altrimenti usa i valori dalle impostazioni (standard)
@@ -1770,11 +1782,11 @@ const TimeEntryScreen = () => {
                     const cash = parseFloat(settings?.mealAllowances?.dinner?.cashAmount) || 0;
                     
                     if (voucher > 0 && cash > 0) {
-                      return `${formatCurrency(voucher)} (buono) + ${formatCurrency(cash)} (contanti)`;
+                      return `${formatCurrencyWithEuro(voucher)} (buono) + ${formatCurrencyWithEuro(cash)} (contanti)`;
                     } else if (voucher > 0) {
-                      return `${formatCurrency(voucher)} (buono)`;
+                      return `${formatCurrencyWithEuro(voucher)} (buono)`;
                     } else if (cash > 0) {
-                      return `${formatCurrency(cash)} (contanti)`;
+                      return `${formatCurrencyWithEuro(cash)} (contanti)`;
                     } else {
                       return "Valore non impostato";
                     }
@@ -1985,7 +1997,7 @@ const TimeEntryScreen = () => {
           <Text style={styles.modernSectionTitle}>{section.title}</Text>
           <View style={styles.sectionStats}>
             <Text style={styles.sectionStatsText}>
-              {section.data.length} giorni • {formatCurrency(stats.totalEarnings)}
+              {section.data.length} giorni • {formatCurrencyWithEuro(stats.totalEarnings)}
             </Text>
             {stats.standbyDays > 0 && (
               <Text style={styles.sectionStatsSubtext}>
@@ -2054,9 +2066,18 @@ const TimeEntryScreen = () => {
           <View style={styles.sectionHeaderContentCentered}>
             <Text style={styles.modernSectionTitle}>{sections[0].title}</Text>
             <View style={styles.sectionStats}>
-              <Text style={styles.sectionStatsText}>
-                {sections[0].data.length} giorni • {formatCurrency(getSectionStats(sections[0].data).totalEarnings)}
-              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={styles.sectionStatsText}>
+                  {sections[0].data.length} giorni • {formatCurrencyWithEuro(getSectionStats(sections[0].data).totalEarnings)}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setShowInfoModal(true)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  style={{ marginLeft: 6 }}
+                >
+                  <MaterialCommunityIcons name="information-outline" size={16} color={theme.colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
               {getSectionStats(sections[0].data).standbyDays > 0 && (
                 <Text style={styles.sectionStatsSubtext}>
                   {getSectionStats(sections[0].data).standbyDays} giorni reperibilità
@@ -2079,6 +2100,78 @@ const TimeEntryScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Modal informativo differenza cifre */}
+      <Modal
+        visible={showInfoModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowInfoModal(false)}
+      >
+        <Pressable
+          style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}
+          onPress={() => setShowInfoModal(false)}
+        >
+          <Pressable
+            style={[
+              {
+                backgroundColor: theme.colors.card,
+                borderRadius: 16,
+                padding: 24,
+                width: '100%',
+                maxWidth: 400,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.3,
+                shadowRadius: 8,
+                elevation: 8,
+              }
+            ]}
+            onPress={() => {}}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <MaterialCommunityIcons name="information" size={24} color={theme.colors.primary} style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 17, fontWeight: '700', color: theme.colors.text, flex: 1 }}>
+                Perché i totali differiscono dalla Dashboard?
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 14, color: theme.colors.textSecondary, lineHeight: 22, marginBottom: 12 }}>
+              I valori visualizzati qui sono una <Text style={{ fontWeight: '600', color: theme.colors.text }}>somma semplice degli inserimenti</Text> del mese, calcolata in tempo reale.
+            </Text>
+
+            <Text style={{ fontSize: 14, color: theme.colors.textSecondary, lineHeight: 22, marginBottom: 12 }}>
+              La <Text style={{ fontWeight: '600', color: theme.colors.text }}>Dashboard</Text> applica logiche aggiuntive:
+            </Text>
+
+            <View style={{ backgroundColor: theme.colors.surface, borderRadius: 10, padding: 12, marginBottom: 12 }}>
+              <Text style={{ fontSize: 13, color: theme.colors.textSecondary, lineHeight: 21 }}>
+                {'• '}<Text style={{ color: theme.colors.text }}>Indennità trasferta e reperibilità</Text>{' aggiunte separatamente\n'}
+                {'• '}<Text style={{ color: theme.colors.text }}>Pasti cash specifico</Text>{' contabilizzati a parte\n'}
+                {'• '}<Text style={{ color: theme.colors.text }}>Giorni speciali</Text>{' (ferie, malattia, permessi) con logica dedicata\n'}
+                {'• '}<Text style={{ color: theme.colors.text }}>Deduzioni e arrotondamenti</Text>{' CCNL applicati globalmente\n'}
+                {'• '}<Text style={{ color: theme.colors.text }}>Stima netto</Text>{' calcolata su base mensile completa'}
+              </Text>
+            </View>
+
+            <Text style={{ fontSize: 13, color: theme.colors.textSecondary, lineHeight: 20, fontStyle: 'italic', marginBottom: 20 }}>
+              Il contatore qui è utile per un confronto rapido; la cifra definitiva è sempre quella in Dashboard.
+            </Text>
+
+            <TouchableOpacity
+              onPress={() => setShowInfoModal(false)}
+              style={{
+                backgroundColor: theme.colors.primary,
+                borderRadius: 10,
+                paddingVertical: 12,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 16 }}>Capito</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <SectionList
         sections={sections}

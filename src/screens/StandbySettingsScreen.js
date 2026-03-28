@@ -255,28 +255,33 @@ const StandbySettingsScreen = ({ navigation }) => {
   );
 
   useEffect(() => {
-    // Programma notifica automatica per i giorni di reperibilità usando il nostro sistema Enhanced
+    // Mostra il popup di reperibilità oggi solo una volta per giorno
     const today = new Date();
     const todayStr = today.toISOString().slice(0, 10);
+    let didShow = false;
     if (formData.enabled && standbyDays && standbyDays[todayStr]?.selected) {
-      // Usa il sistema Alert per notificare immediatamente
-      Alert.alert(
-        'Reperibilità',
-        'Oggi sei in reperibilità. Conferma la tua disponibilità!',
-        [
-          {
-            text: 'Annulla',
-            style: 'cancel'
-          },
-          {
-            text: 'Conferma',
-            onPress: async () => {
-              await AsyncStorage.setItem(`standby_confirmed_${todayStr}`, 'true');
-              Alert.alert('Conferma reperibilità', 'Hai confermato la tua disponibilità per oggi.');
-            }
-          }
-        ]
-      );
+      AsyncStorage.getItem(`standby_confirmed_${todayStr}`).then((confirmed) => {
+        if (!confirmed && !didShow) {
+          didShow = true;
+          Alert.alert(
+            'Reperibilità',
+            'Oggi sei in reperibilità. Conferma la tua disponibilità!',
+            [
+              {
+                text: 'Annulla',
+                style: 'cancel'
+              },
+              {
+                text: 'Conferma',
+                onPress: async () => {
+                  await AsyncStorage.setItem(`standby_confirmed_${todayStr}`, 'true');
+                  Alert.alert('Conferma reperibilità', 'Hai confermato la tua disponibilità per oggi.');
+                }
+              }
+            ]
+          );
+        }
+      });
     }
   }, [formData.enabled, standbyDays]);
 
@@ -389,7 +394,7 @@ const StandbySettingsScreen = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
         </View>
@@ -398,7 +403,7 @@ const StandbySettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Reperibilità</Text>

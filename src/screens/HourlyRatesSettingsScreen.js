@@ -275,14 +275,7 @@ const HourlyRatesSettingsScreen = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Fasce Orarie</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Caricamento...</Text>
@@ -292,21 +285,7 @@ const HourlyRatesSettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.title}>Fasce Orarie Avanzate</Text>
-        <TouchableOpacity onPress={saveSettings} disabled={isSaving}>
-          {isSaving ? (
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-          ) : (
-            <Ionicons name="checkmark" size={24} color={theme.colors.primary} />
-          )}
-        </TouchableOpacity>
-      </View>
-
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView style={styles.content}>
         
         {/* Sezione Metodo di Calcolo */}
@@ -588,12 +567,21 @@ const HourlyRatesSettingsScreen = ({ navigation }) => {
             <Text style={styles.resetButtonText}>Reset a Impostazioni Predefinite</Text>
           </TouchableOpacity>
 
-          {/* Test CCNL Compliance */}
-          <TouchableOpacity style={styles.testButton} onPress={testCCNLCompliance}>
-            <Ionicons name="flask-outline" size={20} color={theme.colors.primary} />
-            <Text style={styles.testButtonText}>🧪 Test Conformità CCNL</Text>
-          </TouchableOpacity>
         </View>
+
+        {/* Pulsante Salva */}
+        <TouchableOpacity
+          style={styles.saveButton}
+          onPress={saveSettings}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="save-outline" size={20} color="white" />
+          )}
+          <Text style={styles.saveButtonText}>Salva Impostazioni</Text>
+        </TouchableOpacity>
         
       </ScrollView>
     </SafeAreaView>
@@ -604,20 +592,6 @@ const createStyles = (theme) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: theme.colors.background,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: theme.colors.text,
   },
   content: {
     flex: 1,
@@ -815,22 +789,22 @@ const createStyles = (theme) => StyleSheet.create({
     color: theme.colors.error,
     fontWeight: '500',
   },
-  testButton: {
+  saveButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
     padding: 16,
     borderRadius: 12,
-    gap: 8,
-    marginTop: 12,
+    gap: 10,
+    marginHorizontal: 0,
+    marginTop: 24,
+    marginBottom: 32,
   },
-  testButtonText: {
+  saveButtonText: {
     fontSize: 16,
-    color: theme.colors.primary,
-    fontWeight: '500',
+    color: 'white',
+    fontWeight: '600',
   },
 });
 

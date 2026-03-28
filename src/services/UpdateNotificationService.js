@@ -1,6 +1,22 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 
+const compareVersions = (left, right) => {
+  const leftParts = String(left || '0').split('.').map(part => parseInt(part, 10) || 0);
+  const rightParts = String(right || '0').split('.').map(part => parseInt(part, 10) || 0);
+  const maxLength = Math.max(leftParts.length, rightParts.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const leftValue = leftParts[index] || 0;
+    const rightValue = rightParts[index] || 0;
+
+    if (leftValue > rightValue) return 1;
+    if (leftValue < rightValue) return -1;
+  }
+
+  return 0;
+};
+
 class UpdateNotificationService {
   constructor() {
     this.STORAGE_KEY = 'manual_update_notifications';
@@ -100,6 +116,48 @@ class UpdateNotificationService {
       return updates.sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate));
     } catch (error) {
       console.error('❌ Errore recupero aggiornamenti pendenti:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Rimuove gli aggiornamenti manuali obsoleti o uguali alla versione corrente.
+   */
+  async clearStaleUpdateNotifications(currentVersion) {
+    try {
+      if (!currentVersion) {
+        return [];
+      }
+
+      const keys = await AsyncStorage.getAllKeys();
+      const updateKeys = keys.filter(key => key.startsWith(this.STORAGE_KEY));
+      const removedVersions = [];
+
+      for (const key of updateKeys) {
+        const data = await AsyncStorage.getItem(key);
+        if (!data) {
+          continue;
+        }
+
+        const parsed = JSON.parse(data);
+        const versionName = parsed?.versionName;
+        if (!versionName) {
+          continue;
+        }
+
+        if (compareVersions(versionName, currentVersion) <= 0) {
+          await AsyncStorage.removeItem(key);
+          removedVersions.push(versionName);
+        }
+      }
+
+      if (removedVersions.length > 0) {
+        console.log(`🧹 Rimosse notifiche aggiornamento obsolete: ${removedVersions.join(', ')}`);
+      }
+
+      return removedVersions;
+    } catch (error) {
+      console.error('❌ Errore pulizia notifiche obsolete:', error);
       return [];
     }
   }

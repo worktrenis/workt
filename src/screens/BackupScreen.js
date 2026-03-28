@@ -363,27 +363,62 @@ const BackupScreen = ({ navigation }) => {
 
   // Funzione per ottenere il percorso completo del backup
   const getFullBackupPath = (backup) => {
+    // Se c'è un percorso leggibile (generato dal service per SAF)
+    if (backup.readablePath) {
+      return backup.readablePath;
+    }
+
     // Per AsyncStorage, mostra la posizione interna
     if (backup.destination === 'asyncstorage' || !backup.destination) {
-      return `Memoria app: ${backup.name || backup.key}`;
+      return 'Memoria app';
     }
     
-    // Per file condivisi, mostra informazioni user-friendly
+    // Per file condivisi
     if (backup.destination === 'sharing') {
-      return `File condiviso: ${backup.name || 'Backup'}`;
+      return 'File condiviso';
+    }
+
+    // Per percorso custom (SAF Android)
+    if (backup.destination === 'custom') {
+      const path = backup.destinationPath || backup.filePath || backup.path || '';
+      if (path.startsWith('content://')) {
+        // Decodifica il SAF URI per estrarre un percorso leggibile
+        try {
+          const decoded = decodeURIComponent(path);
+          const treeIdx = decoded.lastIndexOf('tree/');
+          if (treeIdx !== -1) {
+            const part = decoded.substring(treeIdx + 5);
+            const colonIdx = part.indexOf(':');
+            if (colonIdx !== -1) {
+              const storage = part.substring(0, colonIdx);
+              const folder = part.substring(colonIdx + 1);
+              const storageName = storage === 'primary' ? 'Memoria interna' : storage;
+              return folder ? `${storageName} \u203a ${folder.replace(/\//g, ' \u203a ')}` : storageName;
+            }
+          }
+        } catch (_) {}
+        return 'Cartella personalizzata';
+      }
+      // Percorso locale normale: mostra solo la parte significativa
+      if (path.includes('documentDirectory')) return 'Documenti app';
+      return path;
     }
     
-    // Per file system, cerca il percorso completo
+    // Per file system locale
     if (backup.destination === 'filesystem' || backup.destination === 'android-saf') {
       const fullPath = backup.filePath || backup.path;
-      if (fullPath && fullPath !== backup.key && fullPath.includes('/')) {
+      if (fullPath && fullPath.includes('/')) {
         return fullPath;
       }
-      return `File system: ${backup.name || backup.key}`;
+      return 'File system';
+    }
+
+    // Per memoria app
+    if (backup.destination === 'memory') {
+      return 'Memoria app (Downloads)';
     }
     
-    // Fallback generico
-    return backup.path || backup.name || backup.key;
+    return backup.destination || 'Sconosciuto';
   };
 
   // Funzione per pulire backup duplicati
@@ -466,25 +501,57 @@ const BackupScreen = ({ navigation }) => {
       
       console.log(`📊 BACKUP RECAP: ${manualBackups.length} manuali + ${autoBackups.length} automatici = ${manualBackups.length + autoBackups.length} totali`);
       
-      // Combina e ordina tutti i backup per data (più recenti per primi)
+      // Combina tutti i backup, rimuovendo eventuali duplicati
       const allBackups = [...(manualBackups || []), ...(autoBackups || [])];
+      
+      // De-duplicazione per chiave: se un backup appare sia da AsyncStorage che da filesystem, tieni quello dal filesystem (ha più info)
+      const seen = new Map();
+      for (const b of allBackups) {
+        const id = b.filePath || b.path || b.key;
+        if (!seen.has(id)) {
+          seen.set(id, b);
+        }
+      }
+      const uniqueBackups = Array.from(seen.values());
 
-      // Normalizzazione: NON perdere la chiave reale di storage (serve per AsyncStorage.getItem)
-      const normalizedBackups = allBackups.map((backup, index) => {
-        const storageKey = backup.key || backup.backupKey || `backup_${index}`; // chiave reale
+      // Normalizzazione: ordine cronologico unico per manuali + automatici
+      const normalizedBackups = uniqueBackups.map((backup, index) => {
+        const storageKey = backup.key || backup.backupKey || `backup_${index}`;
+        
+        // Ottieni timestamp numerico: prova tutte le possibili fonti di data
+        let ts = 0;
+        const dateSources = [backup.createdAt, backup.date, backup.created, backup.timestamp, backup.metadata?.timestamp];
+        for (const src of dateSources) {
+          if (!src) continue;
+          const parsed = src instanceof Date ? src.getTime() : new Date(src).getTime();
+          if (!isNaN(parsed) && parsed > 0) {
+            ts = parsed;
+            break;
+          }
+        }
+        // Fallback: estrai data dal nome file (WorkT-auto-backup-2026-03-15_10-30-00)
+        if (ts === 0) {
+          const m = (backup.name || storageKey).match(/(\d{4})-(\d{2})-(\d{2})[_T](\d{2})-(\d{2})/);
+          if (m) {
+            ts = new Date(`${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:00`).getTime();
+          }
+        }
+        if (ts === 0) ts = Date.now() - index; // ultimo fallback: ordine di arrivo
+
         return {
           ...backup,
-          storageKey,              // conserva la chiave originale (per sicurezza)
-            // key usata da FlatList: usiamo la stessa chiave reale per evitare mismatch
+          storageKey,
           key: storageKey,
-          displayName: backup.name || storageKey, // nome da mostrare (UI può usare name già esistente)
-          createdAt: backup.createdAt || backup.date || new Date(),
+          displayName: backup.name || storageKey,
+          createdAt: new Date(ts).toISOString(),
+          _sortTs: ts,
           size: backup.size || 0,
-          filePath: backup.filePath || backup.path // Assicura che filePath sia sempre disponibile
+          filePath: backup.filePath || backup.path
         };
       });
       
-      normalizedBackups.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      // Ordine cronologico decrescente: il più recente in alto
+      normalizedBackups.sort((a, b) => b._sortTs - a._sortTs);
       
       setExistingBackups(normalizedBackups);
     } catch (error) {
@@ -525,47 +592,57 @@ const BackupScreen = ({ navigation }) => {
           onPress: async () => {
             try {
               setLoadingBackups(true);
-              
-              console.log('🗑️ DEBUG - Tentativo eliminazione backup:', {
-                name: backup.name,
-                type: backup.type,
-                filePath: backup.filePath,
-                path: backup.path,
-                key: backup.key
-              });
-              
-              let success = false;
-              
-              // Elimina in base al tipo di backup
-              if (backup.type === 'auto') {
-                // Backup automatico - elimina direttamente il file
-                const targetPath = backup.filePath || backup.path;
-                console.log('🗑️ DEBUG - Eliminazione backup automatico:', targetPath);
-                
-                if (targetPath && targetPath.includes('/')) {
-                  await FileSystem.deleteAsync(targetPath);
-                  console.log('✅ DEBUG - Backup automatico eliminato con successo');
-                  success = true;
+
+              const targetPath = backup.filePath || backup.path;
+              // Un percorso è un file su disco se è un SAF content:// oppure un path file:// o assoluto,
+              // ma NON una chiave AsyncStorage (che inizia con 'AsyncStorage:' o non contiene separatori)
+              const isFileOnDisk = targetPath &&
+                (targetPath.startsWith('content://') ||
+                 targetPath.startsWith('file://') ||
+                 (targetPath.includes('/') && !targetPath.startsWith('AsyncStorage:')));
+
+              // Un key è una chiave AsyncStorage valida se non è un URI di file
+              const isAsyncKey = backup.key &&
+                !backup.key.startsWith('content://') &&
+                !backup.key.startsWith('file://');
+
+              // Step 1: elimina il file dal filesystem (sia per backup auto che manuali con file)
+              if (isFileOnDisk) {
+                if (targetPath.startsWith('content://')) {
+                  // SAF URI Android: usa StorageAccessFramework se disponibile, altrimenti FileSystem
+                  try {
+                    const { StorageAccessFramework } = FileSystem;
+                    if (StorageAccessFramework?.deleteAsync) {
+                      await StorageAccessFramework.deleteAsync(targetPath);
+                    } else {
+                      await FileSystem.deleteAsync(targetPath, { idempotent: true });
+                    }
+                    console.log('✅ File SAF eliminato:', targetPath);
+                  } catch (safErr) {
+                    console.warn('⚠️ Errore eliminazione SAF, provo FileSystem.deleteAsync:', safErr.message);
+                    await FileSystem.deleteAsync(targetPath, { idempotent: true });
+                  }
                 } else {
-                  console.error('❌ DEBUG - Percorso file backup automatico non valido:', targetPath);
-                  throw new Error('Percorso file non valido');
+                  await FileSystem.deleteAsync(targetPath, { idempotent: true });
+                  console.log('✅ File eliminato:', targetPath);
                 }
-              } else {
-                // Backup manuale - usa il servizio esistente
-                console.log('🗑️ DEBUG - Eliminazione backup manuale:', backup.key);
+              }
+
+              // Step 2: elimina la chiave da AsyncStorage (sia per backup manuali che per auto con chiave)
+              if (isAsyncKey) {
                 await BackupService.deleteLocalBackup(backup.key);
-                console.log('✅ DEBUG - Backup manuale eliminato con successo');
-                success = true;
+                console.log('✅ Chiave AsyncStorage eliminata:', backup.key);
               }
-              
-              if (success) {
-                await loadExistingBackups(); // Ricarica la lista
-                
-                Alert.alert(
-                  '✅ Backup Eliminato',
-                  `Il backup "${backup.name}" è stato eliminato con successo.`
-                );
+
+              if (!isFileOnDisk && !isAsyncKey) {
+                throw new Error('Nessuna sorgente valida trovata per questo backup');
               }
+
+              await loadExistingBackups();
+              Alert.alert(
+                '✅ Backup Eliminato',
+                `Il backup "${backup.name}" è stato eliminato con successo.`
+              );
             } catch (error) {
               console.error('❌ Errore eliminazione backup:', error);
               Alert.alert(
@@ -596,33 +673,33 @@ const BackupScreen = ({ navigation }) => {
               setIsLoading(true);
               
               let backupData;
+              const filePath = backup.filePath || backup.path;
+              const isRealFilePath = filePath && (filePath.startsWith('file://') || filePath.startsWith('/') || filePath.startsWith('content://'));
               
-              if (backup.type === 'auto') {
-                // Backup automatico - leggi dal file system
-                const FileSystem = await import('expo-file-system');
-                const fileContent = await FileSystem.readAsStringAsync(backup.filePath);
-                const parsedData = JSON.parse(fileContent);
-                
-                // Estrai solo i dati (senza metadati)
-                backupData = JSON.stringify(parsedData.data || parsedData);
+              if (backup._cachedContent) {
+                // Contenuto già letto durante il caricamento della lista
+                console.log('📂 RESTORE - uso contenuto cached:', backup._cachedContent.length, 'bytes');
+                backupData = backup._cachedContent;
+              } else if (isRealFilePath) {
+                // Backup su filesystem - leggi dal file
+                console.log('📂 RESTORE - lettura da filesystem:', filePath);
+                const fileContent = await FileSystem.readAsStringAsync(filePath);
+                backupData = fileContent;
+                console.log('📂 RESTORE - letto:', fileContent?.length, 'bytes');
               } else {
-                // Backup manuale - leggi da AsyncStorage
-                const storageKey = backup.storageKey || backup.key; // usa sempre la chiave reale
+                // Backup in AsyncStorage - leggi dalla chiave
+                const storageKey = backup.storageKey || backup.key;
                 backupData = await AsyncStorage.getItem(storageKey);
                 console.log('🔎 RESTORE manuale - uso storageKey:', storageKey, 'length:', backupData?.length || 0);
                 if (!backupData) {
-                  throw new Error('Dati backup non trovati');
+                  throw new Error('Dati backup non trovati in AsyncStorage');
                 }
               }
 
               await BackupService.importBackup(backupData);
               
-              // 🚨 CRITICAL FIX: Pulisci cache e forza reload completo
-              console.log('🔄 RESTORE: Pulizia cache e forzando reload...');
-              
-              // Pulisci AsyncStorage cache delle impostazioni
-              await AsyncStorage.removeItem('settings');
-              console.log('🗑️ RESTORE: Cache settings pulita');
+              // Il ripristino ha già scritto le AsyncStorage settings corrette
+              console.log('✅ RESTORE: Ripristino completato');
               
               Alert.alert(
                 '✅ Ripristino Completato',
@@ -642,7 +719,7 @@ const BackupScreen = ({ navigation }) => {
               console.error('Errore ripristino backup:', error);
               Alert.alert(
                 '❌ Errore Ripristino',
-                'Impossibile ripristinare il backup. Il file potrebbe essere corrotto.'
+                `Impossibile ripristinare il backup.\n\nDettaglio: ${error.message}`
               );
             } finally {
               setIsLoading(false);
@@ -660,10 +737,14 @@ const BackupScreen = ({ navigation }) => {
       
       let backupContent;
       
-      if (backup.type === 'auto') {
-        // Backup automatico - leggi dal file system
-        const FileSystem = await import('expo-file-system/legacy');
-        backupContent = await FileSystem.readAsStringAsync(backup.filePath);
+      const filePath = backup.filePath || backup.path;
+      const isRealFilePath = filePath && (filePath.startsWith('file://') || filePath.startsWith('/') || filePath.startsWith('content://'));
+      
+      if (backup._cachedContent) {
+        backupContent = backup._cachedContent;
+      } else if (isRealFilePath) {
+        // Backup su filesystem - leggi dal file
+        backupContent = await FileSystem.readAsStringAsync(filePath);
       } else {
         // Backup manuale - leggi da AsyncStorage
         const storageKey = backup.storageKey || backup.key;
@@ -677,7 +758,6 @@ const BackupScreen = ({ navigation }) => {
       // Salva come file per l'esportazione
       const fileName = `${backup.name.replace(/[^a-zA-Z0-9]/g, '_')}.json`;
       
-      const FileSystem = await import('expo-file-system/legacy');
       const Sharing = await import('expo-sharing');
       
       const fileUri = FileSystem.documentDirectory + fileName;
@@ -770,12 +850,8 @@ const BackupScreen = ({ navigation }) => {
               try {
                 const restoreResult = await BackupService.importBackup(fileContent);
                 
-                // 🚨 CRITICAL FIX: Pulisci cache e forza reload completo
-                console.log('🔄 RESTORE: Pulizia cache e forzando reload...');
-                
-                // Pulisci AsyncStorage cache delle impostazioni
-                await AsyncStorage.removeItem('settings');
-                console.log('🗑️ RESTORE: Cache settings pulita');
+                // Il ripristino ha già scritto le AsyncStorage settings corrette
+                console.log('✅ RESTORE da file: Ripristino completato');
                 
                 Alert.alert(
                   '✅ Ripristino Completato',
@@ -1117,7 +1193,7 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <StatusBar style={theme.isDark ? 'light' : 'dark'} />
 
       <ScrollView style={styles.content}>
@@ -1240,8 +1316,7 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
                   <View style={styles.customPathContainer}>
                     <Text style={styles.pathsTitle}>📂 Cartella backup personalizzata</Text>
                     <Text style={styles.customPathDescription}>
-                      Scegli dove salvare i backup. Verrà aperto il menu di condivisione: 
-                      salva il file nella cartella desiderata per impostare il percorso.
+                      {'Scegli una cartella dal selettore: Download, Documenti, scheda SD, ecc.\nI file di backup verranno salvati direttamente nella cartella scelta.'}
                     </Text>
                     <TouchableOpacity
                       style={[styles.pathButton, styles.pathButtonPrimary]}
@@ -1250,10 +1325,13 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
                           setIsLoading(true);
                           const result = await AutoBackupService.selectBackupFolder();
                           if (result.success) {
-                            Alert.alert('✅ Percorso Impostato', 
-                              `I backup verranno salvati nella cartella selezionata.\n\nPercorso: ${result.displayName}`,
+                            Alert.alert('✅ Cartella Impostata', 
+                              `I backup automatici verranno salvati in:\n\n📂 ${result.displayName}`,
                               [{ text: 'OK' }]
                             );
+                            // Sincronizza stato UI: backup abilitato + destinazione custom
+                            setAutoBackupOnSave(true);
+                            setAutoBackupDestination('custom');
                             // Ricarica le informazioni sui percorsi
                             const pathsInfo = await AutoBackupService.getCustomPathsInfo();
                             setCustomPaths(pathsInfo || {});
@@ -1274,9 +1352,9 @@ Backup: ${backupEntriesWithInterventi.length} entry con interventi`;
                     
                     {customPaths.custom && (
                       <View style={styles.selectedPathInfo}>
-                        <Text style={styles.selectedPathLabel}>Cartella selezionata:</Text>
+                        <Text style={styles.selectedPathLabel}>📂 Cartella selezionata:</Text>
                         <Text style={styles.selectedPathValue} numberOfLines={2} ellipsizeMode="middle">
-                          {customPaths.custom.path}
+                          {customPaths.custom.displayName || customPaths.custom.path}
                         </Text>
                       </View>
                     )}

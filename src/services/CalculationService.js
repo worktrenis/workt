@@ -3142,6 +3142,7 @@ class CalculationService {
       ordinaryEarnings = dailyRate;
       
       // Analizza se le prime 8 ore cadono in fasce serali/notturne
+      // Supplementi base sulle ore di lavoro
       const regularPeriods = this.extractRegularWorkPeriods(workEntry, regularHours);
       
       for (const period of regularPeriods) {
@@ -3201,6 +3202,60 @@ class CalculationService {
             totalHours: hours,
             breakdown: periodBreakdown,
             totalSupplement: totalSupplement
+          });
+        }
+      }
+
+      // Regola richiesta: solo il viaggio compreso nelle prime 8 ore
+      // prende supplementi orari; il viaggio oltre le 8h resta in travelEarnings.
+      const travelWithinDailyQuota = Math.max(0, effectiveTravelHours - travelExtraHours);
+      const travelWithinDailyPeriods = this.extractRegularTravelPeriodsWithinFirstEight(
+        workEntry,
+        regularHours,
+        travelWithinDailyQuota
+      );
+
+      const travelWithinDailyHours = travelWithinDailyPeriods.reduce((sum, p) => sum + (p.hours || 0), 0);
+      console.log(`[CalculationService] 📊 Quota viaggio supplementabile (prime 8h): ${travelWithinDailyHours}h / ${travelWithinDailyQuota}h`);
+      for (const period of travelWithinDailyPeriods) {
+        const startMinutes = this.parseTime(period.startTime);
+        const endMinutes = this.parseTime(period.endTime);
+        const timeSlotAnalysis = this.analyzeTimeSlotForPeriod(startMinutes, endMinutes);
+
+        let travelSupplement = 0;
+        const periodBreakdown = [];
+
+        if (timeSlotAnalysis.eveningHours > 0) {
+          const eveningSupplement = timeSlotAnalysis.eveningHours * baseRate * 0.25;
+          travelSupplement += eveningSupplement;
+          periodBreakdown.push({
+            type: 'Viaggio serale (prime 8h)',
+            hours: timeSlotAnalysis.eveningHours,
+            rate: 0.25,
+            amount: eveningSupplement
+          });
+          console.log(`[CalculationService] 📊 Supplemento viaggio serale (prime 8h): ${timeSlotAnalysis.eveningHours}h × €${baseRate.toFixed(2)} × 0.25 = €${eveningSupplement.toFixed(2)}`);
+        }
+
+        if (timeSlotAnalysis.nightHours > 0) {
+          const nightSupplement = timeSlotAnalysis.nightHours * baseRate * 0.35;
+          travelSupplement += nightSupplement;
+          periodBreakdown.push({
+            type: 'Viaggio notturno (prime 8h)',
+            hours: timeSlotAnalysis.nightHours,
+            rate: 0.35,
+            amount: nightSupplement
+          });
+          console.log(`[CalculationService] 📊 Supplemento viaggio notturno (prime 8h): ${timeSlotAnalysis.nightHours}h × €${baseRate.toFixed(2)} × 0.35 = €${nightSupplement.toFixed(2)}`);
+        }
+
+        if (travelSupplement > 0) {
+          supplementEarnings += travelSupplement;
+          regularBreakdown.push({
+            timeRange: `${period.startTime}-${period.endTime}`,
+            totalHours: period.hours,
+            breakdown: periodBreakdown,
+            totalSupplement: travelSupplement
           });
         }
       }
@@ -3373,7 +3428,9 @@ class CalculationService {
         // Verifica se le ore extra sono dovute principalmente al viaggio
         const isExtraFromTravel = effectiveWorkHours <= standardWorkDay;
         
-        if (!isExtraFromTravel) {
+        if (hasMultipleShifts) {
+          console.log(`[CalculationService] ✅ NESSUN FALLBACK: Multi-cantiere rilevato, mantengo totalOvertimeHours a 0 per evitare forzature incoerenti`);
+        } else if (!isExtraFromTravel) {
           console.log(`[CalculationService] ⚠️ CORREZIONE FINALE: Ore extra da lavoro effettivo, forzo totalOvertimeHours da 0 a ${extraHours}`);
           totalOvertimeHours = extraHours;
           // Aggiungi anche un breakdown semplificato per il fallback
@@ -3433,14 +3490,18 @@ class CalculationService {
       overtimeBreakdown: normalizeArray(extraEarningsBreakdown)
     }, null, 2));
 
+    const ordinaryHoursSplit = {
+      lavoro_giornaliera: Math.min(effectiveWorkHours, standardWorkDay),
+      viaggio_giornaliera: Math.min(effectiveTravelHours, Math.max(0, standardWorkDay - effectiveWorkHours)),
+      lavoro_extra: Math.max(0, effectiveWorkHours - standardWorkDay),
+      viaggio_extra: Math.max(0, effectiveTravelHours - Math.max(0, standardWorkDay - effectiveWorkHours))
+    };
+
+    console.log(`[CalculationService] 📊 Ripartizione prime 8h: lavoro=${ordinaryHoursSplit.lavoro_giornaliera}h, viaggio=${ordinaryHoursSplit.viaggio_giornaliera}h, lavoro_extra=${ordinaryHoursSplit.lavoro_extra}h, viaggio_extra=${ordinaryHoursSplit.viaggio_extra}h`);
+
     return {
       ordinary: {
-        hours: {
-          lavoro_giornaliera: Math.min(effectiveWorkHours, standardWorkDay),
-          viaggio_giornaliera: Math.min(effectiveTravelHours, Math.max(0, standardWorkDay - effectiveWorkHours)),
-          lavoro_extra: Math.max(0, effectiveWorkHours - standardWorkDay),
-          viaggio_extra: Math.max(0, effectiveTravelHours - Math.max(0, standardWorkDay - effectiveWorkHours))
-        },
+        hours: ordinaryHoursSplit,
         earnings: {
           giornaliera: ordinaryEarnings + supplementEarnings,
           viaggio_extra: travelEarnings,
@@ -3510,6 +3571,98 @@ class CalculationService {
       }
     }
     
+    return periods;
+  }
+
+  /**
+   * Estrae solo i periodi di viaggio compresi nelle prime N ore cronologiche
+   * (turni + viaggi), senza alterare il calcolo ore extra/viaggio.
+   */
+  extractRegularTravelPeriodsWithinFirstEight(workEntry, regularHours, maxTravelHoursInDaily = Number.MAX_SAFE_INTEGER) {
+    const periods = [];
+    const allPeriods = [];
+
+    const pushPeriod = (type, startTime, endTime) => {
+      if (!startTime || !endTime) return;
+      const duration = this.calculateTimeDifference(startTime, endTime) / 60;
+      if (duration <= 0) return;
+      allPeriods.push({ type, startTime, endTime, duration });
+    };
+
+    // Turni principali
+    pushPeriod('work', workEntry.workStart1, workEntry.workEnd1);
+    pushPeriod('work', workEntry.workStart2, workEntry.workEnd2);
+
+    // Viaggi principali
+    pushPeriod('travel', workEntry.departureCompany, workEntry.arrivalSite);
+    pushPeriod('travel', workEntry.departureReturn, workEntry.arrivalCompany);
+
+    // Dati multi-cantiere
+    let viaggi = workEntry.viaggi;
+    if (typeof viaggi === 'string') {
+      try {
+        viaggi = JSON.parse(viaggi);
+      } catch (e) {
+        viaggi = null;
+      }
+    }
+
+    if (Array.isArray(viaggi)) {
+      viaggi.forEach((viaggio) => {
+        const vWorkStart1 = viaggio.workStart1 || viaggio.work_start_1;
+        const vWorkEnd1 = viaggio.workEnd1 || viaggio.work_end_1;
+        const vWorkStart2 = viaggio.workStart2 || viaggio.work_start_2;
+        const vWorkEnd2 = viaggio.workEnd2 || viaggio.work_end_2;
+
+        pushPeriod('work', vWorkStart1, vWorkEnd1);
+        pushPeriod('work', vWorkStart2, vWorkEnd2);
+        pushPeriod('travel', viaggio.departure_company, viaggio.arrival_site);
+        pushPeriod('travel', viaggio.departure_return, viaggio.arrival_company);
+      });
+    }
+
+    // Ordine cronologico coerente con la logica overtime
+    allPeriods.sort((a, b) => {
+      let aMinutes = this.parseTime(a.startTime);
+      let bMinutes = this.parseTime(b.startTime);
+
+      if (this.parseTime(a.endTime) < this.parseTime(a.startTime)) {
+        aMinutes += 24 * 60;
+      }
+      if (this.parseTime(b.endTime) < this.parseTime(b.startTime)) {
+        bMinutes += 24 * 60;
+      }
+
+      return aMinutes - bMinutes;
+    });
+
+    let remainingHours = regularHours;
+    let remainingTravelHours = Math.max(0, maxTravelHoursInDaily);
+    for (const period of allPeriods) {
+      if (remainingHours <= 0) break;
+      if (remainingTravelHours <= 0) break;
+
+      const hoursFromPeriod = Math.min(period.duration, remainingHours);
+      if (hoursFromPeriod <= 0) continue;
+
+      if (period.type === 'travel') {
+        const travelHoursFromPeriod = Math.min(hoursFromPeriod, remainingTravelHours);
+        if (travelHoursFromPeriod > 0) {
+          const endTime = this.addHoursToTime(period.startTime, travelHoursFromPeriod);
+          periods.push({
+            startTime: period.startTime,
+            endTime,
+            hours: travelHoursFromPeriod,
+            type: 'travel'
+          });
+          remainingTravelHours -= travelHoursFromPeriod;
+        }
+      }
+
+      remainingHours -= hoursFromPeriod;
+    }
+
+    console.log(`[CalculationService] 📊 Viaggio dentro prime 8h (per supplementi):`, periods);
     return periods;
   }
 

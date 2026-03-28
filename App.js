@@ -54,42 +54,6 @@ try {
   console.log('⚠️ Test welcome modal non caricato:', welcomeError.message);
 }
 
-  // 🎯 NOTIFICA AGGIORNAMENTO v1.3.1 - Carica sistema notifiche personalizzate
-  try {
-    console.log('🎯 Caricamento notifiche aggiornamento v1.3.1...');
-    const { forceUpdateNotificationV131, checkUpdateStatus, resetUpdateSystem, resetV131PopupFlag } = require('./force-update-notification-v1-3-1');
-    global.forceUpdateNotificationV131 = forceUpdateNotificationV131;
-    global.checkUpdateStatus = checkUpdateStatus;
-    global.resetUpdateSystem = resetUpdateSystem;
-    global.resetV131PopupFlag = resetV131PopupFlag;
-    console.log('🎯 Notifiche aggiornamento v1.3.1 caricate!');
-    console.log('🎯 Comandi: forceUpdateNotificationV131(), checkUpdateStatus(), resetUpdateSystem(), resetV131PopupFlag()');
-  } catch (testError) {
-    console.log('⚠️ Notifiche aggiornamento v1.3.1 non caricate:', testError.message);
-    // Aggiungi fallback sicuri
-    global.forceUpdateNotificationV131 = () => console.log('🔄 Popup v1.3.1 non disponibile');
-    global.checkUpdateStatus = () => console.log('🔄 CheckStatus v1.3.1 non disponibile');
-    global.resetUpdateSystem = () => console.log('🔄 ResetSystem v1.3.1 non disponibile');
-    global.resetV131PopupFlag = () => console.log('🔄 ResetFlag v1.3.1 non disponibile');
-  }
-
-  // 🧹 PULIZIA TRANSIZIONE v1.3.0 → v1.3.1
-  try {
-    const { cleanTransitionTo131, checkTransitionStatus, forceShowV131Popup } = require('./clean-transition-v1-3-1');
-    global.cleanTransitionTo131 = cleanTransitionTo131;
-    global.checkTransitionStatus = checkTransitionStatus;
-    global.forceShowV131Popup = forceShowV131Popup;
-    console.log('🧹 Script pulizia transizione v1.3.1 caricato!');
-    console.log('🧹 Comandi: cleanTransitionTo131(), checkTransitionStatus(), forceShowV131Popup()');
-  } catch (cleanError) {
-    console.log('⚠️ Script pulizia transizione non caricato:', cleanError.message);
-  }
-
-// 🧪 CARICA SISTEMA TEST AGGIORNAMENTO v1.3.1
-if (__DEV__) {
-  require('./test-update-system-v1-3-1.js');
-}
-
 // 🧪 CARICA DEBUG WELCOME CONTRACT SYNC
 try {
   console.log('🧪 Caricamento debug welcome contract sync...');
@@ -117,15 +81,7 @@ if (__DEV__) {
   require('./clean-update-system.js');
 }
 
-// 🚀 CARICA COMANDI PUBBLICAZIONE OTA v1.3.1
-if (__DEV__) {
-  require('./publish-ota-v1-3-1.js');
-}
-
-// 🎯 CARICA NOTIFICHE FORCE UPDATE v1.3.1
-// Già caricato sopra nella sezione notifiche aggiornamento v1.3.1
-
-// 🔍 DEBUG VERSIONI - Comando per verificare stato versioni
+//  DEBUG VERSIONI - Comando per verificare stato versioni
 try {
   const simpleVersionDebug = require('./simple-version-debug').default;
   global.simpleVersionDebug = simpleVersionDebug;
@@ -642,59 +598,9 @@ export default function App() {
         setTimeout(() => {
           console.log('🔄 App: Inizializzazione servizio aggiornamenti...');
           
-          // 🎯 CONTROLLO SPECIFICO v1.3.1: POPUP SEMPRE VISIBILE per aggiornamento
-          const checkV131Update = async () => {
-            try {
-              const lastKnownVersion = await AsyncStorage.getItem('last_known_version');
-              const hasShownV131Popup = await AsyncStorage.getItem('update_popup_shown_v1_3_1');
-              
-              console.log('📋 Versione precedente nota:', lastKnownVersion);
-              console.log('📋 Popup v1.3.1 già mostrato:', hasShownV131Popup);
-              
-              // MOSTRA SEMPRE il popup se:
-              // 1. Non c'è versione precedente (prima installazione/reset)
-              // 2. La versione è diversa da 1.3.1 (aggiornamento effettivo)
-              // 3. Il popup v1.3.1 non è mai stato mostrato (per sicurezza)
-              const shouldShowPopup = !lastKnownVersion || 
-                                    lastKnownVersion !== '1.3.1' || 
-                                    hasShownV131Popup !== 'true';
-              
-              if (shouldShowPopup) {
-                console.log('🎯 MOSTRANDO POPUP v1.3.1 - Condizioni:', {
-                  lastKnownVersion,
-                  hasShownV131Popup,
-                  shouldShowPopup
-                });
-                
-                setTimeout(() => {
-                  if (typeof global.forceUpdateNotificationV131 === 'function') {
-                    global.forceUpdateNotificationV131();
-                  } else {
-                    console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip sicuro');
-                  }
-                }, 3000); // Aspetta 3 secondi per permettere all'app di caricarsi
-              } else {
-                console.log('✅ Popup v1.3.1 già mostrato, non necessario');
-              }
-            } catch (error) {
-              console.error('❌ Errore controllo v1.3.1:', error);
-              // In caso di errore, mostra comunque il popup per sicurezza
-              setTimeout(() => {
-                if (typeof global.forceUpdateNotificationV131 === 'function') {
-                  global.forceUpdateNotificationV131();
-                } else {
-                  console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip sicuro');
-                }
-              }, 3000);
-            }
-          };
-          
-          checkV131Update();
           UpdateService.checkOnAppStart();
           
           // 🔍 CONTROLLO AGGIORNAMENTI ALL'AVVIO (Sistema Manuale)
-          // Controlla se ci sono aggiornamenti disponibili e invia notifica (senza aggiornare automaticamente)
-          // RITARDATO per evitare conflitti con popup v1.3.1
           setTimeout(async () => {
             try {
               // Non eseguire se è davvero la prima installazione (evita conflitti con welcome modal)
@@ -717,30 +623,7 @@ export default function App() {
             } catch (error) {
               console.error('❌ App: Errore controllo aggiornamenti all\'avvio:', error);
             }
-          }, 8000); // Aumentato a 8 secondi per evitare conflitti
-          
-          // 🚨 BACKUP POPUP v1.3.1: Se per qualche motivo il controllo sopra fallisce,
-          // forza comunque la visualizzazione del popup dopo 5 secondi
-          setTimeout(async () => {
-            try {
-              const hasShownV131Popup = await AsyncStorage.getItem('update_popup_shown_v1_3_1');
-              if (hasShownV131Popup !== 'true') {
-                console.log('🚨 BACKUP: Forzando popup v1.3.1 per sicurezza...');
-                if (typeof global.forceUpdateNotificationV131 === 'function') {
-                  global.forceUpdateNotificationV131();
-                } else {
-                  console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip backup');
-                }
-              }
-            } catch (error) {
-              console.log('🚨 BACKUP: Errore controllo backup popup, forzo comunque:', error);
-              if (typeof global.forceUpdateNotificationV131 === 'function') {
-                global.forceUpdateNotificationV131();
-              } else {
-                console.log('🔄 Sistema popup v1.3.1 non ancora caricato, skip backup error');
-              }
-            }
-          }, 5000); // Backup dopo 5 secondi
+          }, 8000);
         }, 1000);
         
 

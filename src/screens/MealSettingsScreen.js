@@ -203,7 +203,7 @@ const MealSettingsScreen = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
         </View>
@@ -212,7 +212,7 @@ const MealSettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Rimborsi Pasti</Text>

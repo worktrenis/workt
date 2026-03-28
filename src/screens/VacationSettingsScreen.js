@@ -230,7 +230,7 @@ const VacationSettingsScreen = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Caricamento impostazioni...</Text>
         </View>
@@ -239,7 +239,7 @@ const VacationSettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <StatusBar 
         barStyle={theme.dark ? "light-content" : "dark-content"} 
         backgroundColor={theme.colors.background} 

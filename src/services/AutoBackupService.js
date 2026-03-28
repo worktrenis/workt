@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Notifications from 'expo-notifications';
 import * as Sharing from 'expo-sharing';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 
 class AutoBackupService {
   constructor() {
@@ -37,29 +37,47 @@ class AutoBackupService {
           backupDir = `${FileSystem.documentDirectory}Downloads/`;
           break;
       }
-      
-      const dirInfo = await FileSystem.getInfoAsync(backupDir);
-      
-      if (!dirInfo.exists) {
-        return { count: 0, totalSize: 0, lastBackup: null };
+
+      let backupFileUris = [];
+
+      if (this.isSAFUri(backupDir)) {
+        // Percorso SAF: usa StorageAccessFramework
+        const { StorageAccessFramework } = FileSystem;
+        try {
+          const allUris = await StorageAccessFramework.readDirectoryAsync(backupDir);
+          backupFileUris = allUris.filter(uri =>
+            decodeURIComponent(uri).toLowerCase().includes('.json')
+          );
+        } catch (safError) {
+          console.warn('⚠️ Impossibile leggere cartella SAF:', safError.message);
+          return { count: 0, totalSize: 0, lastBackup: null };
+        }
+      } else {
+        const dirInfo = await FileSystem.getInfoAsync(backupDir);
+        if (!dirInfo.exists) {
+          return { count: 0, totalSize: 0, lastBackup: null };
+        }
+        const files = await FileSystem.readDirectoryAsync(backupDir);
+        backupFileUris = files
+          .filter(f => f.endsWith('.json'))
+          .map(f => `${backupDir}${f}`);
       }
 
-      const files = await FileSystem.readDirectoryAsync(backupDir);
-      const backupFiles = files.filter(file => file.endsWith('.json'));
-      
       let totalSize = 0;
       let lastBackup = null;
       let mostRecentTime = 0;
 
-      for (const fileName of backupFiles) {
-        const filePath = `${backupDir}${fileName}`;
-        const fileInfo = await FileSystem.getInfoAsync(filePath);
-        totalSize += fileInfo.size;
-        
-        // Prova a ottenere la data dai metadati del backup
-        let backupTime = fileInfo.modificationTime;
+      for (const fileUri of backupFileUris) {
+        // Prova a ottenere dimensione (non garantita per SAF URIs)
         try {
-          const fileContent = await FileSystem.readAsStringAsync(filePath);
+          const fileInfo = await FileSystem.getInfoAsync(fileUri);
+          if (fileInfo.size) totalSize += fileInfo.size;
+        } catch (_) {}
+
+        // Prova a ottenere la data dai metadati del backup
+        let backupTime = 0;
+        try {
+          const fileContent = await FileSystem.readAsStringAsync(fileUri);
           const backupData = JSON.parse(fileContent);
           if (backupData.metadata && backupData.metadata.timestamp) {
             const metadataTime = new Date(backupData.metadata.timestamp).getTime();
@@ -68,7 +86,7 @@ class AutoBackupService {
             }
           }
         } catch (parseError) {
-          console.log('⚠️ Errore lettura metadati backup:', fileName, parseError.message);
+          console.log('⚠️ Errore lettura metadati backup:', parseError.message);
         }
 
         if (backupTime > mostRecentTime) {
@@ -78,7 +96,7 @@ class AutoBackupService {
       }
 
       return {
-        count: backupFiles.length,
+        count: backupFileUris.length,
         totalSize: Math.round(totalSize / 1024), // KB
         lastBackup
       };
@@ -106,31 +124,64 @@ class AutoBackupService {
           backupDir = `${FileSystem.documentDirectory}Downloads/`;
           break;
       }
-      
-      const dirInfo = await FileSystem.getInfoAsync(backupDir);
-      
-      if (!dirInfo.exists) {
-        return [];
+
+      let fileUris = [];
+
+      if (this.isSAFUri(backupDir)) {
+        // Percorso SAF Android
+        const { StorageAccessFramework } = FileSystem;
+        try {
+          const allUris = await StorageAccessFramework.readDirectoryAsync(backupDir);
+          fileUris = allUris.filter(uri =>
+            decodeURIComponent(uri).toLowerCase().includes('.json')
+          );
+        } catch (safError) {
+          console.warn('⚠️ Impossibile leggere cartella SAF:', safError.message);
+          return [];
+        }
+      } else {
+        const dirInfo = await FileSystem.getInfoAsync(backupDir);
+        if (!dirInfo.exists) {
+          return [];
+        }
+        const files = await FileSystem.readDirectoryAsync(backupDir);
+        fileUris = files
+          .filter(f => f.endsWith('.json'))
+          .map(f => `${backupDir}${f}`);
       }
 
-      const files = await FileSystem.readDirectoryAsync(backupDir);
-      const backupFiles = files.filter(file => file.endsWith('.json'));
-      
       const backups = [];
-      
-      for (const fileName of backupFiles) {
+
+      for (const fileUri of fileUris) {
         try {
-          const filePath = `${backupDir}${fileName}`;
-          const fileInfo = await FileSystem.getInfoAsync(filePath);
-          
-          // Prova a leggere i metadati
-          let timestamp = fileInfo.modificationTime;
-          let isAutomatic = fileName.includes('wort-') || fileName.includes('auto-backup');
-          
+          // Estrai il nome del file dall'URI (prima da raw, poi da decoded)
+          let fileName = 'backup.json';
           try {
-            const content = await FileSystem.readAsStringAsync(filePath);
+            // Prova prima dall'URI raw (contiene %2F)
+            const lastSegment = fileUri.split('%2F').pop().split('/').pop();
+            fileName = decodeURIComponent(lastSegment);
+          } catch (_) {
+            const decoded = decodeURIComponent(fileUri);
+            fileName = decoded.split('/').pop();
+          }
+
+          let timestamp = Date.now();
+          let isAutomatic = fileName.includes('WorkT-auto') || fileName.includes('auto-backup');
+          let fileSize = 0;
+
+          try {
+            const fileInfo = await FileSystem.getInfoAsync(fileUri);
+            if (fileInfo.size) fileSize = fileInfo.size;
+            if (fileInfo.modificationTime) timestamp = fileInfo.modificationTime;
+          } catch (_) {}
+
+          let rawContent = null;
+          try {
+            const content = await FileSystem.readAsStringAsync(fileUri);
+            rawContent = content;
+            if (content) fileSize = fileSize || content.length;
             const data = JSON.parse(content);
-            
+
             if (data.metadata) {
               if (data.metadata.timestamp) {
                 const metadataTime = new Date(data.metadata.timestamp).getTime();
@@ -146,23 +197,40 @@ class AutoBackupService {
             console.log('⚠️ Errore lettura metadati:', fileName);
           }
 
+          // Genera un nome leggibile dalla data nel filename
+          let displayName = fileName;
+          const dateMatch = fileName.match(/(\d{4})-(\d{2})-(\d{2})_(\d{2})-(\d{2})/);
+          if (dateMatch) {
+            const [, y, m, d, hh, mm] = dateMatch;
+            displayName = `Backup ${d}/${m}/${y} ${hh}:${mm}`;
+          }
+
+          const dateObj = new Date(timestamp);
+          // Per SAF, genera il percorso leggibile della cartella
+          let readablePath = backupDir;
+          if (this.isSAFUri(backupDir)) {
+            readablePath = this.getSAFDisplayName(backupDir);
+          }
           backups.push({
-            name: fileName,
-            path: filePath,
-            filePath: filePath, // Aggiunto per compatibilità con BackupScreen
-            size: fileInfo.size,
-            date: new Date(timestamp),
+            name: displayName,
+            key: fileUri,
+            path: fileUri,
+            filePath: fileUri,
+            size: fileSize,
+            date: dateObj,
+            createdAt: dateObj.toISOString(),
             type: isAutomatic ? 'auto' : 'manual',
-            // ✅ INFO PERCORSO: Aggiungi informazioni sulla destinazione
             destination: destination,
             destinationPath: backupDir,
-            destinationLabel: this.getDestinationLabel(destination)
+            readablePath: readablePath,
+            destinationLabel: this.getDestinationLabel(destination),
+            _cachedContent: rawContent
           });
         } catch (error) {
-          console.log('⚠️ Errore elaborazione file backup:', fileName, error.message);
+          console.log('⚠️ Errore elaborazione file backup:', fileUri, error.message);
         }
       }
-      
+
       return backups.sort((a, b) => b.date.getTime() - a.date.getTime());
     } catch (error) {
       console.error('❌ Errore nel caricamento lista backup automatici:', error);
@@ -202,63 +270,78 @@ class AutoBackupService {
     }
   }
 
+  // Helper: verifica se un percorso è un SAF URI (Android)
+  isSAFUri(path) {
+    return typeof path === 'string' && path.startsWith('content://');
+  }
+
+  // Helper: estrae un nome leggibile da un SAF URI
+  getSAFDisplayName(uri) {
+    try {
+      const decoded = decodeURIComponent(uri);
+      // Estrai la parte dopo tree/ (es: "primary:Download" o "primary:Documents/Backup")
+      const treeIndex = decoded.lastIndexOf('tree/');
+      if (treeIndex !== -1) {
+        const pathPart = decoded.substring(treeIndex + 5);
+        // Separa storage e percorso (es: "primary" + "Download")
+        const colonIndex = pathPart.indexOf(':');
+        if (colonIndex !== -1) {
+          const storage = pathPart.substring(0, colonIndex);
+          const folderPath = pathPart.substring(colonIndex + 1);
+          const storageName = storage === 'primary' ? 'Memoria interna' : storage;
+          if (folderPath) {
+            return `${storageName} › ${folderPath.replace(/\//g, ' › ')}`;
+          }
+          return storageName;
+        }
+        return pathPart;
+      }
+      return 'Cartella personalizzata';
+    } catch (e) {
+      return 'Cartella personalizzata';
+    }
+  }
+
   async selectBackupFolder() {
     try {
-      // Creiamo un file temporaneo da usare per "navigare" al percorso desiderato
-      const tempFileName = 'WorkT-setup-backup-folder.txt';
-      const tempFilePath = `${FileSystem.documentDirectory}${tempFileName}`;
-      
-      // Crea il file temporaneo con istruzioni
-      const tempContent = `📁 WorkT - Configurazione Cartella Backup
+      if (Platform.OS === 'android') {
+        const { StorageAccessFramework } = FileSystem;
+        const permissions = await StorageAccessFramework.requestDirectoryPermissionsAsync();
 
-Questo file ti aiuta a configurare dove salvare i backup automatici.
+        if (!permissions.granted) {
+          return { success: false, canceled: true };
+        }
 
-ISTRUZIONI:
-1. Salva questo file nella cartella dove vuoi i backup
-2. Torna nell'app per completare la configurazione
-3. I backup futuri verranno salvati nella cartella selezionata
+        const safUri = permissions.directoryUri;
+        const displayName = this.getSAFDisplayName(safUri);
+        await this.setCustomBackupPath(safUri, displayName);
+        await this.setBackupDestination('custom');
+        // Abilita backup automatico al salvataggio se non già attivo
+        await AsyncStorage.setItem('auto_backup_on_save_enabled', 'true');
 
-App: WorkT - Tracker Ore Lavoro
-Data: ${new Date().toLocaleString('it-IT')}
+        console.log('✅ Cartella backup SAF selezionata:', displayName, safUri);
+        return { success: true, path: safUri, displayName };
 
-Questo file può essere eliminato dopo la configurazione.`;
+      } else {
+        // iOS: salva nella cartella Documenti dell'app (accessibile tramite app File)
+        const backupPath = `${FileSystem.documentDirectory}Backups/`;
+        const dirInfo = await FileSystem.getInfoAsync(backupPath);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(backupPath, { intermediates: true });
+        }
+        const displayName = 'Sul mio iPhone > WorkTracker > Backups';
+        await this.setCustomBackupPath(backupPath, displayName);
+        await this.setBackupDestination('custom');
+        await AsyncStorage.setItem('auto_backup_on_save_enabled', 'true');
 
-      await FileSystem.writeAsStringAsync(tempFilePath, tempContent);
-      
-      // Usa il sistema di condivisione per permettere all'utente di "salvare" il file
-      const result = await Sharing.shareAsync(tempFilePath, {
-        mimeType: 'text/plain',
-        dialogTitle: 'Salva nella cartella desiderata per i backup',
-        UTI: 'public.plain-text'
-      });
-      
-      // Genera un percorso unico basato sulla data/ora
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-      const customPath = `${FileSystem.documentDirectory}backup_${timestamp}/`;
-      
-      // Crea la cartella personalizzata
-      const dirInfo = await FileSystem.getInfoAsync(customPath);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(customPath, { intermediates: true });
+        Alert.alert(
+          '📁 Cartella Backup',
+          'I backup vengono salvati nella cartella "Backups" dell\'app.\nAccessibile dall\'app File: Sul mio iPhone > WorkTracker > Backups',
+          [{ text: 'OK' }]
+        );
+
+        return { success: true, path: backupPath, displayName };
       }
-      
-      // Rimuovi il file temporaneo
-      try {
-        await FileSystem.deleteAsync(tempFilePath);
-      } catch (deleteError) {
-        console.log('⚠️ Errore rimozione file temporaneo:', deleteError.message);
-      }
-      
-      // Salva il percorso con un nome descrittivo
-      const displayName = `Backup personalizzato (${new Date().toLocaleDateString('it-IT')})`;
-      await this.setCustomBackupPath(customPath, displayName);
-      
-      return { 
-        success: true, 
-        path: customPath,
-        displayName: displayName
-      };
-      
     } catch (error) {
       console.error('❌ Errore nella selezione cartella backup:', error);
       return { success: false, error: error.message };
@@ -360,13 +443,15 @@ Questo file può essere eliminato dopo la configurazione.`;
       
       const pathsInfo = {};
       for (const dest of destinations) {
+        const isCustom = dest.key === 'custom';
+        const isSAF = isCustom && this.isSAFUri(dest.path);
         pathsInfo[dest.key] = {
           label: dest.label,
           description: dest.description,
-          path: dest.path,
-          displayName: dest.key === 'custom' ? customDisplayName : dest.description,
+          path: isCustom ? (isSAF ? this.getSAFDisplayName(dest.path) : dest.path) : dest.path,
+          displayName: isCustom ? customDisplayName : dest.description,
           active: dest.key === currentDestination,
-          isCustom: dest.key === 'custom'
+          isCustom: isCustom
         };
       }
       
@@ -550,14 +635,7 @@ Questo file può essere eliminato dopo la configurazione.`;
           break;
       }
       
-      // Assicurati che la directory esista
-      const dirInfo = await FileSystem.getInfoAsync(backupPath);
-      if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(backupPath, { intermediates: true });
-      }
-
       const fileName = this.generateShortBackupName();
-      const filePath = `${backupPath}${fileName}`;
 
       const backupData = {
         ...data,
@@ -568,7 +646,6 @@ Questo file può essere eliminato dopo la configurazione.`;
           destination: destination,
           path: backupPath,
           cloudSync: useCloudShare,
-          // ✅ METADATI BACKUP COMPLETO: Info sui dati inclusi
           dataIncluded: {
             workEntries: data.workEntries?.length || 0,
             interventi: data.interventi?.length || 0,
@@ -579,7 +656,29 @@ Questo file può essere eliminato dopo la configurazione.`;
         }
       };
 
-      await FileSystem.writeAsStringAsync(filePath, JSON.stringify(backupData)); // 🔧 FIX: Rimuovi indentazione per dimensioni coerenti
+      const jsonContent = JSON.stringify(backupData);
+      let filePath;
+
+      if (this.isSAFUri(backupPath)) {
+        // Android SAF: usa StorageAccessFramework per creare e scrivere il file
+        const { StorageAccessFramework } = FileSystem;
+        const fileUri = await StorageAccessFramework.createFileAsync(
+          backupPath,
+          fileName,
+          'application/json'
+        );
+        await FileSystem.writeAsStringAsync(fileUri, jsonContent);
+        filePath = fileUri;
+        console.log('✅ Backup SAF scritto:', fileUri);
+      } else {
+        // Percorso normale: crea la directory se non esiste
+        const dirInfo = await FileSystem.getInfoAsync(backupPath);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(backupPath, { intermediates: true });
+        }
+        filePath = `${backupPath}${fileName}`;
+        await FileSystem.writeAsStringAsync(filePath, jsonContent);
+      }
       
       // ✅ LOG BACKUP COMPLETO: Mostra cosa è stato incluso
       console.log('📦 Backup automatico dettagli:', {
@@ -637,6 +736,7 @@ Questo file può essere eliminato dopo la configurazione.`;
           workEntries: allData.workEntries || [],
           standbyDays: allData.standbyDays || [],
           settings: allData.settings || [],
+          asyncStorageSettings: allData.asyncStorageSettings || {},
           exportDate: new Date().toISOString()
         };
       } else {
@@ -649,6 +749,7 @@ Questo file può essere eliminato dopo la configurazione.`;
           workEntries: allData.workEntries || [],
           standbyDays: allData.standbyDays || [],
           settings: allData.settings || [],
+          asyncStorageSettings: allData.asyncStorageSettings || {},
           exportDate: new Date().toISOString()
         };
       }

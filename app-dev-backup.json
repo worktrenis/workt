@@ -37,6 +37,7 @@
         "backgroundColor": "#1E3A8A"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "pan",
       "package": "com.workt.production",
       "versionCode": 11,
       "permissions": [

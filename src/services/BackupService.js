@@ -349,9 +349,15 @@ class BackupService {
         return false;
       }
 
-      // Controlla se è un backup automatico (nuovo formato)
-      if (backupData.metadata && backupData.interventi) {
+      // Controlla se è un backup automatico (formato nuovo)
+      if (backupData.metadata && (backupData.interventi || backupData.workEntries)) {
         console.log('✅ Formato backup automatico valido');
+        return true;
+      }
+
+      // Controlla se ha workEntries (formato export diretto o data wrapper)
+      if (backupData.workEntries || backupData.data?.workEntries) {
+        console.log('✅ Formato backup con workEntries valido');
         return true;
       }
 
@@ -1063,13 +1069,13 @@ class BackupService {
             const backup = {
               key: key,
               name: metadata.name || key,
-              createdAt: metadata.created || metadata.createdAt || new Date().toISOString(),
-              size: metadata.size || backupData.length, // 🔧 FIX: Usa metadata.size se presente
-              type: metadata.type || 'manual',
+              createdAt: metadata.created || metadata.createdAt || metadata.timestamp || new Date().toISOString(),
+              size: metadata.size || backupData.length,
+              type: metadata.type || (key.includes('auto') ? 'auto' : 'manual'),
               entries: parsed.workEntries?.length || parsed.data?.workEntries?.length || 0,
               destination: metadata.destination || 'asyncstorage',
-              path: metadata.path || key, // Percorso completo o chiave AsyncStorage
-              filePath: metadata.filePath || metadata.path || key // Campo filePath aggiunto
+              path: metadata.path || key,
+              filePath: metadata.filePath || metadata.path || key
             };
             backups.push(backup);
           }

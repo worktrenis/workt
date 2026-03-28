@@ -61,7 +61,7 @@ const ModernSettingItem = ({ item, onPress, index, theme, isLoading = false }) =
 const ModernHeader = ({ theme }) => (
   <FadeInCard style={[styles.modernHeader, { backgroundColor: theme.colors.card }]}>
     <View style={styles.headerContent}>
-      <View style={styles.headerIcon}>
+      <View style={[styles.headerIcon, { backgroundColor: theme.dark ? (theme.colors.primary + '25') : '#e3f2fd' }]}>
         <MaterialCommunityIcons name="cog" size={32} color={theme.colors.primary} />
       </View>
       <Text style={[styles.modernHeaderTitle, { color: theme.colors.text }]}>Impostazioni</Text>
@@ -224,7 +224,7 @@ const SettingsScreen = ({ navigation }) => {
   ];
 
   return (
-    <SafeAreaView style={[styles.modernContainer, { backgroundColor: theme.colors.background }]}>
+    <SafeAreaView style={[styles.modernContainer, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
       <ScrollView style={styles.modernScrollView} showsVerticalScrollIndicator={false}>
         <ModernHeader theme={theme} />
 

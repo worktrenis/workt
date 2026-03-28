@@ -6,7 +6,7 @@ module.exports = function withAdjustNothing(config) {
       (a) => a.$['android:name'] === '.MainActivity'
     );
     if (mainActivity) {
-      mainActivity.$['android:windowSoftInputMode'] = 'adjustNothing';
+      mainActivity.$['android:windowSoftInputMode'] = 'adjustResize';
     }
     return config;
   });

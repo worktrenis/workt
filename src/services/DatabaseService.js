@@ -15,9 +15,24 @@ class DatabaseService {
   async ensureInitialized() {
     if (this.isInitialized && this.db) {
       try {
-        // Liveness check: Esegue una query leggera per verificare che la connessione sia ancora attiva.
-        await this.db.getFirstAsync('SELECT 1');
-        return; // La connessione è valida.
+        // Liveness check con retry: riprova fino a 3 volte prima di dichiarare la connessione morta.
+        // Necessario su Android dove il native handle può essere temporaneamente null dopo
+        // operazioni intensive (es. calcolo di centinaia di breakdowns).
+        let livenessOk = false;
+        for (let i = 0; i < 3; i++) {
+          try {
+            await this.db.getFirstAsync('SELECT 1');
+            livenessOk = true;
+            break;
+          } catch (liveErr) {
+            if (i < 2) {
+              console.warn(`Liveness check tentativo ${i + 1}/3 fallito: ${liveErr.message}. Ritento tra 500ms...`);
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+        }
+        if (livenessOk) return; // La connessione è valida.
+        throw new Error('Liveness check fallito dopo 3 tentativi');
       } catch (error) {
         console.warn(`Controllo di vitalità del database fallito: ${error.message}. Reinicializzazione forzata.`);
         
@@ -104,8 +119,14 @@ class DatabaseService {
           throw new Error(`Inizializzazione DB fallita dopo ${maxAttempts} tentativi: ${error.message}`);
         }
 
-        const delay = 1000 * Math.pow(2, attempts - 1); // Backoff esponenziale
-        console.log(`In attesa di ${delay}ms prima del prossimo tentativo...`);
+        // NullPointerException su Android: il native handle non è ancora disponibile.
+        // Serve un delay più lungo per permettere al GC di liberare le risorse native.
+        const isNullPointerError = error.message.includes('NullPointerException') || 
+                                   error.message.includes('prepareAsync has been rejected');
+        const delay = isNullPointerError
+          ? 5000  // 5s per NullPointerException Android (native layer GC)
+          : 1000 * Math.pow(2, attempts - 1); // backoff esponenziale standard
+        console.log(`In attesa di ${delay}ms prima del prossimo tentativo...${isNullPointerError ? ' (NullPointerException Android, attesa extra)' : ''}`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -1191,12 +1212,40 @@ class DatabaseService {
         console.log('🚨 BACKUP INTERVENTI: Nessun intervento trovato da includere nel backup');
       }
       
+      // ✅ BACKUP COMPLETO: Include anche impostazioni AsyncStorage
+      const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+      const ASYNC_SETTINGS_KEYS = [
+        'settings', 'appSettings', 'contract_settings', 'contractSettings',
+        'calculation_method', 'enable_mixed_calculation',
+        'hourly_calculation_method', 'custom_time_slots',
+        'overtime_settings', 'enable_time_based_rates',
+        'NOTIFICATION_SETTINGS', 'notification_settings',
+        'notificationSettings', 'standbyReminder',
+        '@app_theme', '@app_theme_mode',
+        'welcome_tutorial_completed', 'welcome_tutorial_skipped',
+        'app_first_launch_detected',
+      ];
+
+      const asyncStorageSettings = {};
+      for (const key of ASYNC_SETTINGS_KEYS) {
+        try {
+          const value = await AsyncStorage.getItem(key);
+          if (value !== null) {
+            asyncStorageSettings[key] = value;
+          }
+        } catch (e) {
+          console.warn(`⚠️ Backup: impossibile leggere AsyncStorage key "${key}":`, e);
+        }
+      }
+      console.log(`📦 Backup: incluse ${Object.keys(asyncStorageSettings).length} impostazioni AsyncStorage`);
+
       return {
         workEntries: processedWorkEntries || [],
         standbyDays: standbyDays || [],
         settings: settings || [],
+        asyncStorageSettings: asyncStorageSettings,
         exportDate: new Date().toISOString(),
-        version: '1.0'
+        version: '1.1'
       };
     }, 'Get all data for backup');
   }
@@ -1920,9 +1969,27 @@ class DatabaseService {
           console.log('✅ Transazione ripristino completata');
         });
 
+        // ✅ RIPRISTINO ASYNCSTORAGE: Ripristina impostazioni salvate in AsyncStorage
+        const asyncSettings = backupData.asyncStorageSettings || backupData.data?.asyncStorageSettings;
+        if (asyncSettings && typeof asyncSettings === 'object') {
+          const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+          let restoredCount = 0;
+          for (const [key, value] of Object.entries(asyncSettings)) {
+            try {
+              await AsyncStorage.setItem(key, value);
+              restoredCount++;
+            } catch (e) {
+              console.warn(`⚠️ Ripristino: impossibile scrivere AsyncStorage key "${key}":`, e);
+            }
+          }
+          console.log(`✅ Ripristinate ${restoredCount} impostazioni AsyncStorage`);
+        } else {
+          console.log('ℹ️ Backup senza impostazioni AsyncStorage (versione precedente)');
+        }
+
         console.log('✅ DatabaseService.restoreFromBackup: Ripristino completato con successo');
         
-        // � NOTIFICA GLOBALE: Notifica a tutta l'app che i dati sono cambiati
+        // 🔔 NOTIFICA GLOBALE: Notifica a tutta l'app che i dati sono cambiati
         console.log('🚀 RESTORE: Invio notifica di aggiornamento globale...');
         DataUpdateService.notifyWorkEntriesUpdated('restore', { year: null, month: null });
 

@@ -373,7 +373,7 @@ const ContractSettingsScreen = ({ navigation }) => {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
         </View>
@@ -383,7 +383,7 @@ const ContractSettingsScreen = ({ navigation }) => {
 
   if (contractError) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={{flex:1,justifyContent:'center',alignItems:'center',padding:32}}>
           <Text style={{color: theme.colors.error, fontWeight:'bold',fontSize:18,marginBottom:12}}>ERRORE CONTRATTO</Text>
           <Text style={{color: theme.colors.text, fontSize:16,textAlign:'center'}}>{contractError}</Text>
@@ -394,7 +394,7 @@ const ContractSettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Contratto CCNL</Text>

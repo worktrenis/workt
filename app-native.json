@@ -2,7 +2,7 @@
   "expo": {
     "name": "WorkT Nativa",
     "slug": "workt",
-    "version": "1.0.12",
+    "version": "1.0.50",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -37,6 +37,7 @@
         "backgroundColor": "#1E3A8A"
       },
       "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
       "package": "com.example.worktnative",
       "versionCode": 12,
       "permissions": [

@@ -15,7 +15,7 @@ import {
   Platform,
   StatusBar
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { formatDate, formatCurrency, parseDateOnlyToLocalDate } from '../utils';
@@ -52,6 +52,7 @@ const debugLog = (...args) => {
 
 const DashboardScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
   const styles = createStyles(theme);
   const { settings, isLoading: settingsLoading, refreshSettings, updatePartialSettings } = useSettings();
   const calculationService = useCalculationService();
@@ -3169,6 +3170,7 @@ const DashboardScreen = ({ navigation, route }) => {
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={styles.modalContent}
+              enabled={false}
             >
               <Text style={styles.modalTitle}>Rimborso pasti (cash standard) {mealReimbModalYear ? `(${mealReimbModalYear})` : ''}</Text>
               <Text style={styles.modalSubtitle}>
@@ -3277,7 +3279,7 @@ const DashboardScreen = ({ navigation, route }) => {
         </Modal>
 
         {/* Ore lavoro senza viaggio extra */}
-        {monthlyAggregated?.totalHours && monthlyAggregated?.ordinary?.hours?.viaggio_extra && 
+        {(monthlyAggregated?.totalHours > 0) && ((monthlyAggregated?.ordinary?.hours?.viaggio_extra || 0) > 0) && 
          ((monthlyAggregated.totalHours - (monthlyAggregated.ordinary.hours.viaggio_extra || 0)) > 0) && (
           <View style={styles.breakdownItem}>
             <View style={styles.breakdownRow}>
@@ -3484,9 +3486,9 @@ const DashboardScreen = ({ navigation, route }) => {
 
       <View style={styles.totalSection}>
         {/* 📋 RETRIBUZIONE MENSILE - Previsto vs Effettivo */}
-        <View style={[styles.educationalBreakdown, { backgroundColor: theme.colors.surface, borderRadius: 12, padding: 16, marginBottom: 16 }]}>
+        <View style={[styles.educationalBreakdown, { backgroundColor: theme.colors.surface, borderRadius: 0, padding: 0, marginBottom: 16, marginLeft: 0, marginRight: 0 }]}> 
           <Text style={[styles.sectionTitle, { marginBottom: 16, color: theme.colors.text }]}>Retribuzione</Text>
-          <View style={[styles.salaryRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}>
+          <View style={[styles.salaryRow, { backgroundColor: theme.colors.card, borderRadius: 0, paddingVertical: 12, paddingHorizontal: 0, marginBottom: 12, marginLeft: 0, marginRight: 0 }]}> 
             <View style={styles.salaryMainRow}>
               <Text style={[styles.salaryLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
                 Stipendio CCNL ({settings?.contract?.workingDaysPerMonth || 26}gg)
@@ -3563,18 +3565,23 @@ const DashboardScreen = ({ navigation, route }) => {
             return null;
           })()}
           {/* Sezione comparativa: Maturato vs Previsto */}
-          <View style={[styles.comparisonSection, { borderTopWidth: 2, borderTopColor: theme.colors.border, paddingTop: 16, marginTop: 16 }]}>
-            {/* Maturato fino ad ora */}
-            <View style={[styles.currentEarningsRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}>
-              <View style={styles.comparisonMainRow}>
-                <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
-                  💰 Maturato ad oggi
+          <View style={[styles.comparisonSection, { borderTopWidth: 2, borderTopColor: theme.colors.warning || theme.colors.accent, paddingTop: 16, marginTop: 16 }]}> 
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.sectionTitle, { marginBottom: 12, color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>💳 LORDO IN BUSTA</Text>
+            </View>
+            {/* Lordo maturato ad oggi */}
+            <View style={[styles.currentEarningsRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}> 
+              <View style={[styles.comparisonMainRow, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+                <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 14, fontWeight: '600', flex: 1, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="tail"> 
+                  💰 Lordo maturato ad oggi
                 </Text>
-                <Text style={[styles.comparisonAmount, { color: theme.colors.success || theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}>
-                  {formatSafeAmount(adjustedTotalEarnings)}
-                </Text>
+                <View style={{ flex: 0, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 0, marginRight: 0 }}>
+                  <Text style={[styles.comparisonAmount, { color: theme.colors.success || theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}> 
+                    {formatSafeAmount(adjustedTotalEarnings)}
+                  </Text>
+                </View>
               </View>
-              <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+              <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}> 
                 ↳ Basato sui giorni effettivamente lavorati
               </Text>
             </View>
@@ -3647,16 +3654,18 @@ const DashboardScreen = ({ navigation, route }) => {
               }
               
               return (
-                <View style={[styles.projectedEarningsRow, { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
-                  <View style={styles.comparisonMainRow}>
-                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
-                      🎯 {isCurrentMonth ? 'Previsto fine mese' : 'Totale mese'}
+                <View style={[styles.projectedEarningsRow, { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: theme.colors.border }]}> 
+                  <View style={[styles.comparisonMainRow, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 13, fontWeight: '600', flex: 1, flexShrink: 1, paddingHorizontal: 2 }]} numberOfLines={1} ellipsizeMode="tail"> 
+                      🎯 Lordo previsto a fine mese
                     </Text>
-                    <Text style={[styles.comparisonAmount, { color: theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}>
-                      {formatSafeAmount(projectedTotal)}
-                    </Text>
+                    <View style={{ flex: 0, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 0, marginRight: 0 }}>
+                      <Text style={[styles.comparisonAmount, { color: theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}> 
+                        {formatSafeAmount(projectedTotal)}
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
+                  <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}> 
                     {noteText}
                   </Text>
                 </View>
@@ -3720,13 +3729,15 @@ const DashboardScreen = ({ navigation, route }) => {
               
               return (
                 <View style={[styles.currentEarningsRow, { backgroundColor: theme.colors.card, borderRadius: 8, padding: 12, marginBottom: 12 }]}>
-                  <View style={styles.comparisonMainRow}>
-                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
+                  <View style={[styles.comparisonMainRow, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 14, fontWeight: '600', flex: 1, flexShrink: 1 }]} numberOfLines={1} ellipsizeMode="tail"> 
                       💰 Netto maturato ad oggi
                     </Text>
-                    <Text style={[styles.comparisonAmount, { color: theme.colors.success || theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}>
-                      {formatSafeAmount(finalNetWithCash)}
-                    </Text>
+                    <View style={{ flex: 0, minWidth: 0, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 0, marginRight: 0 }}>
+                      <Text style={[styles.comparisonAmount, { color: theme.colors.success || theme.colors.primary, fontSize: 16, fontWeight: 'bold' }]}> 
+                        {formatSafeAmount(finalNetWithCash)}
+                      </Text>
+                    </View>
                   </View>
                   <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
                     ↳ Al netto di tasse e contributi sui giorni lavorati
@@ -3825,13 +3836,15 @@ const DashboardScreen = ({ navigation, route }) => {
               
               return (
                 <View style={[styles.projectedEarningsRow, { backgroundColor: theme.colors.surface, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: theme.colors.border }]}>
-                  <View style={styles.comparisonMainRow}>
-                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 16, fontWeight: '600' }]}>
-                      🎯 {isCurrentMonth ? 'Netto previsto fine mese' : 'Netto mese'}
+                  <View style={[styles.comparisonMainRow, { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }]}> 
+                    <Text style={[styles.comparisonLabel, { color: theme.colors.text, fontSize: 13, fontWeight: '600', flex: 1, flexShrink: 1, paddingHorizontal: 0, paddingRight: 0, marginRight: 0 }]} numberOfLines={1} ellipsizeMode="tail"> 
+                      🎯 {isCurrentMonth ? 'Netto previsto a fine mese' : 'Netto mese'}
                     </Text>
-                    <Text style={[styles.comparisonAmount, { color: theme.colors.warning || theme.colors.accent, fontSize: 16, fontWeight: 'bold' }]}>
-                      {formatSafeAmount(finalNetWithCash)}
-                    </Text>
+                    <View style={{ flex: 0, alignItems: 'flex-end', justifyContent: 'center', paddingRight: 0, marginRight: 0 }}>
+                      <Text style={[styles.comparisonAmount, { color: theme.colors.warning || theme.colors.accent, fontSize: 16, fontWeight: 'bold' }]}> 
+                        {formatSafeAmount(finalNetWithCash)}
+                      </Text>
+                    </View>
                   </View>
                   <Text style={[styles.comparisonNote, { color: theme.colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }]}>
                     {noteText}
@@ -5131,7 +5144,7 @@ const DashboardScreen = ({ navigation, route }) => {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={theme.colors.primary} />
           <Text style={styles.loadingText}>Caricamento dati...</Text>
@@ -5148,13 +5161,27 @@ const DashboardScreen = ({ navigation, route }) => {
     (monthlyAggregated?.allowances?.standbyDays || 0) > 0;
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <StatusBar barStyle={theme.colors.statusBarStyle} />
       
-      <View style={styles.header}>
+      <View
+        style={[
+          styles.header,
+          {
+            paddingTop: Platform.OS === 'android'
+              ? StatusBar.currentHeight || 0
+              : Math.max(2, insets.top - 10),
+          },
+        ]}
+      >
         <View style={styles.headerTop}>
           <View style={styles.headerTitleRow}>
-            <Text style={styles.headerTitle}>Dashboard</Text>
+            <View style={styles.headerTitleGroup}>
+              <Text style={styles.headerTitle}>Dashboard</Text>
+              <View style={styles.headerBadge}>
+                <Text style={styles.headerBadgeText}>Mensile</Text>
+              </View>
+            </View>
             <TouchableOpacity 
               style={styles.pdfButton} 
               onPress={generateMonthlyPDF}
@@ -5207,6 +5234,7 @@ const DashboardScreen = ({ navigation, route }) => {
       <ScrollView 
         style={styles.scrollView}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        automaticallyAdjustKeyboardInsets={false}
       >
         {hasAnyMonthData ? (
           <>
@@ -5266,28 +5294,51 @@ const createStyles = (theme) => StyleSheet.create({
   },
   header: {
     backgroundColor: theme.colors.card,
-    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight + 10 : 10,
-    paddingHorizontal: 20,
-    paddingBottom: 15,
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0,
+    paddingHorizontal: 14,
+    paddingBottom: 6,
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
+    borderBottomLeftRadius: 14,
+    borderBottomRightRadius: 14,
+    ...theme.colors.cardElevation,
   },
   headerTop: {
-    marginBottom: 15,
+    marginBottom: 4,
   },
   headerTitleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  headerTitleGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   headerTitle: {
-    fontSize: 28,
+    fontSize: 22,
     fontWeight: 'bold',
     color: theme.colors.primary,
   },
+  headerBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: theme.name === 'dark' ? `${theme.colors.primary}22` : `${theme.colors.primary}14`,
+    borderWidth: 1,
+    borderColor: theme.name === 'dark' ? `${theme.colors.primary}55` : `${theme.colors.primary}22`,
+  },
+  headerBadgeText: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: theme.colors.primary,
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+  },
   pdfButton: {
-    padding: 8,
-    borderRadius: 20,
+    padding: 4,
+    borderRadius: 16,
     backgroundColor: theme.colors.surface,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -5296,27 +5347,33 @@ const createStyles = (theme) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    backgroundColor: theme.colors.surface,
+    borderRadius: 14,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
   monthNavButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: theme.colors.surface,
+    padding: 3,
+    borderRadius: 12,
+    backgroundColor: theme.colors.card,
   },
   monthTitleContainer: {
     flex: 1,
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 6,
   },
   monthTitle: {
-    fontSize: 20,
+    fontSize: 16,
     fontWeight: '600',
     color: theme.colors.text,
     textAlign: 'center',
   },
   currentMonthIndicator: {
-    fontSize: 12,
+    fontSize: 10,
     color: theme.colors.primary,
-    marginTop: 2,
+    marginTop: 0,
     textAlign: 'center',
   },
   headerSubtitle: {
@@ -5329,7 +5386,9 @@ const createStyles = (theme) => StyleSheet.create({
   },
   summaryCard: {
     backgroundColor: theme.colors.card,
-    margin: 16,
+    marginHorizontal: 16,
+    marginTop: 3,
+    marginBottom: 16,
     padding: 20,
     borderRadius: 12,
     ...theme.colors.cardElevation,
@@ -5391,6 +5450,9 @@ const createStyles = (theme) => StyleSheet.create({
   },
   salaryRow: {
     // Riga dello stipendio CCNL fisso
+    paddingHorizontal: 0,
+    marginLeft: 0,
+    marginRight: 0,
   },
   salaryMainRow: {
     flexDirection: 'row',
@@ -5471,26 +5533,44 @@ const createStyles = (theme) => StyleSheet.create({
   // Nuovi stili per la sezione comparativa
   comparisonSection: {
     marginTop: 16,
+    paddingHorizontal: 0, // nessun padding orizzontale
+    width: '100%',
+    alignSelf: 'stretch',
+    maxWidth: undefined, // nessun limite
   },
   currentEarningsRow: {
     flexDirection: 'column',
+    paddingTop: 8, // più spazio tra titolo e importo
+    paddingBottom: 4,
   },
   projectedEarningsRow: {
     flexDirection: 'column',
+    paddingTop: 8, // più spazio tra titolo e importo
+    paddingBottom: 4,
   },
   comparisonMainRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 8, // più spazio ai lati
   },
   comparisonLabel: {
     flex: 1,
+    fontSize: 13.5, // ancora più piccolo
+    fontWeight: '600',
+    flexShrink: 1,
   },
   comparisonAmount: {
     textAlign: 'right',
+    fontSize: 13.5, // ancora più piccolo
+    fontWeight: 'bold',
+    flexShrink: 0,
+    minWidth: 90, // forza spazio per l'importo
   },
   comparisonNote: {
     marginTop: 4,
+    fontSize: 11.5, // leggermente più piccolo
   },
   progressRow: {
     marginTop: 8,
@@ -5692,7 +5772,7 @@ const createStyles = (theme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     right: 20,
-    bottom: 20,
+    bottom: 8,
     backgroundColor: theme.colors.primary,
     borderRadius: 28,
     elevation: 8,

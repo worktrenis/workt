@@ -2,11 +2,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 import * as Updates from 'expo-updates';
+import { version as appVersion } from './package.json';
 
 const getEnhancedUpdateInfo = async () => {
   try {
     // Leggi informazioni versione - usa import statico invece di require dinamico
-    const currentVersion = '1.2.2'; // Hardcoded per evitare errori Metro
+    const currentVersion = appVersion || '1.0.0';
     const appName = 'WorkT';
     
     // Controlla stato aggiornamenti

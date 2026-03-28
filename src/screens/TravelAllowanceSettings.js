@@ -73,7 +73,7 @@ const TravelAllowanceSettings = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['left', 'right']}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.header}>
           <Ionicons name="business" size={28} color="#607D8B" style={{marginRight:8}} />

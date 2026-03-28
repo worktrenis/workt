@@ -110,6 +110,10 @@ class SuperNotificationService {
             await Notifications.setNotificationChannelAsync('default', {
               name: 'WorkT - Promemoria',
               importance: Notifications.AndroidImportance.HIGH,
+              sound: 'default',
+              vibrationPattern: [0, 250, 250, 250],
+              enableVibrate: true,
+              lightColor: '#1E3A8A',
             });
             console.log('📱 Canale notifiche Android configurato');
           } catch (channelError) {
@@ -166,10 +170,10 @@ class SuperNotificationService {
       // Quando l'app torna in foreground da background
       if (this.lastAppState !== 'active' && nextAppState === 'active') {
         // Ogni volta che l'app diventa active (cold start o resume) tentiamo la riprogrammazione
-        // Proteggiamo con un debounce semplice: non riprogrammare più di una volta ogni 10 secondi
+        // Proteggiamo con un debounce: non riprogrammare più di una volta ogni 5 minuti
         const now = Date.now();
         const timeSinceLast = now - (this.lastNotificationCheck || 0);
-        if (timeSinceLast < 10000) {
+        if (timeSinceLast < 300000) {
           console.log(`⏭️ App attivata ma controllo recente (${Math.round(timeSinceLast/1000)}s fa), skip riprogrammazione`);
         } else {
           console.log('🔄 App attivata: eseguo controllo e riprogrammazione notifiche...');
@@ -222,6 +226,12 @@ class SuperNotificationService {
 
       const settings = await this.getSettings();
 
+      // Verifica se le impostazioni sono cambiate dall'ultima programmazione
+      const lastChange = await AsyncStorage.getItem('superNotificationSettings_lastChange');
+      const lastProgram = await AsyncStorage.getItem('last_notification_schedule');
+      const settingsChangedSinceLastProgram = !lastProgram || !lastChange || 
+        parseInt(lastChange) > new Date(lastProgram).getTime();
+
       const shouldReprogram = (() => {
         // Fallback: se non riusciamo a leggere le impostazioni, manteniamo la vecchia euristica.
         if (!settings || typeof settings !== 'object') return scheduledCount < 5;
@@ -250,8 +260,16 @@ class SuperNotificationService {
         // Se nessun tipo è abilitato, non riprogrammare.
         if (expectedMin === 0) return false;
 
-        // Se siamo sotto la soglia minima attesa, riprogramma.
-        return scheduledCount < expectedMin;
+        // Riprogramma se il conteggio è sotto soglia
+        if (scheduledCount < expectedMin) return true;
+
+        // Riprogramma se le impostazioni sono cambiate (es. nuovo orario)
+        if (settingsChangedSinceLastProgram && scheduledCount > 0) {
+          console.log('🔄 Impostazioni cambiate dall\'ultima programmazione, riprogrammazione necessaria');
+          return true;
+        }
+
+        return false;
       })();
 
       if (shouldReprogram) {
@@ -374,6 +392,8 @@ class SuperNotificationService {
       // (singolare/plurale) e ridurre ambiguità nella programmazione.
       const normalized = this.normalizeSettings({ ...this.getDefaultSettings(), ...(settings || {}) });
       await AsyncStorage.setItem('superNotificationSettings', JSON.stringify(normalized));
+      // Salva timestamp dell'ultimo cambiamento delle impostazioni
+      await AsyncStorage.setItem('superNotificationSettings_lastChange', Date.now().toString());
       return true;
     } catch (error) {
       console.error('❌ Errore salvataggio impostazioni:', error);
@@ -496,7 +516,7 @@ class SuperNotificationService {
         const id = await Notifications.scheduleNotificationAsync({
           content: {
             title: '🌅 Buongiorno! Inizio Lavoro',
-            body: 'È ora di iniziare la giornata lavorativa. Ricordati di registrare l\'orario di inizio.',
+            body: `È ora di iniziare la giornata lavorativa. Ricordati di registrare l'orario di inizio. (Programmato: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')})`,
             data: { 
               type: 'work_reminder',
               weekday,
@@ -514,6 +534,7 @@ class SuperNotificationService {
             weekday,
             hour: hours,
             minute: minutes,
+            repeats: true,
             channelId: 'default',
           },
         });
@@ -556,7 +577,7 @@ class SuperNotificationService {
         const id = await Notifications.scheduleNotificationAsync({
           content: {
             title: '⏰ Promemoria Inserimento Orari',
-            body: 'Ricordati di inserire le ore di lavoro di oggi prima di finire.',
+            body: `Ricordati di inserire le ore di lavoro di oggi prima di finire. (Programmato: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')})`,
             data: { 
               type: 'time_entry_reminder',
               weekday,
@@ -574,6 +595,7 @@ class SuperNotificationService {
             weekday,
             hour: hours,
             minute: minutes,
+            repeats: true,
             channelId: 'default',
           },
         });
@@ -622,6 +644,7 @@ class SuperNotificationService {
           type: 'daily',
           hour: hours,
           minute: minutes,
+          repeats: true,
           channelId: 'default',
         },
       });
@@ -739,6 +762,7 @@ class SuperNotificationService {
             trigger: {
               type: 'date',
               date: notificationDate,
+              ...(Platform.OS === 'android' && { channelId: 'default' }),
             },
           });
 
@@ -808,29 +832,67 @@ class SuperNotificationService {
   // 📊 STATISTICHE
   async getNotificationStats() {
     try {
-      if (!this.hasPermission) {
-        return { error: 'Permessi mancanti' };
-      }
-      
       const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
       const lastSchedule = await AsyncStorage.getItem('last_notification_schedule');
+      const settings = await this.getSettings();
       
       const byType = {};
       scheduledNotifications.forEach(notification => {
         const type = notification.content.data?.type || 'unknown';
         byType[type] = (byType[type] || 0) + 1;
       });
+
+      // Calcola soglia attesa
+      let expectedMin = 0;
+      const workSettings = settings.workReminder || settings.workReminders;
+      const timeSettings = settings.timeEntryReminder || settings.timeEntryReminders;
+      if (workSettings?.enabled) expectedMin += workSettings.weekendsEnabled ? 7 : 5;
+      if (timeSettings?.enabled) expectedMin += timeSettings.weekendsEnabled ? 7 : 5;
+      if (settings.backupReminder?.enabled) expectedMin += 1;
+
+      // Verifica exact alarm su Android 12+
+      let canScheduleExactAlarms = true;
+      if (Platform.OS === 'android' && Platform.Version >= 31) {
+        try {
+          // Su Android 12+, verifichiamo se gli allarmi esatti sono disponibili
+          // controllando la risposta del sistema alle notifiche programmate
+          canScheduleExactAlarms = scheduledNotifications.length > 0 || !settings.enabled;
+        } catch (e) {
+          canScheduleExactAlarms = false;
+        }
+      }
       
       return {
         total: scheduledNotifications.length,
+        totalScheduled: scheduledNotifications.length,
+        activeNotifications: scheduledNotifications.length,
+        scheduledToday: scheduledNotifications.filter(n => {
+          const d = n.trigger?.date || n.trigger?.value;
+          if (!d) return false;
+          const td = new Date(d);
+          const now = new Date();
+          return td.toDateString() === now.toDateString();
+        }).length,
         byType,
+        threshold: expectedMin,
+        needsReschedule: scheduledNotifications.length < expectedMin && settings.enabled,
+        hasPermission: this.hasPermission,
+        initialized: this.initialized,
+        canScheduleExactAlarms,
         lastSchedule: lastSchedule ? new Date(lastSchedule) : null,
-        isSystemActive: scheduledNotifications.length > 0
+        lastCheck: new Date(),
+        isSystemActive: scheduledNotifications.length > 0,
       };
       
     } catch (error) {
       console.error('❌ Errore statistiche notifiche:', error);
-      return { error: error.message };
+      return { 
+        error: error.message,
+        hasPermission: this.hasPermission,
+        initialized: this.initialized,
+        totalScheduled: 0,
+        threshold: 0,
+      };
     }
   }
 

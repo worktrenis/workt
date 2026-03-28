@@ -9,7 +9,9 @@ import {
   Alert,
   Platform,
   Switch,
-  Dimensions
+  Dimensions,
+  KeyboardAvoidingView,
+  Keyboard
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { StackActions } from '@react-navigation/native';
@@ -121,7 +123,55 @@ const InfoBadge = ({ label, value, color, backgroundColor, styles }) => (
   </View>
 );
 
-const TimeFieldModern = ({ label, value, icon, onPress, onClear, styles }) => {
+const formatTimeDigitsPreview = (input) => {
+  if (!input) return '--:--';
+
+  const digits = input.slice(0, 4);
+
+  if (digits.length === 0) return '--:--';
+  if (digits.length === 1) return `0${digits}:--`;
+  if (digits.length === 2) {
+    const hours = parseInt(digits, 10);
+    if (hours > 23) return '';
+    return `${String(hours).padStart(2, '0')}:--`;
+  }
+  if (digits.length === 3) {
+    const hours = parseInt(digits[0], 10);
+    const mins = parseInt(digits.slice(1), 10);
+    if (hours > 23 || mins > 59) return '';
+    return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  }
+
+  const hours = parseInt(digits.slice(0, 2), 10);
+  const mins = parseInt(digits.slice(2, 4), 10);
+  if (hours > 23 || mins > 59) return '';
+  return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+};
+
+const normalizeTimeDigits = (input) => {
+  if (!input || input.length < 1) return null;
+
+  let completed = input;
+  if (input.length === 1) {
+    completed = `0${input}00`;
+  } else if (input.length === 2) {
+    completed = `${input}00`;
+  } else if (input.length === 3) {
+    completed = `0${input[0]}${input.slice(1)}`;
+  }
+
+  const hours = parseInt(completed.slice(0, 2), 10);
+  const mins = parseInt(completed.slice(2, 4), 10);
+  if (Number.isNaN(hours) || Number.isNaN(mins) || hours > 23 || mins > 59) {
+    return null;
+  }
+
+  return `${completed.slice(0, 2)}:${completed.slice(2, 4)}`;
+};
+
+const TimeFieldModern = ({ label, value, icon, onPress, onClear, styles, fieldId, isEditing, editingValue, onLayout, onEditChange, onEditSave, onInputFocus, contentRef }) => {
+  const containerRef = useRef(null);
+
   // Stili di fallback se styles non è definito
   const fallbackStyles = {
     modernTimeField: {
@@ -164,29 +214,95 @@ const TimeFieldModern = ({ label, value, icon, onPress, onClear, styles }) => {
   };
 
   const currentStyles = styles || fallbackStyles;
+
+  const handleOnLayout = () => {
+    if (onLayout && fieldId) {
+      requestAnimationFrame(() => {
+        if (containerRef.current?.measureLayout && contentRef?.current) {
+          containerRef.current.measureLayout(
+            contentRef.current,
+            (x, y, width, height) => {
+              onLayout(fieldId, { y, height });
+            },
+            () => {}
+          );
+        }
+      });
+    }
+  };
+  
+  const formattedPreview = formatTimeDigitsPreview(editingValue);
+
+  if (isEditing) {
+    return (
+      <View ref={containerRef} collapsable={false} style={[currentStyles.modernTimeField, { backgroundColor: '#fff9e6' }]} onLayout={handleOnLayout}>
+        <View style={currentStyles.timeFieldHeader}>
+          <MaterialCommunityIcons name={icon} size={16} color={styles?.iconSecondary?.color || '#666'} />
+          <Text style={currentStyles.timeFieldLabel}>{label}</Text>
+        </View>
+        <View style={{alignItems: 'center'}}>
+          <TextInput
+            autoFocus
+            style={{
+              width: 88,
+              borderWidth: 1,
+              borderColor: '#2196F3',
+              borderRadius: 6,
+              padding: 8,
+              fontSize: 16,
+              fontWeight: '600',
+              textAlign: 'center',
+              color: styles?.text?.color || '#000',
+              backgroundColor: styles?.surface?.backgroundColor || '#fff',
+            }}
+            keyboardType="numeric"
+            maxLength={4}
+            placeholder="HHmm"
+            placeholderTextColor="#ccc"
+            value={editingValue}
+            onChangeText={(text) => onEditChange && onEditChange(text.replace(/[^0-9]/g, '').slice(0, 4))}
+            onFocus={() => onInputFocus && onInputFocus(fieldId)}
+            onBlur={onEditSave}
+            onSubmitEditing={onEditSave}
+            returnKeyType="done"
+          />
+          <Text style={{
+            marginTop: 4,
+            fontSize: 14,
+            fontWeight: '600',
+            color: '#2196F3',
+          }}>
+            {formattedPreview || '--:--'}
+          </Text>
+        </View>
+      </View>
+    );
+  }
   
   return (
-    <TouchableOpacity style={currentStyles.modernTimeField} onPress={onPress}>
-      <View style={currentStyles.timeFieldHeader}>
-        <MaterialCommunityIcons name={icon} size={16} color={styles?.iconSecondary?.color || '#666'} />
-        <Text style={currentStyles.timeFieldLabel}>{label}</Text>
-      </View>
-      <View style={currentStyles.timeFieldContent}>
-        <Text style={currentStyles.timeFieldValue}>{value || '--:--'}</Text>
-        {value && (
-          <TouchableOpacity
-            style={currentStyles.clearTimeButton}
-            onPress={(e) => {
-              e.stopPropagation();
-              onClear();
-            }}
-            hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          >
-            <MaterialCommunityIcons name="close-circle" size={18} color={styles?.iconError?.color || '#f44336'} />
-          </TouchableOpacity>
-        )}
-      </View>
-    </TouchableOpacity>
+    <View ref={containerRef} collapsable={false} onLayout={handleOnLayout}>
+      <TouchableOpacity style={currentStyles.modernTimeField} onPress={onPress}>
+        <View style={currentStyles.timeFieldHeader}>
+          <MaterialCommunityIcons name={icon} size={16} color={styles?.iconSecondary?.color || '#666'} />
+          <Text style={currentStyles.timeFieldLabel}>{label}</Text>
+        </View>
+        <View style={currentStyles.timeFieldContent}>
+          <Text style={currentStyles.timeFieldValue}>{value || '--:--'}</Text>
+          {value && (
+            <TouchableOpacity
+              style={currentStyles.clearTimeButton}
+              onPress={(e) => {
+                e.stopPropagation();
+                onClear();
+              }}
+              hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
+            >
+              <MaterialCommunityIcons name="close-circle" size={18} color={styles?.iconError?.color || '#f44336'} />
+            </TouchableOpacity>
+          )}
+        </View>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -702,7 +818,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
               </Text>
 
               {/* Prime 8 ore cronologiche per sistema multi-fascia (ripristino visualizzazione semplice) */}
-              <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: '#f8f9fa', padding: 8, borderRadius: 4 }]}>
+              <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: styles.totalRow?.backgroundColor || '#f8f9fa', padding: 8, borderRadius: 4 }]}>
                 <View style={styles.breakdownRow}>
                   <Text style={[styles.breakdownLabel, { fontWeight: 'bold' }]}>Prime 8 ore cronologiche</Text>
                   <Text style={[styles.breakdownValue, { color: '#1976d2' }]}>
@@ -783,7 +899,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                           </Text>
                         </View>
                         <Text style={styles.breakdownDetail}>
-                          €{hourly.toFixed(2).replace('.', ',')} x {formatSafeHours(g.hours)} = €{g.earnings.toFixed(2).replace('.', ',')}
+                          {hourly.toFixed(2).replace('.', ',')} € x {formatSafeHours(g.hours)} = {g.earnings.toFixed(2).replace('.', ',')} €
                         </Text>
                       </View>
                     );
@@ -831,7 +947,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                   <View style={styles.breakdownRow}>
                     <Text style={styles.breakdownLabel}>Tariffa Giornaliera Base (prime 8h)</Text>
                     <Text style={styles.breakdownValue}>
-                      €{breakdown.details.dailyRateBreakdown.dailyRate.toFixed(2).replace('.', ',')}
+                      {breakdown.details.dailyRateBreakdown.dailyRate.toFixed(2).replace('.', ',')} €
                     </Text>
                   </View>
                   <Text style={styles.breakdownDetail}>
@@ -887,7 +1003,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                           {regular.breakdown.map((subItem, subIndex) => (
                             <Text key={subIndex} style={[styles.breakdownDetail, { fontSize: 11, marginLeft: 20, marginTop: 2 }]}>
                               {subItem.type}: {formatSafeHours(subItem.hours)} {subItem.rate > 0 ? 
-                                `(+${Math.round(subItem.rate * 100)}%) = €${subItem.amount.toFixed(2).replace('.', ',')}` :
+                                `(+${Math.round(subItem.rate * 100)}%) = ${subItem.amount.toFixed(2).replace('.', ',')} €` :
                                 '(nessun supplemento)'
                               }
                             </Text>
@@ -897,7 +1013,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                         /* Struttura legacy */
                         <Text style={styles.breakdownDetail}>
                           {regular.timeRange || regular.period} • {regular.supplementAmount > 0 ? 
-                            `Supplemento: €${regular.supplementAmount.toFixed(2).replace('.', ',')} (+${Math.round(regular.supplement * 100)}%)` :
+                            `Supplemento: ${regular.supplementAmount.toFixed(2).replace('.', ',')} € (+${Math.round(regular.supplement * 100)}%)` :
                             'Nessun supplemento (fascia diurna)'
                           }
                         </Text>
@@ -907,11 +1023,11 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                   
                   {/* Totale supplementi se presenti */}
                   {breakdown.details.dailyRateBreakdown.supplements > 0 && (
-                    <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: '#f0f8ff', padding: 8, borderRadius: 4 }]}>
+                    <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: styles.totalRow?.backgroundColor || '#f0f8ff', padding: 8, borderRadius: 4 }]}>
                       <View style={styles.breakdownRow}>
                         <Text style={[styles.breakdownLabel, { fontWeight: 'bold' }]}>Totale Supplementi Prime 8h</Text>
                         <Text style={[styles.breakdownValue, { fontWeight: 'bold', color: '#1976d2' }]}>
-                          +€{breakdown.details.dailyRateBreakdown.supplements.toFixed(2).replace('.', ',')}
+                          +{breakdown.details.dailyRateBreakdown.supplements.toFixed(2).replace('.', ',')} €
                         </Text>
                       </View>
                       <Text style={styles.breakdownDetail}>
@@ -967,12 +1083,12 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                               ` = ${sub.percent} (${[sub.details.basePercent, sub.details.eveningPercent, sub.details.nightPercent].filter(Boolean).join(' + ')})` :
                               ` = ${sub.percent}`
                             }
-                            {Number.isFinite(sub.amount) ? ` = €${sub.amount.toFixed(2).replace('.', ',')}` : ' = 0,00 €'}
+                            {Number.isFinite(sub.amount) ? ` = ${sub.amount.toFixed(2).replace('.', ',')} €` : ' = 0,00 €'}
                           </Text>
                         ))
                       ) : (
                         <Text style={styles.breakdownDetail}>
-                          {overtime.timeRange} • €{Number.isFinite(overtime.hourlyRate) ? overtime.hourlyRate.toFixed(2).replace('.', ',') : '--'} x {formatSafeHours(overtime.hours)} = {Number.isFinite(overtime.earnings) ? `€${overtime.earnings.toFixed(2).replace('.', ',')}` : '0,00 €'}
+                          {overtime.timeRange} • {Number.isFinite(overtime.hourlyRate) ? overtime.hourlyRate.toFixed(2).replace('.', ',') : '--'} € x {formatSafeHours(overtime.hours)} = {Number.isFinite(overtime.earnings) ? `${overtime.earnings.toFixed(2).replace('.', ',')} €` : '0,00 €'}
                           {' '}(+{Number.isFinite(overtime.rate) ? Math.round((overtime.rate - 1) * 100) : '--'}% CCNL)
                         </Text>
                       )}
@@ -981,10 +1097,21 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                   
                   {/* Totale straordinario nel formato standard */}
                   {breakdown.details.dailyRateBreakdown.overtimeHours > 0 && (
-                    <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: '#f0f8ff', padding: 8, borderRadius: 4 }]}>
+                    <View
+                      style={[
+                        styles.breakdownItem,
+                        {
+                          marginLeft: 10,
+                          marginTop: 8,
+                          backgroundColor: styles.totalRow?.backgroundColor || '#f0f8ff',
+                          padding: 8,
+                          borderRadius: 4,
+                        },
+                      ]}
+                    >
                       <View style={styles.breakdownRow}>
                         <Text style={[styles.breakdownLabel, { fontWeight: 'bold' }]}>Totale straordinario</Text>
-                        <Text style={[styles.breakdownValue, { fontWeight: 'bold', color: '#1976d2' }]}>+€{breakdown.details.dailyRateBreakdown.totalOvertimeEarnings.toFixed(2).replace('.', ',')}</Text>
+                        <Text style={[styles.breakdownValue, { fontWeight: 'bold', color: '#1976d2' }]}>+{breakdown.details.dailyRateBreakdown.totalOvertimeEarnings.toFixed(2).replace('.', ',')} €</Text>
                       </View>
                     </View>
                   )}
@@ -1022,17 +1149,28 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
                     </View>
                     {travel.hours > 0 && (
                       <Text style={styles.breakdownDetail}>
-                        €{(settings.contract?.hourlyRate || 16.41).toFixed(2).replace('.', ',')} × {travel.hours.toFixed(2).replace('.', ',') || '0,00'}h 
-                        {' '}× {Math.round((settings.travelCompensationRate || 1.0) * 100)}% = €{((settings.contract?.hourlyRate || 16.41) * travel.hours * (settings.travelCompensationRate || 1.0)).toFixed(2).replace('.', ',')}
+                        {(settings.contract?.hourlyRate || 16.41).toFixed(2).replace('.', ',')} € × {travel.hours.toFixed(2).replace('.', ',') || '0,00'}h 
+                        {' '}× {Math.round((settings.travelCompensationRate || 1.0) * 100)}% = {((settings.contract?.hourlyRate || 16.41) * travel.hours * (settings.travelCompensationRate || 1.0)).toFixed(2).replace('.', ',')} €
                       </Text>
                     )}
                   </View>
                 ))}
                 {breakdown.details.dailyRateBreakdown.travelEarnings > 0 && (
-                  <View style={[styles.breakdownItem, { marginLeft: 10, marginTop: 8, backgroundColor: '#e3f2fd', padding: 8, borderRadius: 4 }]}>  
+                  <View
+                    style={[
+                      styles.breakdownItem,
+                      {
+                        marginLeft: 10,
+                        marginTop: 8,
+                        backgroundColor: styles.totalRow?.backgroundColor || '#e3f2fd',
+                        padding: 8,
+                        borderRadius: 4,
+                      },
+                    ]}
+                  >
                     <View style={styles.breakdownRow}>
                       <Text style={[styles.breakdownLabel, { fontWeight: 'bold' }]}>Totale Viaggio Compensato</Text>
-                      <Text style={[styles.breakdownValue, { fontWeight: 'bold', color: '#1976d2' }]}>+€{breakdown.details.dailyRateBreakdown.travelEarnings.toFixed(2).replace('.', ',')}</Text>
+                      <Text style={[styles.breakdownValue, { fontWeight: 'bold', color: '#1976d2' }]}>+{breakdown.details.dailyRateBreakdown.travelEarnings.toFixed(2).replace('.', ',')} €</Text>
                     </View>
                   </View>
                 )}
@@ -1310,7 +1448,7 @@ const EarningsSummary = ({ form, settings, isDateInStandbyCalendar, isStandbyCal
               </Text>
               
               {/* Prime 8 ore cronologiche per multi-turno */}
-              <View style={[styles.breakdownItem, { marginTop: 8, backgroundColor: '#fff3e0', padding: 8, borderRadius: 4 }]}>
+              <View style={[styles.breakdownItem, { marginTop: 8, backgroundColor: styles.totalRow?.backgroundColor || '#fff3e0', padding: 8, borderRadius: 4 }]}>
                 <View style={styles.breakdownRow}>
                   <Text style={[styles.breakdownLabel, { fontWeight: 'bold', fontSize: 12 }]}>🎯 Prime 8 ore Multi-turno</Text>
                   <Text style={[styles.breakdownValue, { color: '#f57c00', fontSize: 12 }]}>
@@ -2535,7 +2673,7 @@ const categoryLabels = {
 };
 
 const TimeEntryForm = ({ route, navigation }) => {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { settings, reloadSettings } = useSettings();
   const calculationService = useCalculationService();
   
@@ -2648,6 +2786,8 @@ const TimeEntryForm = ({ route, navigation }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [dateField, setDateField] = useState(null);
   const [datePickerMode, setDatePickerMode] = useState('date');
+  const [editingTimeField, setEditingTimeField] = useState(null); // Traccia quale campo è in editing
+  const [editingTimeValue, setEditingTimeValue] = useState(''); // Valore temporaneo durante l'editing
   const [viaggioIndex, setViaggioIndex] = useState(0);
   const [interventoIndex, setInterventoIndex] = useState(0);
   // UI: dettagli veicolo/targa per-cantiere (dal 2° in poi di default chiusi)
@@ -2656,10 +2796,178 @@ const TimeEntryForm = ({ route, navigation }) => {
   const [mealCash, setMealCash] = useState({ pranzo: '', cena: '' });
   const [initialized, setInitialized] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const initialSnapshotRef = useRef('');
   const allowLeaveRef = useRef(false);
   const promptingRef = useRef(false);
+  const scrollViewRef = useRef(null);
+  const scrollContentRef = useRef(null);
+  const timeFieldLayoutsRef = useRef({}); // Traccia le posizioni Y dei campi orari
+  const keyboardHeightRef = useRef(0);
+  const scrollYRef = useRef(0);
+  const scrollViewportHeightRef = useRef(0);
+  const formRef = useRef(form);
+  const editingTimeFieldRef = useRef(null);
+  const editingTimeValueRef = useRef('');
+
+  const applyTimeFieldUpdate = useCallback((currentForm, fieldId, timeString) => {
+    if (!fieldId || !timeString) {
+      return currentForm;
+    }
+
+    if (fieldId.startsWith('viaggio')) {
+      const [_, idx, field] = fieldId.split('-');
+      const targetIndex = parseInt(idx, 10);
+      const viaggi = [...currentForm.viaggi];
+      viaggi[targetIndex][field] = timeString;
+
+      if (field === 'arrival_site') {
+        viaggi[targetIndex].work_start_1 = timeString;
+      } else if (field === 'work_end_2') {
+        viaggi[targetIndex].departure_return = timeString;
+      }
+
+      return { ...currentForm, viaggi };
+    }
+
+    if (fieldId.startsWith('intervento')) {
+      const [_, idx, field] = fieldId.split('-');
+      const targetIndex = parseInt(idx, 10);
+      const interventi = currentForm.interventi.map(item => ({ ...item }));
+      interventi[targetIndex][field] = timeString;
+
+      if (field === 'arrival_site') {
+        interventi[targetIndex].work_start_1 = timeString;
+      } else if (field === 'work_end_2') {
+        interventi[targetIndex].departure_return = timeString;
+      }
+
+      return { ...currentForm, interventi };
+    }
+
+    return currentForm;
+  }, []);
+
+  useEffect(() => {
+    formRef.current = form;
+  }, [form]);
+
+  useEffect(() => {
+    editingTimeFieldRef.current = editingTimeField;
+  }, [editingTimeField]);
+
+  useEffect(() => {
+    editingTimeValueRef.current = editingTimeValue;
+  }, [editingTimeValue]);
+
+  const ensureTimeFieldVisible = useCallback((fieldId) => {
+    const layout = timeFieldLayoutsRef.current[fieldId];
+    const viewportHeight = scrollViewportHeightRef.current;
+
+    if (!layout || typeof layout.y !== 'number' || !scrollViewRef.current?.scrollTo || !viewportHeight) {
+      return;
+    }
+
+    const topPadding = 24;
+    const bottomPadding = 120;
+    const visibleTop = scrollYRef.current + topPadding;
+    const visibleBottom = scrollYRef.current + viewportHeight - bottomPadding;
+    const fieldTop = layout.y;
+    const fieldBottom = layout.y + (layout.height || 56);
+
+    if (fieldBottom > visibleBottom) {
+      const delta = fieldBottom - visibleBottom;
+      const targetY = Math.max(0, scrollYRef.current + delta);
+      scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+      return;
+    }
+
+    if (fieldTop < visibleTop) {
+      const targetY = Math.max(0, fieldTop - topPadding);
+      scrollViewRef.current.scrollTo({ y: targetY, animated: true });
+    }
+  }, []);
+
+  const scheduleEnsureTimeFieldVisible = useCallback((fieldId) => {
+    if (!fieldId) {
+      return;
+    }
+
+    [40, 140, 280].forEach((delay) => {
+      setTimeout(() => ensureTimeFieldVisible(fieldId), delay);
+    });
+  }, [ensureTimeFieldVisible]);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', (e) => {
+      const nextHeight = e?.endCoordinates?.height || 0;
+      keyboardHeightRef.current = nextHeight;
+      setKeyboardHeight(nextHeight);
+
+      if (editingTimeField) {
+        scheduleEnsureTimeFieldVisible(editingTimeField);
+      }
+    });
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
+      keyboardHeightRef.current = 0;
+      setKeyboardHeight(0);
+    });
+
+    return () => {
+      showSub?.remove?.();
+      hideSub?.remove?.();
+    };
+  }, [editingTimeField, scheduleEnsureTimeFieldVisible]);
   
+  // Funzioni helper per l'editing inline dei campi orari
+  const handleTimeEditStart = (fieldId, currentValue) => {
+    if (editingTimeFieldRef.current && editingTimeFieldRef.current !== fieldId) {
+      const formattedCurrent = normalizeTimeDigits(editingTimeValueRef.current);
+      if (formattedCurrent) {
+        const currentForm = formRef.current;
+        const nextForm = applyTimeFieldUpdate(currentForm, editingTimeFieldRef.current, formattedCurrent);
+        formRef.current = nextForm;
+        setForm(nextForm);
+      }
+    }
+
+    setEditingTimeField(fieldId);
+    setEditingTimeValue(currentValue ? currentValue.replace(':', '') : '');
+    editingTimeFieldRef.current = fieldId;
+    editingTimeValueRef.current = currentValue ? currentValue.replace(':', '') : '';
+
+    scheduleEnsureTimeFieldVisible(fieldId);
+  };
+
+  const handleTimeEditChange = (newValue) => {
+    setEditingTimeValue(newValue);
+    editingTimeValueRef.current = newValue;
+  };
+
+  const handleTimeEditSave = () => {
+    const fieldToSave = editingTimeFieldRef.current;
+    const valueToSave = editingTimeValueRef.current;
+    const formatted = normalizeTimeDigits(valueToSave);
+    if (!formatted || !fieldToSave) return;
+    
+    const currentForm = formRef.current;
+    const nextForm = applyTimeFieldUpdate(currentForm, fieldToSave, formatted);
+    formRef.current = nextForm;
+    setForm(nextForm);
+
+    setEditingTimeField(null);
+    setEditingTimeValue('');
+    editingTimeFieldRef.current = null;
+    editingTimeValueRef.current = '';
+  };
+
+  const handleTimeEditCancel = () => {
+    setEditingTimeField(null);
+    setEditingTimeValue('');
+    editingTimeFieldRef.current = null;
+    editingTimeValueRef.current = '';
+  };
+
   // Hook per auto-compilazione ferie/malattia/riposo
   const vacationAutoCompile = useVacationAutoCompile(form.date, dayType, settings);
   
@@ -3418,208 +3726,138 @@ const TimeEntryForm = ({ route, navigation }) => {
       <View key={idx} style={styles.viaggioBox}>
         <Text style={styles.viaggioTitle}>{isIntervento ? `Intervento reperibilità #${idx+1}` : `Turno viaggio/lavoro #${idx+1}`}</Text>
         <View style={styles.row}>
-          <TimeField 
+          <TimeFieldModern
             label="Partenza azienda" 
             value={v.departure_company} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-departure_company`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('departure_company')}
+            icon="clock-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-departure_company`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-departure_company`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-departure_company`, v.departure_company)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('departure_company')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
-          <TimeField 
+          <TimeFieldModern
             label="Arrivo cantiere" 
             value={v.arrival_site} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-arrival_site`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('arrival_site')}
+            icon="clock-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-arrival_site`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-arrival_site`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-arrival_site`, v.arrival_site)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('arrival_site')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
         </View>
         <View style={styles.row}>
-          <TimeField 
+          <TimeFieldModern
             label="Inizio 1° turno" 
             value={v.work_start_1} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-work_start_1`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('work_start_1')}
+            icon="briefcase-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-work_start_1`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-work_start_1`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-work_start_1`, v.work_start_1)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('work_start_1')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
-          <TimeField 
+          <TimeFieldModern
             label="Fine 1° turno" 
             value={v.work_end_1} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-work_end_1`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('work_end_1')}
+            icon="briefcase-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-work_end_1`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-work_end_1`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-work_end_1`, v.work_end_1)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('work_end_1')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
         </View>
         <View style={styles.row}>
-          <TimeField 
+          <TimeFieldModern
             label="Inizio 2° turno" 
             value={v.work_start_2} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-work_start_2`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('work_start_2')}
+            icon="briefcase-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-work_start_2`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-work_start_2`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-work_start_2`, v.work_start_2)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('work_start_2')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
-          <TimeField 
+          <TimeFieldModern
             label="Fine 2° turno" 
             value={v.work_end_2} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-work_end_2`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('work_end_2')}
+            icon="briefcase-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-work_end_2`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-work_end_2`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-work_end_2`, v.work_end_2)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('work_end_2')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
         </View>
         <View style={styles.row}>
-          <TimeField 
+          <TimeFieldModern
             label="Partenza rientro" 
             value={v.departure_return} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-departure_return`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('departure_return')}
+            icon="clock-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-departure_return`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-departure_return`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-departure_return`, v.departure_return)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('departure_return')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
-          <TimeField 
+          <TimeFieldModern
             label="Arrivo azienda" 
             value={v.arrival_company} 
-            onPress={() => { 
-              setDateField(`${isIntervento?'intervento':'viaggio'}-${idx}-arrival_company`); 
-              setShowDatePicker(true); 
-              setDatePickerMode('time'); 
-            }}
-            onClear={() => handleClearTime('arrival_company')}
+            icon="clock-outline"
+            styles={styles}
             fieldId={`${isIntervento?'intervento':'viaggio'}-${idx}-arrival_company`}
+            isEditing={editingTimeField === `${isIntervento?'intervento':'viaggio'}-${idx}-arrival_company`}
+            editingValue={editingTimeValue}
+            onPress={() => handleTimeEditStart(`${isIntervento?'intervento':'viaggio'}-${idx}-arrival_company`, v.arrival_company)}
+            onEditChange={handleTimeEditChange}
+            onEditSave={handleTimeEditSave}
+            onEditCancel={handleTimeEditCancel}
+            onClear={() => handleClearTime('arrival_company')}
+            onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
           />
         </View>
       </View>
     );
   };
 
-  // Campo orario con possibilità di cancellazione
-  const TimeField = ({ label, value, onPress, fieldId, onClear }) => {
-    // Funzione per cancellare l'orario
-    const handleTimeClear = (e) => {
-      e.stopPropagation(); // Evita che il click si propaghi al TouchableOpacity contenitore
-      
-      // Se è stata fornita una funzione onClear specifica, usala
-      if (onClear && typeof onClear === 'function') {
-        onClear();
-      }
-      // Altrimenti usa la logica basata sul fieldId
-      else if (fieldId) {
-        if (fieldId.startsWith('viaggio')) {
-          const [type, idx, field] = fieldId.split('-');
-          const viaggi = [...form.viaggi];
-          viaggi[parseInt(idx)][field] = '';
-          setForm({ ...form, viaggi });
-        } else if (fieldId.startsWith('intervento')) {
-          const [type, idx, field] = fieldId.split('-');
-          const interventi = form.interventi.map(i => ({...i}));
-          interventi[parseInt(idx)][field] = '';
-          setForm({ ...form, interventi });
-        }
-      }
-      
-      // Reset del dateField
-      setDateField(null);
-    };
-    
-    const [isEditing, setIsEditing] = useState(false);
 
-    const applyValue = (newVal) => {
-      // Aggiorna il form in base a fieldId
-      if (!fieldId) return;
-      if (fieldId.startsWith('viaggio')) {
-        const [, idx, field] = fieldId.split('-');
-        const viaggi = [...form.viaggi];
-        viaggi[parseInt(idx)][field] = newVal;
-        setForm({ ...form, viaggi });
-      } else if (fieldId.startsWith('intervento')) {
-        const [, idx, field] = fieldId.split('-');
-        const interventi = form.interventi.map(i => ({...i}));
-        interventi[parseInt(idx)][field] = newVal;
-        setForm({ ...form, interventi });
-      } else if (fieldId.startsWith('time')) {
-        // Generic fallback
-        setForm({ ...form, [fieldId]: newVal });
-      }
-    };
-
-    if (isEditing) {
-      return (
-        <View style={[styles.timeField, {padding: 8}]}> 
-          <Text style={styles.timeFieldLabel}>{label}</Text>
-          <TimeInput
-            value={value}
-            onChange={(t) => {
-              if (t && t.length === 5) {
-                applyValue(t);
-                setIsEditing(false);
-              } else {
-                applyValue(t);
-              }
-            }}
-            inputStyle={{width: 100}}
-          />
-          <View style={styles.timeFieldActions}>
-            <TouchableOpacity onPress={() => { setIsEditing(false); }}>
-              <Ionicons name="close-circle" size={18} color={styles.iconError.color} />
-            </TouchableOpacity>
-          </View>
-        </View>
-      );
-    }
-
-    return (
-      <TouchableOpacity 
-        style={styles.timeField} 
-        onPress={() => {
-          // Prefer inline editing with numeric input
-          setIsEditing(true);
-          try { onPress && onPress(); } catch(e){}
-        }}
-      >
-        <Text style={styles.timeFieldLabel}>{label}</Text>
-        <Text style={styles.timeFieldValue}>{value || '--:--'}</Text>
-        <View style={styles.timeFieldActions}>
-          <Ionicons name="time-outline" size={16} color={styles.infoText.color} style={{marginRight: 10}} />
-          {value && (
-            <TouchableOpacity 
-              onPress={(e) => handleTimeClear(e)}
-              hitSlop={{top: 10, right: 10, bottom: 10, left: 10}}
-              accessible={true}
-              accessibilityLabel={`Cancella orario ${label}`}
-              accessibilityHint={`Cancella l'orario ${label} impostato a ${value}`}
-            >
-              <Ionicons name="close-circle" size={18} color={styles.iconError.color} />
-            </TouchableOpacity>
-          )}
-        </View>
-      </TouchableOpacity>
-    );
-  };
 
   // Funzione per cancellare l'inserimento
   const handleDelete = async () => {
@@ -5421,13 +5659,31 @@ const TimeEntryForm = ({ route, navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
-      
-      <ScrollView 
-        style={styles.scrollView} 
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      <StatusBar style={isDark ? 'light' : 'dark'} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 16}
       >
+      <ScrollView 
+        ref={scrollViewRef}
+        style={styles.scrollView} 
+        contentContainerStyle={[
+          styles.scrollContent,
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 140 }
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+        onLayout={(event) => {
+          scrollViewportHeightRef.current = event.nativeEvent.layout.height || 0;
+        }}
+        onScroll={(event) => {
+          scrollYRef.current = event.nativeEvent.contentOffset.y || 0;
+        }}
+        scrollEventThrottle={16}
+      >
+        <View ref={scrollContentRef} collapsable={false}>
         {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity 
@@ -5620,7 +5876,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                     }));
                   }}
                   placeholder="Es. Cantiere Milano - Via Roma"
-                  placeholderTextColor={styles.iconSecondary.color}
+                  placeholderTextColor={isDark ? '#666666' : 'rgba(0,0,0,0.25)'}
                 />
 
                 {idx > 0 && (
@@ -5699,22 +5955,24 @@ const TimeEntryForm = ({ route, navigation }) => {
                       <>
                         <View style={{ height: 6 }} />
                         <Text style={styles.shiftSiteLabel}>Targa/Numero veicolo</Text>
-                        <TextInput
-                          style={styles.shiftSiteInput}
-                          value={v.targa_veicolo || ''}
-                          onChangeText={(text) => {
-                            const viaggi = [...form.viaggi];
-                            viaggi[idx] = { ...viaggi[idx], targa_veicolo: text };
-                            setForm(prev => ({
-                              ...prev,
-                              targa_veicolo: idx === 0 ? text : prev.targa_veicolo,
-                              viaggi
-                            }));
-                          }}
-                          placeholder="Es. AB123CD o numero aziendale"
-                          placeholderTextColor={styles.iconSecondary.color}
-                          autoCapitalize="characters"
-                        />
+                        <View>
+                          <TextInput
+                            style={styles.shiftSiteInput}
+                            value={v.targa_veicolo || ''}
+                            onChangeText={(text) => {
+                              const viaggi = [...form.viaggi];
+                              viaggi[idx] = { ...viaggi[idx], targa_veicolo: text };
+                              setForm(prev => ({
+                                ...prev,
+                                targa_veicolo: idx === 0 ? text : prev.targa_veicolo,
+                                viaggi
+                              }));
+                            }}
+                            placeholder="Es. AB123CD o numero aziendale"
+                            placeholderTextColor={isDark ? '#666666' : 'rgba(0,0,0,0.25)'}
+                            autoCapitalize="characters"
+                          />
+                        </View>
                       </>
                     )}
                   </>
@@ -5730,129 +5988,169 @@ const TimeEntryForm = ({ route, navigation }) => {
                   label="Partenza azienda" 
                   value={v.departure_company}
                   icon="office-building"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-departure_company`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-departure_company`}
+                  isEditing={editingTimeField === `viaggio-${idx}-departure_company`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-departure_company`, v.departure_company)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].departure_company = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Arrivo cantiere" 
                   value={v.arrival_site}
                   icon="map-marker"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-arrival_site`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-arrival_site`}
+                  isEditing={editingTimeField === `viaggio-${idx}-arrival_site`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-arrival_site`, v.arrival_site)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].arrival_site = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Inizio 1° turno" 
                   value={v.work_start_1}
                   icon="play"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-work_start_1`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-work_start_1`}
+                  isEditing={editingTimeField === `viaggio-${idx}-work_start_1`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-work_start_1`, v.work_start_1)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].work_start_1 = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Fine 1° turno" 
                   value={v.work_end_1}
                   icon="stop"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-work_end_1`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-work_end_1`}
+                  isEditing={editingTimeField === `viaggio-${idx}-work_end_1`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-work_end_1`, v.work_end_1)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].work_end_1 = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Inizio 2° turno" 
                   value={v.work_start_2}
                   icon="play"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-work_start_2`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-work_start_2`}
+                  isEditing={editingTimeField === `viaggio-${idx}-work_start_2`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-work_start_2`, v.work_start_2)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].work_start_2 = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Fine 2° turno" 
                   value={v.work_end_2}
                   icon="stop"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-work_end_2`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-work_end_2`}
+                  isEditing={editingTimeField === `viaggio-${idx}-work_end_2`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-work_end_2`, v.work_end_2)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].work_end_2 = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Partenza rientro" 
                   value={v.departure_return}
                   icon="map-marker-radius"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-departure_return`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-departure_return`}
+                  isEditing={editingTimeField === `viaggio-${idx}-departure_return`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-departure_return`, v.departure_return)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].departure_return = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
                 <TimeFieldModern 
                   label="Arrivo azienda" 
                   value={v.arrival_company}
                   icon="office-building"
-                  onPress={() => { 
-                    setDateField(`viaggio-${idx}-arrival_company`); 
-                    setShowDatePicker(true); 
-                    setDatePickerMode('time'); 
-                  }}
+                  fieldId={`viaggio-${idx}-arrival_company`}
+                  isEditing={editingTimeField === `viaggio-${idx}-arrival_company`}
+                  editingValue={editingTimeValue}
+                  onEditChange={handleTimeEditChange}
+                  onEditSave={handleTimeEditSave}
+                  onEditCancel={handleTimeEditCancel}
+                  onPress={() => handleTimeEditStart(`viaggio-${idx}-arrival_company`, v.arrival_company)}
+                  onInputFocus={ensureTimeFieldVisible}
                   onClear={() => {
                     const viaggi = [...form.viaggi];
                     viaggi[idx].arrival_company = '';
                     setForm({...form, viaggi});
                   }}
                   styles={styles}
+                  contentRef={scrollContentRef}
+                  onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                 />
               </View>
             </View>
@@ -5918,125 +6216,169 @@ const TimeEntryForm = ({ route, navigation }) => {
                       label="Partenza azienda" 
                       value={v.departure_company}
                       icon="office-building"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-departure_company`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-departure_company`}
+                      isEditing={editingTimeField === `intervento-${idx}-departure_company`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-departure_company`, v.departure_company)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].departure_company = '';
                         setForm({...form, interventi});
                       }}
                       styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Arrivo cantiere" 
                       value={v.arrival_site}
                       icon="map-marker"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-arrival_site`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-arrival_site`}
+                      isEditing={editingTimeField === `intervento-${idx}-arrival_site`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-arrival_site`, v.arrival_site)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].arrival_site = '';
                         setForm({...form, interventi});
                       }}
                       styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Inizio 1° turno" 
                       value={v.work_start_1}
                       icon="play"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-work_start_1`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-work_start_1`}
+                      isEditing={editingTimeField === `intervento-${idx}-work_start_1`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-work_start_1`, v.work_start_1)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].work_start_1 = '';
                         setForm({...form, interventi});
                       }}
                       styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Fine 1° turno" 
                       value={v.work_end_1}
                       icon="stop"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-work_end_1`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-work_end_1`}
+                      isEditing={editingTimeField === `intervento-${idx}-work_end_1`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-work_end_1`, v.work_end_1)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].work_end_1 = '';
-                        interventi[idx].work_end_1 = '';
                         setForm({...form, interventi});
                       }}
+                      styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Inizio 2° turno" 
                       value={v.work_start_2}
                       icon="play"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-work_start_2`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-work_start_2`}
+                      isEditing={editingTimeField === `intervento-${idx}-work_start_2`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-work_start_2`, v.work_start_2)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].work_start_2 = '';
                         setForm({...form, interventi});
                       }}
+                      styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Fine 2° turno" 
                       value={v.work_end_2}
                       icon="stop"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-work_end_2`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-work_end_2`}
+                      isEditing={editingTimeField === `intervento-${idx}-work_end_2`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-work_end_2`, v.work_end_2)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].work_end_2 = '';
                         setForm({...form, interventi});
                       }}
+                      styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Partenza rientro" 
                       value={v.departure_return}
                       icon="map-marker-radius"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-departure_return`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-departure_return`}
+                      isEditing={editingTimeField === `intervento-${idx}-departure_return`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-departure_return`, v.departure_return)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].departure_return = '';
                         setForm({...form, interventi});
                       }}
+                      styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                     <TimeFieldModern 
                       label="Arrivo azienda" 
                       value={v.arrival_company}
                       icon="office-building"
-                      onPress={() => { 
-                        setDateField(`intervento-${idx}-arrival_company`); 
-                        setShowDatePicker(true); 
-                        setDatePickerMode('time'); 
-                      }}
+                      fieldId={`intervento-${idx}-arrival_company`}
+                      isEditing={editingTimeField === `intervento-${idx}-arrival_company`}
+                      editingValue={editingTimeValue}
+                      onEditChange={handleTimeEditChange}
+                      onEditSave={handleTimeEditSave}
+                      onEditCancel={handleTimeEditCancel}
+                      onPress={() => handleTimeEditStart(`intervento-${idx}-arrival_company`, v.arrival_company)}
+                      onInputFocus={ensureTimeFieldVisible}
                       onClear={() => {
                         const interventi = [...form.interventi];
                         interventi[idx].arrival_company = '';
                         setForm({...form, interventi});
                       }}
+                      styles={styles}
+                      contentRef={scrollContentRef}
+                      onLayout={(fieldId, y) => { timeFieldLayoutsRef.current[fieldId] = y; }}
                     />
                   </View>
                 </View>
@@ -6279,6 +6621,7 @@ const TimeEntryForm = ({ route, navigation }) => {
             styles={styles}
           />
         </ModernCard>
+        </View>
       </ScrollView>
 
       {/* Pulsanti Fluttuanti */}
@@ -6518,12 +6861,13 @@ const TimeEntryForm = ({ route, navigation }) => {
           <Text style={styles.floatingButtonText}>Salva</Text>
         </TouchableOpacity>
       </View>
+      </KeyboardAvoidingView>
 
-      {/* DateTimePicker */}
-      {showDatePicker && (
+      {/* DateTimePicker - solo per le date */}
+      {showDatePicker && datePickerMode === 'date' && (
         <DateTimePicker
           value={new Date()}
-          mode={datePickerMode}
+          mode="date"
           is24Hour={true}
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={handleDateChange}
@@ -6902,6 +7246,22 @@ const createStyles = (theme) => StyleSheet.create({
     fontWeight: '500',
     textAlign: 'center',
     minWidth: 50,
+  },
+  timeFieldInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  timeFieldActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   clearTimeButton: {
     marginLeft: 8,

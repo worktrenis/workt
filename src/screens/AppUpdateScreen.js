@@ -102,6 +102,12 @@ const AppUpdateScreen = ({ navigation }) => {
           'La tua app è già aggiornata all\'ultima versione disponibile.',
           [{ text: 'OK' }]
         );
+      } else if (result.reason === 'dev_simulation_disabled') {
+        Alert.alert(
+          '🚧 Modalità Expo',
+          `Stai usando Expo in sviluppo. Il vecchio aggiornamento simulato 1.3.2 è stato disattivato e qui non verranno mostrati aggiornamenti fittizi.\n\nVersione corrente: ${result.currentVersion || currentVersion}`,
+          [{ text: 'OK' }]
+        );
       } else if (result.error) {
         throw new Error(result.error);
       }
@@ -201,21 +207,7 @@ const AppUpdateScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>
-          Aggiornamenti App
-        </Text>
-        <View style={styles.headerSpacer} />
-      </View>
-
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -391,26 +383,6 @@ const AppUpdateScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    flex: 1,
-    textAlign: 'center',
-    marginRight: 40, // Compensa il back button
-  },
-  headerSpacer: {
-    width: 40,
   },
   content: {
     flex: 1,

@@ -27,6 +27,169 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.71',
+      date: '28 marzo 2026',
+      changes: [
+        'Aggiornamento v1.0.71'
+      ]
+    },
+    {
+      version: '1.0.70',
+      date: '26 marzo 2026',
+      changes: [
+        'Fix popup reperibilità: ora appare solo una volta al giorno'
+      ]
+    },
+    {
+      version: '1.0.69',
+      date: '25 marzo 2026',
+      changes: [
+        'Fix placeholder colori dark mode + fix notifiche programmate (repeats, canale Android, channelId standby)'
+      ]
+    },
+    {
+      version: '1.0.68',
+      date: '24 marzo 2026',
+      changes: [
+        'Fix calcolo multi-cantiere',
+        'Fix supplementi viaggio prime 8h',
+        'Miglioramento log diagnostici'
+      ]
+    },
+    {
+      version: '1.0.67',
+      date: '18 marzo 2026',
+      changes: [
+        'Pulizia codice: rimossi tutti i riferimenti obsoleti al sistema popup v1.3.1',
+        'Fix eliminazione backup: la funzione elimina ora correttamente sia il file su disco (inclusi SAF URI content://) che la chiave AsyncStorage, risolvendo il problema per cui il backup riappariva dopo la cancellazione'
+      ]
+    },
+    {
+      version: '1.0.66',
+      date: '18 marzo 2026',
+      changes: [
+        'Dark mode: fix leggibilità box riepilogo guadagni (viaggio, straordinari, supplementi, multi-turno)',
+        'Formato valuta unificato: simbolo € sempre dopo la cifra (es. 123,45 €)',
+        'Lista inserimenti: aggiunta unità esplicite € e h su tutti i valori',
+        'Dark mode switch notifiche: tutti gli switch adattati al tema (trackColor e thumbColor dinamici)',
+        'Dark mode icona header schermata Impostazioni',
+        'Fix crash "Text strings must be rendered within a Text component" in Dashboard quando viaggio_extra = 0'
+      ]
+    },
+    {
+      version: '1.0.65',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix notifiche orari: debug screen mostra orari trigger weekly/daily, fix riprogrammazione eccessiva (debounce 5min + check cambio impostazioni), diagnostica impostazioni salvate, check allarmi esatti Android 12+, orario programmato nel body notifica'
+      ]
+    },
+    {
+      version: '1.0.64',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix backup auto: aggiunto asyncStorageSettings (fasce orarie, notifiche, tema) nei dati del backup automatico'
+      ]
+    },
+    {
+      version: '1.0.63',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix SAF restore: cached content'
+      ]
+    },
+    {
+      version: '1.0.62',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix SAF: usa StorageAccessFramework.readAsStringAsync per URI content://, rimosso removeItem settings che cancellava impostazioni ripristinate'
+      ]
+    },
+    {
+      version: '1.0.61',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix ripristino da card: uso FileSystem statico, errore dettagliato, validazione metadata+workEntries, fix export'
+      ]
+    },
+    {
+      version: '1.0.60',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix ripristino backup da card: corretto import expo-file-system/legacy, logica filesystem vs AsyncStorage, validazione formato'
+      ]
+    },
+    {
+      version: '1.0.59',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix ordinamento: aggiunto metadata.timestamp come fonte data, deduplicazione backup, ordine cronologico corretto'
+      ]
+    },
+    {
+      version: '1.0.58',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix ordinamento backup: lista unica cronologica manuali+automatici, il piu recente sempre in alto'
+      ]
+    },
+    {
+      version: '1.0.57',
+      date: '15 marzo 2026',
+      changes: [
+        'Lista backup: ordinamento cronologico (ultimo in alto), percorso reale visibile (es. Memoria interna > Download)'
+      ]
+    },
+    {
+      version: '1.0.56',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix lista backup: nomi leggibili (Backup 15/03/2026 10:30), ordinamento corretto per data, percorsi SAF non piu\' incomprensibili'
+      ]
+    },
+    {
+      version: '1.0.55',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix backup automatico al salvataggio: corretto crash SAF, auto-attiva backup quando si sceglie cartella, sincronizza stato UI'
+      ]
+    },
+    {
+      version: '1.0.54',
+      date: '15 marzo 2026',
+      changes: [
+        'Fix backup cartella: percorso leggibile (es. Memoria interna > Download) al posto del SAF URI incomprensibile'
+      ]
+    },
+    {
+      version: '1.0.53',
+      date: '15 marzo 2026',
+      changes: [
+        'Backup automatico con cartella scelta dall\'utente: SAF Android (selettore cartelle nativo), iOS usa cartella Documenti app'
+      ]
+    },
+    {
+      version: '1.0.52',
+      date: '15 marzo 2026',
+      changes: [
+        'UI: rimozione header duplicati e spazi bianchi in tutte le schermate secondarie (Info App, Notifiche, Ferie, Backup, Fasce Orarie, Calcolo Netto, Metodo di Calcolo)',
+        'pulsante Salva Impostazioni uniformato in Fasce Orarie e Calcolo Netto'
+      ]
+    },
+    {
+      version: '1.0.51',
+      date: '15 marzo 2026',
+      changes: [
+        'TimeEntryForm: input orari inline più stabile, scroll automatico sopra tastiera, autosalvataggio tra campi e compilazione automatica campi collegati'
+      ]
+    },
+    {
+      version: '1.0.50',
+      date: '14 marzo 2026',
+      changes: [
+        'TimeEntryForm: input orari digitale inline, autosalvataggio e compilazione automatica campi collegati'
+      ]
+    },
+    {
       version: '1.0.50',
       date: '14 marzo 2026',
       changes: [
@@ -465,18 +628,7 @@ const AppInfoScreen = ({ navigation }) => {
   ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]}>
-      <View style={[styles.header, { backgroundColor: theme.colors.card }]}>
-        <TouchableOpacity 
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={24} color={theme.colors.text} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.colors.text }]}>Info App</Text>
-        <View style={styles.placeholder} />
-      </View>
-
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.colors.background }]} edges={['left', 'right']}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
         {/* Header App Info */}
         <FadeInCard style={[styles.appHeaderCard, { backgroundColor: theme.colors.card }]}>
@@ -623,27 +775,6 @@ const AppInfoScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
-  },
-  backButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    flex: 1,
-    fontSize: 20,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginRight: 40,
-  },
-  placeholder: {
-    width: 40,
   },
   scrollView: {
     flex: 1,
