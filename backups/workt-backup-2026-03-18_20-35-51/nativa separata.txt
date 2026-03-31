@@ -1,0 +1,1 @@
+$env:EXPO_CONFIG_PATH="app-native.json"; eas build --platform android --profile production

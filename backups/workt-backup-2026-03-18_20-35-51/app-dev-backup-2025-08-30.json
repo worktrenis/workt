@@ -1,0 +1,9 @@
+{
+  "timestamp": "2025-08-30T12:00:00+02:00",
+  "note": "Backup automatico dopo aggiornamento WelcomeModal: livelli e retribuzioni sincronizzati con CCNL_CONTRACTS.",
+  "files": [
+    "src/components/WelcomeModal.js"
+  ],
+  "commit": "d99c53d",
+  "branch": "production"
+}

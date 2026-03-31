@@ -5665,26 +5665,7 @@ const TimeEntryForm = ({ route, navigation }) => {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 16}
       >
-      <ScrollView 
-        ref={scrollViewRef}
-        style={styles.scrollView} 
-        contentContainerStyle={[
-          styles.scrollContent,
-          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 140 }
-        ]}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        automaticallyAdjustKeyboardInsets={true}
-        onLayout={(event) => {
-          scrollViewportHeightRef.current = event.nativeEvent.layout.height || 0;
-        }}
-        onScroll={(event) => {
-          scrollYRef.current = event.nativeEvent.contentOffset.y || 0;
-        }}
-        scrollEventThrottle={16}
-      >
-        <View ref={scrollContentRef} collapsable={false}>
-        {/* Header */}
+      <View style={styles.headerContainer}>
         <View style={styles.header}>
           <TouchableOpacity 
             style={styles.backButton}
@@ -5706,7 +5687,27 @@ const TimeEntryForm = ({ route, navigation }) => {
             />
           </TouchableOpacity>
         </View>
-
+      </View>
+      <ScrollView 
+        ref={scrollViewRef}
+        style={[styles.scrollView, { backgroundColor: theme.colors.background }]} 
+        contentContainerStyle={[
+          styles.scrollContent,
+          { flexGrow: 1 },
+          keyboardHeight > 0 && { paddingBottom: keyboardHeight + 100 }
+        ]}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        automaticallyAdjustKeyboardInsets={true}
+        onLayout={(event) => {
+          scrollViewportHeightRef.current = event.nativeEvent.layout.height || 0;
+        }}
+        onScroll={(event) => {
+          scrollYRef.current = event.nativeEvent.contentOffset.y || 0;
+        }}
+        scrollEventThrottle={16}
+      >
+        <View ref={scrollContentRef} collapsable={false}>
         {/* Messaggio Auto-compilazione */}
         {vacationAutoCompile.autoCompileMessage && (
           <View style={styles.autoCompileNotice}>
@@ -6887,14 +6888,30 @@ const createStyles = (theme) => StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingTop: 64,
+    paddingBottom: 0,
   },
 
   // Header styles
+  headerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 20,
+    backgroundColor: theme.colors.card,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    paddingHorizontal: 8,
+    paddingTop: 12,
+    paddingBottom: 10,
+    height: 64,
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    marginBottom: 0,
     paddingHorizontal: 4,
   },
   backButton: {
@@ -6951,11 +6968,11 @@ const createStyles = (theme) => StyleSheet.create({
   modernCard: {
     backgroundColor: theme.colors.card,
     borderRadius: 16,
-    padding: 16,
+    padding: 12,
     ...theme.colors.cardElevation,
   },
   cardSpacing: {
-    marginBottom: 16,
+    marginBottom: 8,
   },
 
   // Section header styles
@@ -7136,8 +7153,8 @@ const createStyles = (theme) => StyleSheet.create({
   timeShiftContainer: {
     backgroundColor: theme.colors.surface,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
+    padding: 8,
+    marginBottom: 6,
     borderLeftWidth: 4,
     borderLeftColor: theme.colors.success,
   },
@@ -7211,7 +7228,7 @@ const createStyles = (theme) => StyleSheet.create({
   timeFieldsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
   },
   modernTimeField: {
     flex: 1,
@@ -7553,11 +7570,11 @@ const createStyles = (theme) => StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     backgroundColor: theme.colors.surface,
     borderRadius: 8,
-    marginBottom: 8,
+    marginBottom: 4,
   },
   sectionTitle: {
     fontSize: 18,
@@ -7888,13 +7905,14 @@ const createStyles = (theme) => StyleSheet.create({
   // Stili per pulsanti fluttuanti
   floatingButtons: {
     position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
+    bottom: 2, // Ridotto per avvicinare alla tab bar
+    left: 8, // leggermente ridotto
+    right: 8, // leggermente ridotto
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 4, // meno padding
+    paddingBottom: 0, // nessun padding extra
   },
   floatingButton: {
     flexDirection: 'row',

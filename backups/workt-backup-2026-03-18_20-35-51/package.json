@@ -1,0 +1,84 @@
+{
+  "name": "workt",
+  "version": "1.0.66",
+  "main": "index.js",
+  "scripts": {
+    "prestart": "node scripts/bump-version.js",
+    "start": "expo start",
+    "prestart-tunnel": "node scripts/bump-version.js",
+    "start-tunnel": "expo start --tunnel",
+    "preandroid": "node scripts/bump-version.js",
+    "android": "expo run:android",
+    "preios": "node scripts/bump-version.js",
+    "ios": "expo run:ios",
+    "preweb": "node scripts/bump-version.js",
+    "web": "expo start --web",
+    "bump-version": "node scripts/bump-version.js",
+    "publish-ota": "node publish-ota-update.js",
+    "publish-ota-quick": "node publish-ota-update.js \"Aggiornamento rapido - Correzioni e miglioramenti\"",
+    "generate:icons": "node scripts/generate-icons.js",
+    "ota:release": "node scripts/ota-release.js --channel production",
+    "ota:auto": "node scripts/ota-release.js --channel production --auto"
+  },
+  "dependencies": {
+    "@expo/cli": "^0.24.20",
+    "@expo/metro-runtime": "~6.1.2",
+    "@expo/vector-icons": "^15.0.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.4.4",
+    "@react-native-picker/picker": "^2.11.1",
+    "@react-navigation/bottom-tabs": "^7.3.17",
+    "@react-navigation/native": "^7.1.13",
+    "@react-navigation/stack": "^7.3.6",
+    "babel-plugin-add-react-displayname": "^0.0.5",
+    "expo": "^54",
+    "expo-application": "~7.0.8",
+    "expo-background-fetch": "~14.0.9",
+    "expo-dev-client": "~6.0.20",
+    "expo-document-picker": "~14.0.8",
+    "expo-file-system": "~19.0.21",
+    "expo-linear-gradient": "~15.0.8",
+    "expo-navigation-bar": "~5.0.10",
+    "expo-notifications": "~0.32.15",
+    "expo-print": "~15.0.8",
+    "expo-sharing": "~14.0.8",
+    "expo-sqlite": "~16.0.10",
+    "expo-status-bar": "~3.0.9",
+    "expo-task-manager": "~14.0.9",
+    "expo-updates": "~29.0.15",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "react-native": "0.81.5",
+    "react-native-background-timer": "^2.4.1",
+    "react-native-calendars": "^1.1313.0",
+    "react-native-gesture-handler": "~2.28.0",
+    "react-native-html-to-pdf": "^0.12.0",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0",
+    "react-native-share": "^12.1.0",
+    "react-native-vector-icons": "^10.2.0",
+    "react-native-view-shot": "^4.0.3",
+    "react-native-web": "^0.21.0",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.20.0",
+    "@types/react": "~19.1.10",
+    "sharp": "^0.34.3",
+    "typescript": "~5.9.2"
+  },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-background-timer",
+          "react-native-html-to-pdf",
+          "react-native-vector-icons",
+          "sqlite3"
+        ],
+        "listUnknownPackages": false
+      }
+    }
+  },
+  "private": true
+}

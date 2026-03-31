@@ -306,15 +306,19 @@ class CalculationService {
           
           console.log(`[CalculationService] Calcolo lavoro fasce orarie legacy:`, workCalculation);
           
-          // Se ci sono ore oltre le 8, considera tutto come straordinario
+          // Se ci sono ore oltre le 8, mantieni le prime 8h come regolari e calcola gli straordinari correttamente
           if (isOvertimePeriod) {
-            overtimePay = workCalculation.totalEarnings;
-            overtimeHours = workCalculation.totalHours;
-            regularPay = 0;
-            regularHours = 0;
+            const overtimeDetails = this.calculateOvertimeDetails(workHours, travelHours, contract);
+            regularHours = overtimeDetails.regularHours;
+            overtimeHours = overtimeDetails.overtimeHours;
+            regularPay = dailyRate;
+            overtimePay = Math.max(0, workCalculation.totalEarnings - regularPay);
+
+            console.log(`[CalculationService] ✅ Straordinari (fasce legacy): regularHours=${regularHours}, overtimeHours=${overtimeHours}, regularPay=${regularPay.toFixed(2)}, overtimePay=${overtimePay.toFixed(2)}`);
           } else {
             regularPay = workCalculation.totalEarnings;
             regularHours = workCalculation.totalHours;
+            overtimeHours = 0;
           }
         }
       } catch (error) {
@@ -335,13 +339,17 @@ class CalculationService {
         );
         
         if (isOvertimePeriod) {
-          overtimePay = workCalculation.totalEarnings;
-          overtimeHours = workCalculation.totalHours;
-          regularPay = 0;
-          regularHours = 0;
+          const overtimeDetails = this.calculateOvertimeDetails(workHours, travelHours, contract);
+          regularHours = overtimeDetails.regularHours;
+          overtimeHours = overtimeDetails.overtimeHours;
+          regularPay = dailyRate;
+          overtimePay = Math.max(0, workCalculation.totalEarnings - regularPay);
+
+          console.log(`[CalculationService] ✅ Straordinari fallback: regularHours=${regularHours}, overtimeHours=${overtimeHours}, regularPay=${regularPay.toFixed(2)}, overtimePay=${overtimePay.toFixed(2)}`);
         } else {
           regularPay = workCalculation.totalEarnings;
           regularHours = workCalculation.totalHours;
+          overtimeHours = 0;
         }
       }
       

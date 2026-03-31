@@ -27,6 +27,20 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.73',
+      date: '01 aprile 2026',
+      changes: [
+        'Correzioni post-baseline'
+      ]
+    },
+    {
+      version: '1.0.72',
+      date: '29 marzo 2026',
+      changes: [
+        'Fix reperibilità festivi + riepilogo + dashboard'
+      ]
+    },
+    {
       version: '1.0.71',
       date: '28 marzo 2026',
       changes: [

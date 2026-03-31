@@ -2750,11 +2750,36 @@ const DashboardScreen = ({ navigation, route }) => {
                     {day?.workEntry?.isStandbyDay && (
                       <Text style={styles.dailyListDetail}>🟡 Reperibilità</Text>
                     )}
-                    {day?.workEntry?.completamentoGiornata && day.workEntry.completamentoGiornata !== 'nessuno' && (
-                      <Text style={styles.dailyListDetail}>
-                        Giornata completata con: {String(day.workEntry.completamentoGiornata || '')}
-                      </Text>
-                    )}
+                    {!(day?.dayType === 'vacation' || day?.dayType === 'compensatory' || day?.dayType === 'fixed') &&
+                     day?.workEntry?.completamentoGiornata && String(day.workEntry.completamentoGiornata).toLowerCase() !== 'nessuno' && String(day.workEntry.completamentoGiornata).trim() !== '' && (() => {
+                        const c = String(day.workEntry.completamentoGiornata || '').toLowerCase();
+                        const completionLabel = c === 'riposo' ? '🛌 Riposo Compensativo' :
+                          c === 'ferie' ? '🏖️ Ferie' :
+                          c === 'malattia' ? '🏥 Malattia' :
+                          c === 'permesso' ? '📅 Permesso' :
+                          c === 'festivo' ? '🎉 Festivo' :
+                          String(day.workEntry.completamentoGiornata || '');
+
+                        const completionBg = c === 'riposo' ? '#f3e5f5' :
+                          c === 'ferie' ? '#e8f5e9' :
+                          c === 'malattia' ? '#fff3e0' :
+                          c === 'permesso' ? '#e3f2fd' :
+                          c === 'festivo' ? '#ffebee' :
+                          '#eceff1';
+
+                        const completionTextColor = c === 'riposo' ? '#6a1b9a' :
+                          c === 'ferie' ? '#2e7d32' :
+                          c === 'malattia' ? '#ef6c00' :
+                          c === 'permesso' ? '#1565c0' :
+                          c === 'festivo' ? '#c62828' :
+                          theme.colors.text;
+
+                        return (
+                          <View style={{ backgroundColor: completionBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginBottom: 2 }}>
+                            <Text style={[styles.dailyListDetail, { color: completionTextColor, marginBottom: 0 }]}>Giornata completata con: {completionLabel}</Text>
+                          </View>
+                        );
+                    })()}
                   </View>
                 </TouchableOpacity>
                 );

@@ -1,0 +1,72 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradiente di sfondo -->
+    <radialGradient id="bgGradient" cx="50%" cy="40%">
+      <stop offset="0%" style="stop-color:#4F46E5"/>
+      <stop offset="70%" style="stop-color:#1E40AF"/>
+      <stop offset="100%" style="stop-color:#1E3A8A"/>
+    </radialGradient>
+    
+    <!-- Ombra per la W -->
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="4" dy="6" stdDeviation="8" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  
+  <!-- Cerchio di sfondo -->
+  <circle cx="512" cy="512" r="460" fill="url(#bgGradient)" stroke="#1E3A8A" stroke-width="8"/>
+  
+  <!-- Anello esterno per l'orologio -->
+  <circle cx="512" cy="512" r="420" fill="none" stroke="#3B82F6" stroke-width="3" opacity="0.6"/>
+  
+  <!-- Tacche principali dell'orologio (12, 3, 6, 9) -->
+  <rect x="508" y="120" width="8" height="40" fill="#FEF3C7" rx="4"/>
+  <rect x="856" y="508" width="40" height="8" fill="#FEF3C7" rx="4"/>
+  <rect x="508" y="856" width="8" height="40" fill="#FEF3C7" rx="4"/>
+  <rect x="120" y="508" width="40" height="8" fill="#FEF3C7" rx="4"/>
+  
+  <!-- Tacche secondarie -->
+  <circle cx="512" cy="180" r="4" fill="#93C5FD"/>
+  <circle cx="732" cy="292" r="4" fill="#93C5FD"/>
+  <circle cx="844" cy="512" r="4" fill="#93C5FD"/>
+  <circle cx="732" cy="732" r="4" fill="#93C5FD"/>
+  <circle cx="512" cy="844" r="4" fill="#93C5FD"/>
+  <circle cx="292" cy="732" r="4" fill="#93C5FD"/>
+  <circle cx="180" cy="512" r="4" fill="#93C5FD"/>
+  <circle cx="292" cy="292" r="4" fill="#93C5FD"/>
+  
+  <!-- "W" stylizzata al centro -->
+  <g filter="url(#shadow)">
+    <path d="M320 380 L380 680 L450 480 L520 680 L580 380" 
+          stroke="#FFFFFF" 
+          stroke-width="45" 
+          fill="none" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+  </g>
+  
+  <!-- Lancette dell'orologio integrate nella W -->
+  <g>
+    <!-- Lancetta ore (più corta, più spessa) -->
+    <line x1="512" y1="512" x2="512" y2="320" 
+          stroke="#F59E0B" 
+          stroke-width="12" 
+          stroke-linecap="round"/>
+    
+    <!-- Lancetta minuti (più lunga, più sottile) -->
+    <line x1="512" y1="512" x2="620" y2="420" 
+          stroke="#F59E0B" 
+          stroke-width="8" 
+          stroke-linecap="round"/>
+  </g>
+  
+  <!-- Centro dell'orologio -->
+  <circle cx="512" cy="512" r="18" fill="#F59E0B"/>
+  <circle cx="512" cy="512" r="12" fill="#FFFFFF"/>
+  
+  <!-- Piccoli dettagli decorativi -->
+  <g opacity="0.4">
+    <circle cx="450" cy="350" r="3" fill="#FEF3C7"/>
+    <circle cx="574" cy="350" r="3" fill="#FEF3C7"/>
+  </g>
+</svg>

@@ -1,0 +1,100 @@
+{
+  "expo": {
+    "name": "WorkT Nativa",
+    "slug": "workt",
+    "version": "1.0.50",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "description": "App nativa parallela per test e produzione.",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1E3A8A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.example.worktnative",
+      "buildNumber": "12",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "background-processing",
+          "background-fetch",
+          "remote-notification"
+        ],
+        "NSUserNotificationsUsageDescription": "Questa app utilizza le notifiche per ricordarti di inserire gli orari di lavoro e per avvisarti dei turni di reperibilità.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1E3A8A"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "resize",
+      "package": "com.example.worktnative",
+      "versionCode": 12,
+      "permissions": [
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.USE_EXACT_ALARM",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#1E3A8A",
+      "androidMode": "default",
+      "androidCollapsedTitle": "Nuove notifiche WorkT",
+      "sounds": [],
+      "iosDisplayInForeground": true
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1E3A8A",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1f702228-d42b-4572-83f9-cc863b1f4afa"
+      }
+    },
+    "runtimeVersion": "native-1.0.0",
+    "updates": {
+      "url": "https://u.expo.dev/1f702228-d42b-4572-83f9-cc863b1f4afa",
+      "requestHeaders": {
+        "expo-channel-name": "native"
+      },
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 10000,
+      "enabled": true
+    }
+  }
+}

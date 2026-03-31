@@ -1,0 +1,13 @@
+# Handle line endings automatically for all text files
+* text=auto
+
+# Force LF for shell scripts
+*.sh text eol=lf
+
+# Keep JSON and JS files normalized
+*.js text
+*.json text
+*.md text
+
+# LFS rules
+*.7z filter=lfs diff=lfs merge=lfs -text

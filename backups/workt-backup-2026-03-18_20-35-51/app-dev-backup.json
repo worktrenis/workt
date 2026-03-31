@@ -1,0 +1,102 @@
+{
+  "expo": {
+    "name": "WorkT - Tracker Ore Lavoro",
+    "slug": "workt",
+    "version": "1.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "description": "App professionale per il tracking delle ore di lavoro con calcolo automatico dello stipendio secondo CCNL Metalmeccanico PMI. Build nativa con aggiornamenti automatici OTA.",
+    "platforms": [
+      "ios",
+      "android"
+    ],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1E3A8A"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.workt.production",
+      "buildNumber": "11",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "background-processing",
+          "background-fetch",
+          "remote-notification"
+        ],
+        "NSUserNotificationsUsageDescription": "Questa app utilizza le notifiche per ricordarti di inserire gli orari di lavoro e per avvisarti dei turni di reperibilità.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1E3A8A"
+      },
+      "edgeToEdgeEnabled": true,
+      "softwareKeyboardLayoutMode": "pan",
+      "package": "com.workt.production",
+      "versionCode": 11,
+      "permissions": [
+        "WRITE_EXTERNAL_STORAGE",
+        "READ_EXTERNAL_STORAGE",
+        "android.permission.SCHEDULE_EXACT_ALARM",
+        "android.permission.WAKE_LOCK",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.VIBRATE",
+        "android.permission.FOREGROUND_SERVICE"
+      ],
+      "notification": {
+        "icon": "./assets/icon.png",
+        "color": "#1E3A8A"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "notification": {
+      "icon": "./assets/icon.png",
+      "color": "#1E3A8A",
+      "androidMode": "default",
+      "androidCollapsedTitle": "Nuove notifiche WorkT",
+      "sounds": [],
+      "iosDisplayInForeground": true
+    },
+    "plugins": [
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/icon.png",
+          "color": "#1E3A8A",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "1f702228-d42b-4572-83f9-cc863b1f4afa"
+      }
+    },
+    "runtimeVersion": "1.1.0",
+    "updates": {
+      "url": "https://u.expo.dev/1f702228-d42b-4572-83f9-cc863b1f4afa",
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 10000,
+      "enabled": true
+    }
+  }
+}
