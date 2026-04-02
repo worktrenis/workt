@@ -27,6 +27,13 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.74',
+      date: '02 aprile 2026',
+      changes: [
+        'Correzione header TimeEntryForm e PDF'
+      ]
+    },
+    {
       version: '1.0.73',
       date: '01 aprile 2026',
       changes: [

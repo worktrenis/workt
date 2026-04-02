@@ -481,7 +481,7 @@ const TimeEntryStack = () => {
       }}
     >
       <Stack.Screen name="TimeEntryScreen" component={TimeEntryScreen} options={{ title: 'Inserimento Orario' }} />
-      <Stack.Screen name="TimeEntryForm" component={TimeEntryForm} options={{ title: 'Nuovo Inserimento' }} />
+      <Stack.Screen name="TimeEntryForm" component={TimeEntryForm} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };

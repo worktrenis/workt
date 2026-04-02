@@ -4509,15 +4509,40 @@ const TimeEntryForm = ({ route, navigation }) => {
   // � Funzione per fare screenshot del form
   const printForm = async () => {
     try {
-      console.log('� FORM SCREENSHOT - Avvio cattura schermata...');
+      console.log('📄 FORM PDF - Avvio generazione PDF...');
+
+      const escapeHtml = (value) => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+      const getVehicleLabel = (value) => {
+        if (value === 'solo_andata') return 'Solo Andata';
+        if (value === 'solo_ritorno') return 'Solo Ritorno';
+        if (value === 'non_guidato') return 'Non guidato';
+        return 'Andata e Ritorno';
+      };
+
+      const getDayTypeLabel = (value) => {
+        if (value === 'festivo') return 'Festivo';
+        if (value === 'domenica') return 'Domenica';
+        if (value === 'ferie') return 'Ferie';
+        if (value === 'permesso') return 'Permesso';
+        if (value === 'malattia') return 'Malattia';
+        if (value === 'riposo') return 'Riposo compensativo';
+        if (value === 'lavorativa') return 'Lavorativa';
+        return value;
+      };
       
       Alert.alert(
-        '� Screenshot Form',
-        'Vuoi salvare una foto dell\'inserimento corrente?',
+        '📄 Esporta PDF',
+        'Vuoi generare il PDF dell\'inserimento corrente?',
         [
           { text: 'Annulla', style: 'cancel' },
           {
-            text: 'Cattura Screenshot',
+            text: 'Genera PDF',
             onPress: async () => {
               try {
                 // PRIMA: Calcola il breakdown REALE usando CalculationService
@@ -4561,13 +4586,13 @@ const TimeEntryForm = ({ route, navigation }) => {
                     mealDinnerVoucher: form.pasti.cena ? 1 : 0,
                     mealDinnerCash: 0,
                     travelAllowance: form.trasferta ? 1 : 0,
-                    travelAllowancePercent: 1.0,
+                    travelAllowancePercent: form.trasfertaPercent || 1.0,
                     isStandbyDay: form.reperibilita ? 1 : 0,
                     standbyAllowance: form.reperibilita ? 1 : 0,
                     completamentoGiornata: 'nessuno',
                     isFixedDay: false,
                     fixedEarnings: 0,
-                    dayType: 'normale'
+                    dayType: dayType || form.dayType || 'lavorativa'
                   };
                   
                   // Settings con valori di default come nell'EarningsSummary
@@ -4623,8 +4648,14 @@ const TimeEntryForm = ({ route, navigation }) => {
                 }
 
                 // SECONDA: Genera dati per il form  
+                const primaryShift = form.viaggi[0] || {};
                 const additionalShifts = form.viaggi.slice(1) || [];
                 const interventions = form.interventi || [];
+                const effectiveDayType = dayType || form.dayType || form.day_type || 'lavorativa';
+                const mainSiteName = primaryShift.site_name || form.site_name || '';
+                const mainVehicle = primaryShift.veicolo || form.veicolo || 'andata_ritorno';
+                const mainVehiclePlate = primaryShift.targa_veicolo || form.targa_veicolo || '';
+                const formNote = form.note || form.notes || '';
                 
                 // HTML ottimizzato per formato A4 professionale
                 const htmlContent = `
@@ -4951,7 +4982,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                       <!-- HEADER DOCUMENTO -->
                       <div class="document-header">
                         <h1 class="app-title">🏗️ WorkT - Tracker Ore Lavoro</h1>
-                        <p class="document-subtitle">Inserimento Giornaliero ${form.date}</p>
+                        <p class="document-subtitle">Inserimento Giornaliero ${escapeHtml(form.date)}</p>
                       </div>
 
                       <!-- INFORMAZIONI PRINCIPALI -->
@@ -4962,16 +4993,9 @@ const TimeEntryForm = ({ route, navigation }) => {
                           <div class="field-group">
                             <div class="field-label">Data</div>
                             <div class="field-value">
-                              ${form.date}
-                              ${form.day_type && form.day_type !== 'normale' ? 
-                                `<span class="day-type-badge">${
-                                  form.day_type === 'festivo' ? 'Festivo' :
-                                  form.day_type === 'domenica' ? 'Domenica' :
-                                  form.day_type === 'ferie' ? 'Ferie' :
-                                  form.day_type === 'permesso' ? 'Permesso' :
-                                  form.day_type === 'malattia' ? 'Malattia' :
-                                  form.day_type
-                                }</span>` : ''
+                              ${escapeHtml(form.date)}
+                              ${effectiveDayType && effectiveDayType !== 'normale' && effectiveDayType !== 'lavorativa' ? 
+                                `<span class="day-type-badge">${escapeHtml(getDayTypeLabel(effectiveDayType))}</span>` : ''
                               }
                             </div>
                           </div>
@@ -4982,18 +5006,15 @@ const TimeEntryForm = ({ route, navigation }) => {
                           <div class="card-header">🏗️ Cantiere</div>
                           <div class="field-group">
                             <div class="field-label">Nome Cantiere</div>
-                            <div class="field-value ${!form.site_name ? 'empty' : ''}">${form.site_name || 'Non specificato'}</div>
+                            <div class="field-value ${!mainSiteName ? 'empty' : ''}">${escapeHtml(mainSiteName || 'Non specificato')}</div>
                           </div>
                           <div class="field-group">
                             <div class="field-label">Modalità Veicolo</div>
-                            <div class="field-value">${form.veicolo === 'andata_ritorno' ? 'Andata e Ritorno' : 
-                              form.veicolo === 'solo_andata' ? 'Solo Andata' : 
-                              form.veicolo === 'solo_ritorno' ? 'Solo Ritorno' : 
-                              'Andata e Ritorno'}</div>
+                            <div class="field-value">${escapeHtml(getVehicleLabel(mainVehicle))}</div>
                           </div>
                           <div class="field-group">
                             <div class="field-label">Targa/Numero Veicolo</div>
-                            <div class="field-value ${!form.targa_veicolo ? 'empty' : ''}">${form.targa_veicolo || 'Non specificato'}</div>
+                            <div class="field-value ${!mainVehiclePlate ? 'empty' : ''}">${escapeHtml(mainVehiclePlate || 'Non specificato')}</div>
                           </div>
                         </div>
                       </div>
@@ -5074,35 +5095,35 @@ const TimeEntryForm = ({ route, navigation }) => {
                                   <div class="field-group">
                                     <div class="field-label">Lavoro Ordinario</div>
                                     <div class="time-row">
-                                      <div class="time-field">${shift.work_start_1 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(shift.work_start_1 || '--:--')}</div>
                                       <span class="time-separator">—</span>
-                                      <div class="time-field">${shift.work_end_1 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(shift.work_end_1 || '--:--')}</div>
                                     </div>
                                   </div>
                                   ${shift.work_start_2 || shift.work_end_2 ? `
                                   <div class="field-group">
                                     <div class="field-label">Lavoro Straordinario</div>
                                     <div class="time-row">
-                                      <div class="time-field">${shift.work_start_2 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(shift.work_start_2 || '--:--')}</div>
                                       <span class="time-separator">—</span>
-                                      <div class="time-field">${shift.work_end_2 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(shift.work_end_2 || '--:--')}</div>
                                     </div>
                                   </div>` : ''}
                                   <div class="field-group">
                                     <div class="field-label">Partenza Azienda</div>
-                                    <div class="field-value ${!shift.departure_company ? 'empty' : ''}">${shift.departure_company || '--:--'}</div>
+                                    <div class="field-value ${!shift.departure_company ? 'empty' : ''}">${escapeHtml(shift.departure_company || '--:--')}</div>
                                   </div>
                                   <div class="field-group">
                                     <div class="field-label">Arrivo Cantiere</div>
-                                    <div class="field-value ${!shift.arrival_site ? 'empty' : ''}">${shift.arrival_site || '--:--'}</div>
+                                    <div class="field-value ${!shift.arrival_site ? 'empty' : ''}">${escapeHtml(shift.arrival_site || '--:--')}</div>
                                   </div>
                                   <div class="field-group">
                                     <div class="field-label">Partenza Cantiere</div>
-                                    <div class="field-value ${!shift.departure_return ? 'empty' : ''}">${shift.departure_return || '--:--'}</div>
+                                    <div class="field-value ${!shift.departure_return ? 'empty' : ''}">${escapeHtml(shift.departure_return || '--:--')}</div>
                                   </div>
                                   <div class="field-group">
                                     <div class="field-label">Arrivo Azienda</div>
-                                    <div class="field-value ${!shift.arrival_company ? 'empty' : ''}">${shift.arrival_company || '--:--'}</div>
+                                    <div class="field-value ${!shift.arrival_company ? 'empty' : ''}">${escapeHtml(shift.arrival_company || '--:--')}</div>
                                   </div>
                                 </div>
                               </div>
@@ -5122,41 +5143,41 @@ const TimeEntryForm = ({ route, navigation }) => {
                                   <div class="field-group">
                                     <div class="field-label">Lavoro Ordinario</div>
                                     <div class="time-row">
-                                      <div class="time-field">${intervention.work_start_1 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(intervention.work_start_1 || '--:--')}</div>
                                       <span class="time-separator">—</span>
-                                      <div class="time-field">${intervention.work_end_1 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(intervention.work_end_1 || '--:--')}</div>
                                     </div>
                                   </div>
                                   ${intervention.work_start_2 || intervention.work_end_2 ? `
                                   <div class="field-group">
                                     <div class="field-label">Lavoro Straordinario</div>
                                     <div class="time-row">
-                                      <div class="time-field">${intervention.work_start_2 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(intervention.work_start_2 || '--:--')}</div>
                                       <span class="time-separator">—</span>
-                                      <div class="time-field">${intervention.work_end_2 || '--:--'}</div>
+                                      <div class="time-field">${escapeHtml(intervention.work_end_2 || '--:--')}</div>
                                     </div>
                                   </div>` : ''}
                                   <div class="field-group">
                                     <div class="field-label">Partenza Azienda</div>
-                                    <div class="field-value ${!intervention.departure_company ? 'empty' : ''}">${intervention.departure_company || '--:--'}</div>
+                                    <div class="field-value ${!intervention.departure_company ? 'empty' : ''}">${escapeHtml(intervention.departure_company || '--:--')}</div>
                                   </div>
                                   <div class="field-group">
                                     <div class="field-label">Arrivo Cantiere</div>
-                                    <div class="field-value ${!intervention.arrival_site ? 'empty' : ''}">${intervention.arrival_site || '--:--'}</div>
+                                    <div class="field-value ${!intervention.arrival_site ? 'empty' : ''}">${escapeHtml(intervention.arrival_site || '--:--')}</div>
                                   </div>
                                   <div class="field-group">
                                     <div class="field-label">Partenza Cantiere</div>
-                                    <div class="field-value ${!intervention.departure_return ? 'empty' : ''}">${intervention.departure_return || '--:--'}</div>
+                                    <div class="field-value ${!intervention.departure_return ? 'empty' : ''}">${escapeHtml(intervention.departure_return || '--:--')}</div>
                                   </div>
                                   <div class="field-group">
                                     <div class="field-label">Arrivo Azienda</div>
-                                    <div class="field-value ${!intervention.arrival_company ? 'empty' : ''}">${intervention.arrival_company || '--:--'}</div>
+                                    <div class="field-value ${!intervention.arrival_company ? 'empty' : ''}">${escapeHtml(intervention.arrival_company || '--:--')}</div>
                                   </div>
                                 </div>
                                 ${intervention.description ? `
                                 <div class="field-group" style="margin-top: 8px;">
                                   <div class="field-label">Descrizione</div>
-                                  <div class="field-value">${intervention.description}</div>
+                                  <div class="field-value">${escapeHtml(intervention.description)}</div>
                                 </div>` : ''}
                               </div>
                             `).join('')}
@@ -5164,12 +5185,12 @@ const TimeEntryForm = ({ route, navigation }) => {
                         </div>` : ''}
 
                       <!-- NOTE LIBERE -->
-                      ${form.note_libere ? `
+                      ${formNote ? `
                         <div class="info-grid single-column">
                           <div class="info-card">
                             <div class="card-header">📝 Note Libere</div>
                             <div class="field-group">
-                              <div class="field-value" style="min-height: 40px; white-space: pre-wrap;">${form.note_libere}</div>
+                              <div class="field-value" style="min-height: 40px; white-space: pre-wrap;">${escapeHtml(formNote)}</div>
                             </div>
                           </div>
                         </div>` : ''}
@@ -5640,10 +5661,10 @@ const TimeEntryForm = ({ route, navigation }) => {
                 }
                 
               } catch (error) {
-                console.error('❌ FORM SCREENSHOT - Errore cattura:', error);
+                console.error('❌ FORM PDF - Errore generazione:', error);
                 Alert.alert(
-                  'Errore Screenshot',
-                  `Impossibile catturare lo screenshot:\n\n${error.message}`,
+                  'Errore PDF',
+                  `Impossibile generare il PDF:\n\n${error.message}`,
                   [{ text: 'OK' }]
                 );
               }
@@ -5652,13 +5673,13 @@ const TimeEntryForm = ({ route, navigation }) => {
         ]
       );
     } catch (error) {
-      console.error('❌ FORM SCREENSHOT - Errore:', error);
-      Alert.alert('Errore', 'Impossibile avviare la cattura screenshot');
+      console.error('❌ FORM PDF - Errore:', error);
+      Alert.alert('Errore', 'Impossibile avviare la generazione del PDF');
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <KeyboardAvoidingView
         style={{ flex: 1 }}
