@@ -474,70 +474,6 @@ class NotificationService {
           }
         }
       }
-      
-      // ✍️ PROMEMORIA INSERIMENTO ORARIO
-      if (settings.timeEntryReminders?.enabled) {
-        console.log('📱 ✍️ Programmando promemoria inserimento orario...');
-        
-        // JavaScript per app attiva
-        const jsEntryCount = await this.alternativeService.scheduleAlternativeTimeEntryReminders(settings.timeEntryReminders);
-        totalJSScheduled += jsEntryCount;
-        
-        // Enhanced per background persistence
-        if (this.enhancedInitialized) {
-          const enhancedEntryCount = await this.enhancedService.scheduleTimeEntryReminders(settings.timeEntryReminders);
-          totalEnhancedScheduled += enhancedEntryCount;
-        }
-        
-        console.log(`✅ Promemoria inserimento: ${jsEntryCount} JS + ${this.enhancedInitialized ? 'Enhanced attivo' : 'Enhanced non disponibile'}`);
-      }
-      
-      // 📊 RIEPILOGO GIORNALIERO
-      if (settings.dailySummary?.enabled) {
-        console.log('📱 📊 Programmando riepilogo giornaliero...');
-        
-        const jsSummaryCount = await this.alternativeService.scheduleAlternativeDailySummary(settings.dailySummary);
-        totalJSScheduled += jsSummaryCount;
-        
-        console.log(`✅ ${jsSummaryCount} timer JavaScript riepilogo attivati`);
-      }
-      
-      // 📞 PROMEMORIA REPERIBILITÀ
-      if (settings.standbyReminders?.enabled) {
-        console.log('📱 📞 Programmando promemoria reperibilità...');
-        
-        try {
-          const endDate = new Date();
-          endDate.setMonth(endDate.getMonth() + 2);
-          
-          // Ottieni date reperibilità
-          let standbyDates;
-          if (this.enhancedInitialized) {
-            standbyDates = await this.enhancedService.getStandbyDates(new Date(), endDate);
-          } else {
-            standbyDates = await this.getStandbyDatesFromSettings(new Date(), endDate);
-          }
-          
-          if (standbyDates.length > 0) {
-            // JavaScript per app attiva
-            const jsStandbyCount = await this.alternativeService.scheduleAlternativeStandbyReminders(standbyDates, settings.standbyReminders);
-            totalJSScheduled += jsStandbyCount;
-            
-            // Enhanced per background persistence
-            if (this.enhancedInitialized) {
-              const enhancedStandbyCount = await this.enhancedService.scheduleStandbyReminders(standbyDates, settings.standbyReminders);
-              totalEnhancedScheduled += enhancedStandbyCount;
-            }
-            
-            console.log(`✅ Reperibilità: ${jsStandbyCount} JS + ${this.enhancedInitialized ? 'Enhanced attivo' : 'Enhanced non disponibile'}`);
-            console.log(`📞 Date trovate: ${standbyDates.slice(0, 3).join(', ')}${standbyDates.length > 3 ? ' e altre...' : ''}`);
-          } else {
-            console.log('📞 Nessuna data di reperibilità trovata');
-          }
-        } catch (error) {
-          console.error('❌ Errore programmazione reperibilità:', error);
-        }
-      }
 
       // Verifica finale
   const jsStats = this.alternativeService.getActiveTimersStats();
@@ -860,22 +796,22 @@ class NotificationService {
     await this.initialize();
     
     const jsStats = this.alternativeService.getActiveTimersStats();
-    const pushCount = this.pushInitialized ? this.pushService.getScheduledCount() : 0;
+    const pushCount = this.enhancedInitialized ? this.enhancedService.getScheduledCount() : 0;
     const settings = await this.getSettings();
     
     console.log(`🔧 Timer JavaScript attivi: ${jsStats.total}`);
     console.log(`🔧 Push notifications attive: ${pushCount}`);
     console.log(`🔧 Notifiche abilitate: ${settings.enabled}`);
-    console.log(`🔧 Sistema: ${this.pushInitialized ? 'Ibrido (JS + Push)' : 'Solo JavaScript'}`);
-    console.log(`🔧 Background supportato: ${this.pushInitialized}`);
+    console.log(`🔧 Sistema: ${this.enhancedInitialized ? 'Ibrido (JS + Push)' : 'Solo JavaScript'}`);
+    console.log(`🔧 Background supportato: ${this.enhancedInitialized}`);
     
     return {
       scheduledCount: jsStats.total + pushCount,
       javascriptCount: jsStats.total,
       pushCount: pushCount,
       settings: settings,
-      system: this.pushInitialized ? 'hybrid' : 'javascript_only',
-      backgroundSupported: this.pushInitialized
+      system: this.enhancedInitialized ? 'hybrid' : 'javascript_only',
+      backgroundSupported: this.enhancedInitialized
     };
   }
 
@@ -1106,11 +1042,21 @@ class NotificationService {
     
     try {
       const jsStats = this.alternativeService.getActiveTimersStats();
-      const pushCount = this.pushInitialized ? this.pushService.getScheduledCount() : 0;
+      const pushCount = this.enhancedInitialized ? this.enhancedService.getScheduledCount() : 0;
+      const nativeStatus = this.nativeService.getSystemStatus();
+      const nativeReady = nativeStatus.isNativeReady;
       
       console.log(`📊 Stato sistema dopo background:`);
       console.log(`   JavaScript timers: ${jsStats.total}`);
       console.log(`   Push notifications: ${pushCount}`);
+      console.log(`   Native (expo-notifications): ${nativeReady ? 'attivo' : 'non disponibile'}`);
+      
+      // Se il sistema nativo è attivo, le notifiche sono già programmate a livello OS.
+      // Non serve riprogrammare all'apertura dell'app.
+      if (nativeReady) {
+        console.log('✅ Sistema nativo attivo: le notifiche sono gestite dall\'OS, nessuna riprogrammazione necessaria');
+        return { javascript: 0, push: 0, native: true };
+      }
       
       if (jsStats.total === 0 && pushCount === 0) {
         console.log('⚠️ Nessuna notifica attiva - riprogrammazione completa necessaria');

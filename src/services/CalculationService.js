@@ -869,7 +869,6 @@ class CalculationService {
         // Applica l'indennità senza maggiorazioni per giorni speciali (a meno che non sia configurato diversamente)
         travelAllowance = baseTravelAllowance * travelAllowancePercent;
         
-        console.log(`[CalculationService] Indennità trasferta finale per ${workEntry.date}: ${baseTravelAllowance.toFixed(2)}€ × ${travelAllowancePercent} = ${(travelAllowance || 0).toFixed(2)}€ (metodo: ${calculationMethod}, speciale: ${isSunday || isHoliday}, override: ${manualOverride}, applyOnSpecialDays: ${applyOnSpecialDays})`);
       }
     }
 
@@ -1397,7 +1396,6 @@ class CalculationService {
     } else {
       // Assicura che l'indennità non sia mostrata se disattivata
       result.allowances.standby = 0;
-      console.log(`[CalculationService] Indennità reperibilità non attiva per ${workEntry.date}`);
     }
     
     // Calcola le indennità (trasferta, pasti, etc.)
@@ -1467,7 +1465,6 @@ class CalculationService {
         
         result.allowances.travel = baseTravelAllowance * travelAllowancePercent;
         
-        console.log(`[CalculationService] Breakdown - Indennità trasferta finale per ${workEntry.date}: ${baseTravelAllowance.toFixed(2)}€ × ${travelAllowancePercent} = ${(result.allowances.travel || 0).toFixed(2)}€ (metodo: ${calculationMethod})`);
       }
     }
     
@@ -1898,9 +1895,6 @@ class CalculationService {
       hours.travel[k] = this.minutesToHours(minuteDetails.travel[k]);
     });
     
-    console.log(`[DEBUG] Final minute breakdown for ${workEntry.date}:`, minuteDetails);
-    console.log(`[DEBUG] Final hour breakdown for ${workEntry.date}:`, hours);
-
     // Calcolo guadagni per fascia oraria
     const earnings = {
       work: {},
@@ -1924,15 +1918,6 @@ class CalculationService {
     const isWeekday = !isSaturday && !isSunday && !isHoliday;
     const shouldApplyOvertimeToStandby = isWeekday && ordinaryTotalHours >= standardWorkDay;
     
-    console.log(`[CalculationService] Verifica limite 8 ore per ${workEntry.date}:`, {
-      isWeekday,
-      ordinaryTotalHours,
-      standbyTotalHours,
-      totalDailyHours,
-      standardWorkDay,
-      shouldApplyOvertimeToStandby
-    });
-
     // Maggiorazioni CCNL per interventi di reperibilità
     const ccnlRates = contract.overtimeRates || {};
     
@@ -2010,14 +1995,6 @@ class CalculationService {
         console.log(`[CalculationService] StandbyBreakdown - Indennità reperibilità feriale (${isSaturday && saturdayMode==='feriale24' ? 'sabato 24h' : allowanceType}) per ${dateStr}: ${correctDailyAllowance}€`);
       }
     }
-    
-    console.log(`[CalculationService] calcolo finale indennità: ${isStandbyActive ? 'attiva' : 'non attiva'}`, {
-      isManuallyActivated,
-      isManuallyDeactivated, 
-      isInCalendar,
-      correctDailyAllowance,
-      oldDailyAllowance: dailyAllowance
-    });
     
     // CORREZIONE: Gli earnings degli interventi devono essere calcolati sempre se ci sono interventi
     // L'indennità giornaliera viene applicata solo se la reperibilità è attiva
@@ -3518,6 +3495,7 @@ class CalculationService {
    */
   extractOvertimePeriods(workEntry, standardWorkDay, settings) {
     const periods = [];
+    const multiShiftTravelAsWork = settings?.multiShiftTravelAsWork === true;
     
     // Calcola ore totali
     const workHours = this.calculateWorkHours(workEntry) || 0;
@@ -3536,6 +3514,31 @@ class CalculationService {
     
     // Estrai tutti i periodi lavorativi (turni + viaggi)
     const allWorkPeriods = [];
+
+    // Normalizza viaggi per supportare sia array che JSON string
+    let viaggiArray = workEntry.viaggi;
+    if (typeof viaggiArray === 'string') {
+      try {
+        viaggiArray = JSON.parse(viaggiArray);
+      } catch (e) {
+        viaggiArray = null;
+      }
+    }
+
+    // Determina quale ritorno e' esterno (ultimo della giornata)
+    let lastReturnTravelSource = null;
+    if (workEntry.departureReturn && workEntry.arrivalCompany) {
+      lastReturnTravelSource = 'main';
+    }
+    if (viaggiArray && Array.isArray(viaggiArray)) {
+      for (let i = viaggiArray.length - 1; i >= 0; i--) {
+        const viaggio = viaggiArray[i];
+        if (viaggio.departure_return && viaggio.arrival_company) {
+          lastReturnTravelSource = `viaggio_${i + 1}`;
+          break;
+        }
+      }
+    }
     
     // Primo turno
     if (workEntry.workStart1 && workEntry.workEnd1) {
@@ -3564,6 +3567,7 @@ class CalculationService {
       const travelOut = this.calculateTimeDifference(workEntry.departureCompany, workEntry.arrivalSite) / 60;
       allWorkPeriods.push({
         type: 'travel',
+        travelKind: 'external',
         startTime: workEntry.departureCompany,
         endTime: workEntry.arrivalSite,
         duration: travelOut
@@ -3574,6 +3578,7 @@ class CalculationService {
       const travelReturn = this.calculateTimeDifference(workEntry.departureReturn, workEntry.arrivalCompany) / 60;
       allWorkPeriods.push({
         type: 'travel',
+        travelKind: lastReturnTravelSource === 'main' ? 'external' : 'internal',
         startTime: workEntry.departureReturn,
         endTime: workEntry.arrivalCompany,
         duration: travelReturn
@@ -3581,8 +3586,8 @@ class CalculationService {
     }
     
     // Viaggi aggiuntivi
-    if (workEntry.viaggi && Array.isArray(workEntry.viaggi)) {
-      workEntry.viaggi.forEach((viaggio, index) => {
+    if (viaggiArray && Array.isArray(viaggiArray)) {
+      viaggiArray.forEach((viaggio, index) => {
         const vWorkStart1 = viaggio.workStart1 || viaggio.work_start_1;
         const vWorkEnd1 = viaggio.workEnd1 || viaggio.work_end_1;
         const vWorkStart2 = viaggio.workStart2 || viaggio.work_start_2;
@@ -3612,6 +3617,7 @@ class CalculationService {
           const duration = this.calculateTimeDifference(viaggio.departure_company, viaggio.arrival_site) / 60;
           allWorkPeriods.push({
             type: 'travel',
+            travelKind: 'internal',
             startTime: viaggio.departure_company,
             endTime: viaggio.arrival_site,
             duration: duration
@@ -3622,6 +3628,7 @@ class CalculationService {
           const duration = this.calculateTimeDifference(viaggio.departure_return, viaggio.arrival_company) / 60;
           allWorkPeriods.push({
             type: 'travel',
+            travelKind: lastReturnTravelSource === `viaggio_${index + 1}` ? 'external' : 'internal',
             startTime: viaggio.departure_return,
             endTime: viaggio.arrival_company,
             duration: duration
@@ -3652,6 +3659,7 @@ class CalculationService {
     // Separa i periodi di lavoro da quelli di viaggio
     const workPeriods = allWorkPeriods.filter(p => p.type === 'work');
     const travelPeriods = allWorkPeriods.filter(p => p.type === 'travel');
+    const internalTravelPeriods = allWorkPeriods.filter(p => p.type === 'travel' && p.travelKind === 'internal');
     
     console.log(`[CalculationService] � Solo periodi di LAVORO:`, workPeriods);
     console.log(`[CalculationService] 📊 Solo periodi di VIAGGIO:`, travelPeriods);
@@ -3665,6 +3673,23 @@ class CalculationService {
       // Viaggio eccedente come straordinario: considera TUTTI i periodi
       periodsForOvertime = [...allWorkPeriods];
       console.log(`[CalculationService] ⚙️ OVERTIME_EXCESS: usando tutti i periodi per straordinari`);
+    } else if (multiShiftTravelAsWork) {
+      // Multi-cantiere: i viaggi interni sono ore lavoro ai fini straordinario
+      periodsForOvertime = [...workPeriods, ...internalTravelPeriods];
+      periodsForOvertime.sort((a, b) => {
+        let aMinutes = this.parseTime(a.startTime);
+        let bMinutes = this.parseTime(b.startTime);
+
+        if (this.parseTime(a.endTime) < this.parseTime(a.startTime)) {
+          aMinutes += 24 * 60;
+        }
+        if (this.parseTime(b.endTime) < this.parseTime(b.startTime)) {
+          bMinutes += 24 * 60;
+        }
+
+        return aMinutes - bMinutes;
+      });
+      console.log(`[CalculationService] ⚙️ ${travelHoursSetting} + MULTI_CANTIERE: usando lavoro + viaggi interni per straordinari`);
     } else {
       // Solo ore di lavoro per straordinari: considera solo i periodi di lavoro
       periodsForOvertime = [...workPeriods];
@@ -3672,7 +3697,7 @@ class CalculationService {
     }
     
     let cumulativeHours = 0;
-    const standardWorkHours = 8; // Ore di lavoro standard (non include viaggio)
+    const standardWorkHours = standardWorkDay; // Ore standard da configurazione
     
     // Distribuisci gli straordinari sui periodi oltre le 8 ore
     let remainingOvertimeHours = extraHours;

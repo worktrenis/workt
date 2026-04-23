@@ -27,6 +27,50 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.78',
+      date: '23 aprile 2026',
+      changes: [
+        'Fix salvataggio orario non confermato prima del salvataggio form'
+      ]
+    },
+    {
+      version: '1.0.77',
+      date: '23 aprile 2026',
+      changes: [
+        'Fix navigazione post-salvataggio',
+        'Correzione trigger notifica backup',
+        'Pulizia log debug backup e calcoli'
+      ]
+    },
+    {
+      version: '1.0.76',
+      date: '19 aprile 2026',
+      changes: [
+        'OTA: correzioni al sistema di notifiche'
+      ]
+    },
+    {
+      version: '1.0.75',
+      date: '10 aprile 2026',
+      changes: [
+        'Fix dashboard composizione ore (serali/notturne) e allineamenti multi-cantiere'
+      ]
+    },
+    {
+      version: '1.0.74',
+      date: '10 aprile 2026',
+      changes: [
+        'OTA 2026-04-10: fix composizione ore dashboard (serali/notturne) e allineamenti multi-cantiere'
+      ]
+    },
+    {
+      version: '1.0.74',
+      date: '04 aprile 2026',
+      changes: [
+        'Fix dashboard reperibilita: nascondi card solo senza interventi'
+      ]
+    },
+    {
       version: '1.0.74',
       date: '02 aprile 2026',
       changes: [

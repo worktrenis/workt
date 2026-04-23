@@ -1156,61 +1156,12 @@ class DatabaseService {
       // Trasforma ogni entry grezza in workEntry completo
       const processedWorkEntries = rawWorkEntries.map(entry => {
         const processed = createWorkEntryFromData(entry);
-        
-        // 🔥 DEBUG MULTI-TURNO: Log specifico per viaggi durante export
-        if (processed.viaggi && processed.viaggi.length > 0) {
-          console.log(`📤 EXPORT: Entry ${processed.date} con multi-turno:`, {
-            viaggiCount: processed.viaggi.length,
-            workStart1: processed.workStart1,
-            workEnd1: processed.workEnd1,
-            workStart2: processed.workStart2,
-            workEnd2: processed.workEnd2,
-            viaggi: processed.viaggi
-          });
-        }
-        
+
         return processed;
       });
       
       const standbyDays = await this.db.getAllAsync(`SELECT * FROM ${DATABASE_TABLES.STANDBY_CALENDAR}`);
       const settings = await this.db.getAllAsync(`SELECT * FROM ${DATABASE_TABLES.SETTINGS}`);
-      
-      // Conta le entry con interventi per il debug
-      const entriesWithInterventi = processedWorkEntries.filter(entry => 
-        entry.interventi && Array.isArray(entry.interventi) && entry.interventi.length > 0
-      );
-      
-      // 🔍 DEBUG: Log dei dati estratti
-      console.log('🔍 getAllData() - Work entries processati:', {
-        rawCount: rawWorkEntries?.length || 0,
-        processedCount: processedWorkEntries?.length || 0,
-        entriesWithInterventi: entriesWithInterventi.length,
-        totalInterventi: entriesWithInterventi.reduce((sum, entry) => sum + entry.interventi.length, 0),
-        sample: processedWorkEntries?.[0] ? {
-          id: processedWorkEntries[0].id,
-          date: processedWorkEntries[0].date,
-          siteName: processedWorkEntries[0].siteName,
-          hasInterventi: !!processedWorkEntries[0].interventi,
-          interventiLength: Array.isArray(processedWorkEntries[0].interventi) ? processedWorkEntries[0].interventi.length : 'not array',
-          hasWorkTimes: !!(processedWorkEntries[0].workStart1 && processedWorkEntries[0].workEnd1)
-        } : 'no entries',
-        interventiDetails: entriesWithInterventi.length > 0 ? {
-          datesWithInterventi: entriesWithInterventi.map(e => `${e.date}(${e.interventi.length})`).join(', ')
-        } : 'none'
-      });
-      
-      // 🚨 BACKUP INTERVENTI: Log dettagliato per debug backup
-      if (entriesWithInterventi.length > 0) {
-        console.log(`🚨 BACKUP INTERVENTI: Trovate ${entriesWithInterventi.length} entry con interventi da includere nel backup`);
-        entriesWithInterventi.forEach((entry, index) => {
-          console.log(`🚨 BACKUP INTERVENTI: ${index + 1}. Data: ${entry.date}, Interventi: ${entry.interventi.length}`);
-          entry.interventi.forEach((intervento, i) => {
-            console.log(`🚨 BACKUP INTERVENTI:    - Intervento ${i + 1}: ${intervento.start_time} - ${intervento.end_time}`);
-          });
-        });
-      } else {
-        console.log('🚨 BACKUP INTERVENTI: Nessun intervento trovato da includere nel backup');
-      }
       
       // ✅ BACKUP COMPLETO: Include anche impostazioni AsyncStorage
       const AsyncStorage = require('@react-native-async-storage/async-storage').default;
@@ -1237,7 +1188,6 @@ class DatabaseService {
           console.warn(`⚠️ Backup: impossibile leggere AsyncStorage key "${key}":`, e);
         }
       }
-      console.log(`📦 Backup: incluse ${Object.keys(asyncStorageSettings).length} impostazioni AsyncStorage`);
 
       return {
         workEntries: processedWorkEntries || [],

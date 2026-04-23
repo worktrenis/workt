@@ -3549,9 +3549,11 @@ const TimeEntryForm = ({ route, navigation }) => {
 
   // Aggiungi viaggio/lavoro
   const addViaggio = () => {
+    // Eredita il veicolo dal primo cantiere (se presente)
+    const firstVeicolo = form.viaggi?.[0]?.veicolo || 'andata_ritorno';
     const newViaggio = {
       site_name: '',
-      veicolo: 'andata_ritorno',
+      veicolo: firstVeicolo,
       targa_veicolo: '',
       departure_company: '',
       arrival_site: '',
@@ -3968,7 +3970,34 @@ const TimeEntryForm = ({ route, navigation }) => {
 
   // Estrae la logica di salvataggio per riuso (bottone Salva e conferma uscita)
   const handleSavePress = useCallback(async (navigateAfter = true, dispatchAction = null) => {
+    // Commit any pending time field edit before saving
+    let pendingFieldWarning = null;
+    if (editingTimeFieldRef.current && editingTimeValueRef.current !== '') {
+      const formatted = normalizeTimeDigits(editingTimeValueRef.current);
+      if (formatted) {
+        const nextForm = applyTimeFieldUpdate(formRef.current, editingTimeFieldRef.current, formatted);
+        formRef.current = nextForm;
+        setForm(nextForm);
+      } else {
+        pendingFieldWarning = editingTimeValueRef.current;
+      }
+      setEditingTimeField(null);
+      setEditingTimeValue('');
+      editingTimeFieldRef.current = null;
+      editingTimeValueRef.current = '';
+    }
+
+    if (pendingFieldWarning) {
+      Alert.alert(
+        'Orario non valido',
+        `Il valore "${pendingFieldWarning}" non è un orario valido. Correggi l'orario prima di salvare.`
+      );
+      return false;
+    }
+
     try {
+      // eslint-disable-next-line no-shadow
+      const form = formRef.current; // usa il form più aggiornato (include eventuali edit appena committati)
       // ...estratto dalla logica del bottone Salva...
       // Usa lo stesso blocco già presente (qui si richiama tramite copia controllata)
       // Inizialmente ricomponiamo "entry" come nella logica originale
@@ -4095,14 +4124,13 @@ const TimeEntryForm = ({ route, navigation }) => {
       } catch {}
 
       // Navigazione post-salvataggio.
-      // Reinserisce esplicitamente Dashboard + TimeEntryScreen nello stack in modo
-      // che il back vada sempre alla Dashboard (e non al form salvato).
+      // Reset dello stack locale TimeEntry: rimane solo TimeEntryScreen,
+      // così il back hardware non riapre il form appena salvato.
       if (navigateAfter) {
         allowLeaveRef.current = true; // evita prompt su blur
         navigation.reset({
-          index: 1,
+          index: 0,
           routes: [
-            { name: 'Dashboard' },
             {
               name: 'TimeEntryScreen',
               params: {
@@ -4128,7 +4156,7 @@ const TimeEntryForm = ({ route, navigation }) => {
       Alert.alert('Errore', `Errore durante il salvataggio su database: ${e.message}`);
       return false;
     }
-  }, [form, mealCash, dayType, settings, isEdit, entryId, calculationService, navigation, clearDraft, checkDuplicateAndPrompt]);
+  }, [form, mealCash, dayType, settings, isEdit, entryId, calculationService, navigation, clearDraft, checkDuplicateAndPrompt, applyTimeFieldUpdate]);
 
   // Conferma uscita con tre scelte quando ci sono modifiche non salvate
   useEffect(() => {
@@ -4147,17 +4175,16 @@ const TimeEntryForm = ({ route, navigation }) => {
             style: 'destructive',
             onPress: async () => {
               await clearDraft();
-              // consenti l'uscita senza ulteriori prompt
               allowLeaveRef.current = true;
-              navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+              navigation.reset({ index: 0, routes: [{ name: 'TimeEntryScreen', params: { refreshFromForm: true } }] });
             }
           },
           {
             text: 'Lascia in standby',
             onPress: async () => {
               await saveDraft();
-              allowLeaveRef.current = true; // consenti uscita senza riprompt
-              navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+              allowLeaveRef.current = true;
+              navigation.reset({ index: 0, routes: [{ name: 'TimeEntryScreen', params: { refreshFromForm: true } }] });
             }
           },
           {
@@ -5946,6 +5973,24 @@ const TimeEntryForm = ({ route, navigation }) => {
                               const viaggi = [...form.viaggi];
                               viaggi[idx] = { ...viaggi[idx], veicolo: opt.value };
 
+                              // Se si modifica il primo cantiere, propaga la scelta
+                              // a tutti i cantieri successivi che non sono stati cambiati manualmente
+                              // (cioè che hanno ancora il valore di default 'andata_ritorno')
+                              if (idx === 0) {
+                                for (let i = 1; i < viaggi.length; i++) {
+                                  if (!viaggi[i]._veicoloModificato) {
+                                    viaggi[i] = {
+                                      ...viaggi[i],
+                                      veicolo: opt.value,
+                                      targa_veicolo: opt.value === 'non_guidato' ? '' : viaggi[i].targa_veicolo,
+                                    };
+                                  }
+                                }
+                              } else {
+                                // Marca questo cantiere come modificato manualmente
+                                viaggi[idx] = { ...viaggi[idx], _veicoloModificato: true };
+                              }
+
                               setForm(prev => ({
                                 ...prev,
                                 veicolo: idx === 0 ? opt.value : prev.veicolo,
@@ -6653,9 +6698,9 @@ const TimeEntryForm = ({ route, navigation }) => {
           onPress={async () => {
             try {
               if (!hasChanges) {
-                // Nessuna modifica: torna subito alla lista
+                // Nessuna modifica: torna subito alla lista con stack pulito
                 allowLeaveRef.current = true;
-                navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+                navigation.reset({ index: 0, routes: [{ name: 'TimeEntryScreen', params: { refreshFromForm: true } }] });
                 return;
               }
               Alert.alert(
@@ -6669,7 +6714,7 @@ const TimeEntryForm = ({ route, navigation }) => {
                     onPress: async () => {
                       try { await clearDraft(); } catch {}
                       allowLeaveRef.current = true;
-                      navigation.navigate('TimeEntryScreen', { refreshFromForm: true });
+                      navigation.reset({ index: 0, routes: [{ name: 'TimeEntryScreen', params: { refreshFromForm: true } }] });
                     }
                   }
                 ]
@@ -6694,7 +6739,34 @@ const TimeEntryForm = ({ route, navigation }) => {
         <TouchableOpacity
           style={[styles.floatingButton, styles.saveButton]}
           onPress={async () => {
+            // Commit any pending time field edit before saving
+            let pendingFieldWarning = null;
+            if (editingTimeFieldRef.current && editingTimeValueRef.current !== '') {
+              const formatted = normalizeTimeDigits(editingTimeValueRef.current);
+              if (formatted) {
+                const nextForm = applyTimeFieldUpdate(formRef.current, editingTimeFieldRef.current, formatted);
+                formRef.current = nextForm;
+                setForm(nextForm);
+              } else {
+                pendingFieldWarning = editingTimeValueRef.current;
+              }
+              setEditingTimeField(null);
+              setEditingTimeValue('');
+              editingTimeFieldRef.current = null;
+              editingTimeValueRef.current = '';
+            }
+
+            if (pendingFieldWarning) {
+              Alert.alert(
+                'Orario non valido',
+                `Il valore "${pendingFieldWarning}" non è un orario valido. Correggi l'orario prima di salvare.`
+              );
+              return;
+            }
+
             try {
+              // eslint-disable-next-line no-shadow
+              const form = formRef.current; // usa il form più aggiornato
               const viaggi = form.viaggi[0] || {};
               
               // 🚀 MULTI-TURNO: Estrai turni aggiuntivi per salvataggio
@@ -6865,13 +6937,21 @@ const TimeEntryForm = ({ route, navigation }) => {
               try { initialSnapshotRef.current = JSON.stringify({ form, dayType }); setHasChanges(false); } catch {}
               allowLeaveRef.current = true;
 
-              // Torna alla schermata precedente passando anche i dati precomputati per evitare valori "di default"
-              navigation.navigate('TimeEntryScreen', { 
-                refreshFromForm: true,
-                savedId,
-                savedDate: entry.date,
-                precomputedTotal,
-                precomputedBreakdown
+              // Reset dello stack locale TimeEntry: rimuove il form dallo storico
+              navigation.reset({
+                index: 0,
+                routes: [
+                  {
+                    name: 'TimeEntryScreen',
+                    params: {
+                      refreshFromForm: true,
+                      savedId,
+                      savedDate: entry.date,
+                      precomputedTotal,
+                      precomputedBreakdown
+                    }
+                  }
+                ]
               });
             } catch (e) {
               console.error('Save Error:', e);

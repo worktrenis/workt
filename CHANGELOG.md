@@ -1,3 +1,13 @@
+### [1.0.77] - 23 aprile 2026
+
+- Fix navigazione post-salvataggio
+- Correzione trigger notifica backup
+- Pulizia log debug backup e calcoli
+
+### [1.0.76] - 19 aprile 2026
+
+- OTA: correzioni al sistema di notifiche
+
 ### [1.0.12] - 21 dicembre 2025
 
 - Trasferta: coerenza riepilogo (mezza/intera) con importo calcolato

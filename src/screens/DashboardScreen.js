@@ -1608,17 +1608,19 @@ const DashboardScreen = ({ navigation, route }) => {
       let ordinaryNightTotal = 0;
       if (aggregated.ordinary?.breakdownDetails?.supplements?.byTimeRange) {
         Object.entries(aggregated.ordinary.breakdownDetails.supplements.byTimeRange).forEach(([timeRange, data]) => {
-          // Identifica fascia notturna basandosi sull'orario (22:00-06:00) o sulla parola "Notturno"
-          const isNightTimeRange = timeRange.includes('22:00') || 
-                                  timeRange.includes('23:00') || 
-                                  timeRange.includes('00:00') || 
-                                  timeRange.includes('01:00') || 
-                                  timeRange.includes('02:00') || 
-                                  timeRange.includes('03:00') || 
-                                  timeRange.includes('04:00') || 
-                                  timeRange.includes('05:00') ||
-                                  (timeRange.includes('06:00') && !timeRange.includes('06:00-')) || // 06:00 è fine fascia notturna
-                                  timeRange.toLowerCase().includes('notturno'); // Backup: riconosce anche "(Notturno)"
+          // Identifica solo la fascia notturna reale (22:00-06:00),
+          // evitando di includere la fascia serale/fino alle 22h.
+          const normalizedTimeRange = (timeRange || '').toLowerCase();
+          const hasEveningMarker = normalizedTimeRange.includes('20:00-22:00') ||
+                                  normalizedTimeRange.includes('fino alle 22') ||
+                                  normalizedTimeRange.includes('serale');
+          const hasNightMarker = normalizedTimeRange.includes('22:00-06:00') ||
+                                normalizedTimeRange.includes('22:00') ||
+                                normalizedTimeRange.includes('dopo le 22') ||
+                                normalizedTimeRange.includes('oltre le 22') ||
+                                normalizedTimeRange.includes('notturno') ||
+                                normalizedTimeRange.includes('night');
+          const isNightTimeRange = hasNightMarker && !hasEveningMarker;
           
           if (isNightTimeRange && (data.hours || 0) > 0) {
             ordinaryNightTotal += data.hours || 0;
@@ -1635,8 +1637,8 @@ const DashboardScreen = ({ navigation, route }) => {
       const standbyEveningTotal = (aggregated.standby?.workHours?.evening || 0) + (aggregated.standby?.travelHours?.evening || 0);
       
       let ordinaryEveningTotal = 0;
-      if (aggregated.ordinary?.supplements?.byTimeRange) {
-        Object.entries(aggregated.ordinary.supplements.byTimeRange).forEach(([timeRange, data]) => {
+      if (aggregated.ordinary?.breakdownDetails?.supplements?.byTimeRange) {
+        Object.entries(aggregated.ordinary.breakdownDetails.supplements.byTimeRange).forEach(([timeRange, data]) => {
           const isEveningTimeRange = timeRange.includes('20:00-22:00') || 
                                    timeRange.toLowerCase().includes('serale') ||
                                    (timeRange.includes('20:00') && timeRange.includes('22:00'));
@@ -2455,8 +2457,15 @@ const DashboardScreen = ({ navigation, route }) => {
   };
 
   const renderStandbySection = () => {
-    // Rispetta la preferenza utente per nascondere la card
-    if (settings && settings.standbySettings && settings.standbySettings.showInterventionsCard === false) {
+    const standbyInterventionsCount = monthlyAggregated?.analytics?.standbyInterventions || 0;
+
+    // Nascondi la card solo se la preferenza è OFF e non ci sono interventi nel mese
+    if (
+      settings &&
+      settings.standbySettings &&
+      settings.standbySettings.showInterventionsCard === false &&
+      standbyInterventionsCount === 0
+    ) {
       return null;
     }
     const standby = monthlyAggregated?.standby || {};
@@ -2487,7 +2496,7 @@ const DashboardScreen = ({ navigation, route }) => {
               📞 Totale Interventi Reperibilità
             </Text>
             <Text style={[styles.breakdownValue, { fontSize: 18, fontWeight: 'bold', color: theme.colors.overtime }]}>
-              {monthlyAggregated?.analytics?.standbyInterventions || 0} interventi
+              {standbyInterventionsCount} interventi
             </Text>
           </View>
           <Text style={styles.breakdownDetail}>

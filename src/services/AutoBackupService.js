@@ -669,7 +669,6 @@ class AutoBackupService {
         );
         await FileSystem.writeAsStringAsync(fileUri, jsonContent);
         filePath = fileUri;
-        console.log('✅ Backup SAF scritto:', fileUri);
       } else {
         // Percorso normale: crea la directory se non esiste
         const dirInfo = await FileSystem.getInfoAsync(backupPath);
@@ -680,31 +679,19 @@ class AutoBackupService {
         await FileSystem.writeAsStringAsync(filePath, jsonContent);
       }
       
-      // ✅ LOG BACKUP COMPLETO: Mostra cosa è stato incluso
-      console.log('📦 Backup automatico dettagli:', {
-        fileName: fileName,
-        path: backupPath,
-        dataIncluded: backupData.metadata.dataIncluded,
-        totalSize: JSON.stringify(backupData).length + ' chars'
-      });
-      
       // Se è cloud, gestisci la sincronizzazione
       if (useCloudShare) {
         try {
           // Se il cloud non è configurato o non funziona, usa il menu condivisione
           const cloudConfig = await this.getCloudConfig();
           if (!cloudConfig.provider) {
-            console.log('🔧 Cloud non configurato, apertura menu condivisione...');
             await this.shareToCloud(filePath);
-          } else {
-            console.log('☁️ File salvato nella cartella cloud sincronizzata');
           }
         } catch (cloudError) {
-          console.log('⚠️ Errore sincronizzazione cloud, file salvato localmente');
+          console.warn('⚠️ Errore sincronizzazione cloud, backup salvato localmente:', cloudError?.message || cloudError);
         }
       }
-      
-      console.log('✅ Backup automatico creato:', fileName, 'in:', backupPath);
+
       return { success: true, fileName, path: filePath, destination, cloudSync: useCloudShare };
     } catch (error) {
       console.error('❌ Errore nella creazione backup automatico:', error);
@@ -754,13 +741,6 @@ class AutoBackupService {
         };
       }
 
-      console.log('📦 Backup automatico completo:', {
-        interventi: backupData.interventi?.length || 0,
-        workEntries: backupData.workEntries?.length || 0,
-        standbyDays: backupData.standbyDays?.length || 0,
-        settings: backupData.settings?.length || 0
-      });
-
       const result = await this.createAutoBackup(backupData);
       
       if (result.success) {
@@ -768,9 +748,6 @@ class AutoBackupService {
         const settings = await this.getAutoBackupSettings();
         if (settings.showNotification) {
           await this.scheduleBackupNotification();
-          console.log('📢 Backup completato con notifica (abilitata)');
-        } else {
-          console.log('🔇 Backup completato senza notifica (disabilitata dall\'utente)');
         }
       }
       
@@ -787,7 +764,6 @@ class AutoBackupService {
       const showNotification = await AsyncStorage.getItem('auto_backup_show_notification');
       
       if (showNotification === 'false') {
-        console.log('🔇 Notifica backup disabilitata dall\'utente, non mostro notifica');
         return;
       }
       
@@ -797,14 +773,11 @@ class AutoBackupService {
           body: 'I tuoi dati sono stati salvati automaticamente',
           sound: false,
         },
-        trigger: {
-          seconds: 1,
-        },
+        // Trigger immediato compatibile con le versioni recenti di Expo Notifications
+        trigger: null,
       });
-      
-      console.log('📢 Notifica backup programmata (abilitata dall\'utente)');
     } catch (error) {
-      console.log('⚠️ Errore notifica backup:', error);
+      console.warn('⚠️ Errore notifica backup:', error);
     }
   }
 
@@ -836,8 +809,7 @@ class AutoBackupService {
         maxBackups: parseInt(await AsyncStorage.getItem('auto_backup_max_count') || '10'),
         showNotification: await AsyncStorage.getItem('auto_backup_show_notification') !== 'false'
       };
-      
-      console.log('📖 Impostazioni backup automatico caricate:', settings);
+
       return settings;
     } catch (error) {
       console.error('❌ Errore nel caricamento impostazioni backup automatico:', error);
@@ -858,8 +830,7 @@ class AutoBackupService {
       await AsyncStorage.setItem('auto_backup_custom_paths', settings.customPath || '');
       await AsyncStorage.setItem('auto_backup_max_count', (settings.maxBackups || 10).toString());
       await AsyncStorage.setItem('auto_backup_show_notification', settings.showNotification !== false ? 'true' : 'false');
-      
-      console.log('💾 Impostazioni backup automatico salvate:', settings);
+
       return true;
     } catch (error) {
       console.error('❌ Errore nel salvataggio impostazioni backup automatico:', error);
@@ -874,16 +845,6 @@ class AutoBackupService {
         return { success: false, reason: 'disabled' };
       }
 
-      // ✅ BACKUP COMPLETO: Carica tutti i dati dal database
-      const DatabaseService = (await import('./DatabaseService')).default;
-      const allData = await DatabaseService.getAllData();
-      
-      console.log('📊 Dati caricati per backup automatico:', {
-        workEntries: allData.workEntries?.length || 0,
-        standbyDays: allData.standbyDays?.length || 0,
-        settings: allData.settings?.length || 0
-      });
-      
       const result = await this.performAutoBackup();
       return result;
     } catch (error) {

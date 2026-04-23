@@ -158,7 +158,8 @@ class NativeNotificationService {
   async scheduleNativeNotification(title, body, triggerTime, data) {
     try {
       const trigger = new Date(triggerTime);
-      console.log(`📅 [NATIVE] Programmando notifica per: ${trigger.toLocaleString()}`);
+      const secondsUntilTrigger = Math.max(1, Math.round((triggerTime - Date.now()) / 1000));
+      console.log(`📅 [NATIVE] Programmando notifica per: ${trigger.toLocaleString()} (tra ${secondsUntilTrigger}s)`);
       
       const notificationId = await this.notificationsModule.scheduleNotificationAsync({
         content: {
@@ -170,7 +171,8 @@ class NativeNotificationService {
           vibrate: [0, 250, 250, 250],
           channelId: Platform.OS === 'android' ? 'default' : undefined,
         },
-        trigger: { date: trigger },
+        // Usa 'seconds' invece di 'date' per evitare problemi con SCHEDULE_EXACT_ALARM su Android 12+
+        trigger: { seconds: secondsUntilTrigger },
       });
 
       console.log(`✅ [NATIVE] Notifica programmata con ID: ${notificationId}`);

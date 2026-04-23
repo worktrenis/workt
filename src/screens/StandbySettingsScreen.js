@@ -693,7 +693,7 @@ const StandbySettingsScreen = ({ navigation }) => {
                   <Text style={styles.inputLabel}>Interventi Reperibilità</Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 6 }}>
                     <Text style={{ color: theme.colors.textSecondary, flex: 1, marginRight: 12 }}>
-                      Mostra la card “Interventi Reperibilità” nella Dashboard
+                      Se disattivata, la card si nasconde solo quando nel mese non ci sono interventi
                     </Text>
                     <Switch
                       value={formData.showInterventionsCard}
