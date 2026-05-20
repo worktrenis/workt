@@ -12,6 +12,24 @@ import { createWorkEntryFromData } from '../utils/earningsHelper';
 import { EarningsCalculator } from './EarningsCalculator';
 import HourlyRatesService from './HourlyRatesService';
 
+const toLocalIsoDate = (date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
+const parseDateOnlyLocal = (value) => {
+  if (value instanceof Date) return value;
+  if (typeof value === 'string') {
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return new Date(Number(isoMatch[1]), Number(isoMatch[2]) - 1, Number(isoMatch[3]));
+    }
+  }
+  return new Date(value);
+};
+
 class CalculationService {
   constructor() {
     this.defaultContract = CCNL_CONTRACTS.METALMECCANICO_PMI_L5;
@@ -2506,12 +2524,12 @@ class CalculationService {
     if (!settings?.standbySettings?.enabled) return 0;
     
     const standbyDays = settings.standbySettings.standbyDays || {};
-    const dateStr = date instanceof Date ? date.toISOString().slice(0, 10) : date;
+    const dateStr = date instanceof Date ? toLocalIsoDate(date) : date;
 
     // Controlla se il giorno è marcato come reperibilità nel calendario
     if (standbyDays[dateStr]?.selected) {
       // Controlla le impostazioni per weekend e festivi
-      const dateObj = new Date(dateStr);
+      const dateObj = parseDateOnlyLocal(dateStr);
       const isWeekend = dateObj.getDay() === 0 || dateObj.getDay() === 6;
       const isHoliday = isItalianHoliday(dateStr);
 
@@ -2563,7 +2581,7 @@ class CalculationService {
 
     for (let day = 1; day <= lastDay; day++) {
       date.setDate(day);
-      const dateStr = date.toISOString().slice(0, 10);
+      const dateStr = toLocalIsoDate(date);
       // Usa getStandbyBreakdown per ottenere dettagli
       const breakdown = CalculationService.getStandbyBreakdown({ date: dateStr }, settings);
       if (breakdown.allowance > 0) {
@@ -2591,7 +2609,7 @@ class CalculationService {
 
   // Metodo per ottenere il breakdown dettagliato della reperibilità
   static getStandbyBreakdown(workEntry, settings) {
-    const date = new Date(workEntry.date);
+    const date = parseDateOnlyLocal(workEntry.date);
     const isSunday = date.getDay() === 0;
     const isSaturday = date.getDay() === 6;
     const isHoliday = isItalianHoliday(workEntry.date);

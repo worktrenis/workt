@@ -16,6 +16,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme, lightTheme } from '../contexts/ThemeContext';
 import VacationService from '../services/VacationService';
+import DatabaseService from '../services/DatabaseService';
 import { formatDate } from '../utils';
 
 // Componenti moderni identici al TimeEntryForm
@@ -151,9 +152,9 @@ const VacationRequestForm = ({ route, navigation }) => {
     loadRemainingDays();
   }, []);
 
-  // Calcola giorni quando cambiano le date
+  // Calcola giorni quando cambiano le date (tutti i tipi che usano un range di date)
   useEffect(() => {
-    if (form.startDate && form.endDate && form.type === 'vacation') {
+    if (form.startDate && form.endDate) {
       calculateDays();
     }
   }, [form.startDate, form.endDate, form.type, form.halfDay]);
@@ -163,24 +164,19 @@ const VacationRequestForm = ({ route, navigation }) => {
     setRemainingDays(remaining);
   };
 
-  const calculateDays = () => {
+  const calculateDays = async () => {
     if (!form.startDate || !form.endDate) return;
     
     const start = new Date(form.startDate.split('/').reverse().join('-'));
     const end = new Date(form.endDate.split('/').reverse().join('-'));
+    const startISO = start.toISOString().split('T')[0];
+    const endISO = end.toISOString().split('T')[0];
+
+    const vacSettings = await VacationService.getVacationSettings();
+    const days = VacationService.calculateVacationDays(startISO, endISO, vacSettings || {});
     
-    const totalDays = VacationService.calculateDaysBetween(
-      start.toISOString().split('T')[0],
-      end.toISOString().split('T')[0]
-    );
-    
-    const workingDays = VacationService.calculateWorkingDays(
-      start.toISOString().split('T')[0],
-      end.toISOString().split('T')[0]
-    );
-    
-    setCalculatedDays(form.halfDay ? totalDays * 0.5 : totalDays);
-    setCalculatedWorkingDays(form.halfDay ? workingDays * 0.5 : workingDays);
+    setCalculatedDays(form.halfDay ? days * 0.5 : days);
+    setCalculatedWorkingDays(form.halfDay ? days * 0.5 : days);
   };
 
   const handleDateChange = (event, selectedDate) => {
@@ -200,13 +196,66 @@ const VacationRequestForm = ({ route, navigation }) => {
     setForm({ ...form, [field]: value });
   };
 
+  // Auto-crea inserimenti per le date della richiesta se sono passate o oggi
+  const autoCreateWorkEntries = async (startDateStr, endDateStr, type) => {
+    const dayTypeMap = { vacation: 'ferie', permit: 'permesso', sick: 'malattia', leave: 'riposo' };
+    const dayType = dayTypeMap[type] || 'ferie';
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    const created = [];
+
+    // Carica impostazioni ferie per saltare Sab/Dom/Festivi se disattivati
+    const vacSettings = await VacationService.getVacationSettings();
+    const countSat = vacSettings?.countSaturdayAsWorkday === true;
+    const countSun = vacSettings?.countSundayAsWorkday === true;
+    const countHol = vacSettings?.countHolidaysAsWorkday === true;
+
+    let current = new Date(start);
+    while (current <= end) {
+      const dow = current.getDay();
+      // Salta i giorni esclusi dalle impostazioni ferie
+      if ((!countSat && dow === 6) || (!countSun && dow === 0) || (!countHol && VacationService.isHoliday(current))) {
+        current.setDate(current.getDate() + 1);
+        continue;
+      }
+      if (current <= today) {
+        const dateStr = current.toISOString().split('T')[0];
+        const existing = await DatabaseService.getWorkEntriesByDateRange(dateStr, dateStr);
+        if (!existing || existing.length === 0) {
+          await DatabaseService.insertWorkEntry({
+            date: dateStr, siteName: '', vehicleDriven: false,
+            departureCompany: '', arrivalSite: '',
+            workStart1: '', workEnd1: '', workStart2: '', workEnd2: '',
+            departureReturn: '', arrivalCompany: '',
+            interventi: [], mealLunchVoucher: 0, mealLunchCash: 0,
+            mealDinnerVoucher: 0, mealDinnerCash: 0,
+            travelAllowance: 0, travelAllowancePercent: 1.0,
+            trasfertaManualOverride: false, standbyAllowance: 0,
+            isStandbyDay: false, totalEarnings: 0, notes: '',
+            dayType, targaVeicolo: '',
+            completamentoGiornata: 'nessuno', isFixedDay: true, fixedEarnings: 0,
+          });
+          created.push(dateStr);
+        }
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    return created;
+  };
+
   const handleSave = async () => {
     try {
       // Prepara i dati per il salvataggio
+      const startISO = form.startDate.split('/').reverse().join('-');
+      const endISO = form.endDate ? form.endDate.split('/').reverse().join('-') : startISO;
+      // Per tutti i tipi: usa la data fine se è >= data inizio, altrimenti usa data inizio
+      const effectiveEndDate = endISO >= startISO ? endISO : startISO;
       const requestData = {
         ...form,
-        startDate: form.startDate.split('/').reverse().join('-'),
-        endDate: form.type === 'vacation' ? form.endDate.split('/').reverse().join('-') : form.startDate.split('/').reverse().join('-'),
+        startDate: startISO,
+        endDate: effectiveEndDate,
         hours: form.type === 'permit' ? parseFloat(form.hours) || 0 : 0,
       };
 
@@ -221,14 +270,23 @@ const VacationRequestForm = ({ route, navigation }) => {
       // Salva o aggiorna
       if (isEdit) {
         await VacationService.updateVacationRequest(requestId, requestData);
-        Alert.alert('Successo', 'Richiesta aggiornata con successo!');
       } else {
         await VacationService.addVacationRequest(requestData);
-        Alert.alert('Successo', 'Richiesta inviata con successo!');
       }
 
-      // Naviga di ritorno alla schermata VacationManagement con refresh
-      navigation.navigate('VacationManagement', { refresh: true });
+      // Auto-crea inserimenti per le date passate/oggi
+      const created = await autoCreateWorkEntries(requestData.startDate, requestData.endDate, requestData.type);
+      if (created.length > 0) {
+        Alert.alert(
+          'Successo',
+          `Richiesta salvata.\nCreati automaticamente ${created.length} inserimento/i per le date già passate.`,
+          [{ text: 'OK', onPress: () => navigation.navigate('VacationManagement', { refresh: true }) }]
+        );
+      } else {
+        Alert.alert('Successo', isEdit ? 'Richiesta aggiornata con successo!' : 'Richiesta inviata con successo!', [
+          { text: 'OK', onPress: () => navigation.navigate('VacationManagement', { refresh: true }) }
+        ]);
+      }
     } catch (error) {
       console.error('Errore salvataggio richiesta:', error);
       Alert.alert('Errore', 'Errore durante il salvataggio della richiesta');
@@ -289,7 +347,7 @@ const VacationRequestForm = ({ route, navigation }) => {
         {/* Giorni Residui Card */}
         <ModernCard style={styles.cardSpacing} theme={theme}>
           <SectionHeader 
-            title="Giorni Disponibili" 
+            title="Ore Disponibili" 
             icon="calendar-check" 
             iconColor="#4CAF50" 
             theme={theme}
@@ -298,13 +356,13 @@ const VacationRequestForm = ({ route, navigation }) => {
           <View style={styles.remainingDaysContainer}>
             <InfoBadge 
               label="Ferie residue"
-              value={`${remainingDays.vacation} giorni`}
+              value={`${remainingDays.vacation} ore`}
               color="#4CAF50"
               backgroundColor="#E8F5E9"
             />
             <InfoBadge 
               label="Permessi residui"
-              value={`${remainingDays.permits} ore`}
+              value={`${Number(remainingDays.permits).toFixed(2)} ore`}
               color="#FF9800"
               backgroundColor="#FFF3E0"
             />
@@ -368,18 +426,16 @@ const VacationRequestForm = ({ route, navigation }) => {
             </TouchableOpacity>
           </InputRow>
 
-          {form.type === 'vacation' && (
-            <InputRow label="Data fine" required>
-              <TouchableOpacity 
-                style={styles.dateInputField}
-                onPress={() => { setDateField('endDate'); setShowDatePicker(true); setDatePickerMode('date'); }}
-              >
-                <MaterialCommunityIcons name="calendar-outline" size={20} color="#2196F3" />
-                <Text style={styles.dateText}>{form.endDate}</Text>
-                <MaterialCommunityIcons name="chevron-down" size={16} color="#666" />
-              </TouchableOpacity>
-            </InputRow>
-          )}
+          <InputRow label={form.type === 'vacation' ? 'Data fine' : 'Data fine (opzionale)'} required={form.type === 'vacation'}>
+            <TouchableOpacity 
+              style={styles.dateInputField}
+              onPress={() => { setDateField('endDate'); setShowDatePicker(true); setDatePickerMode('date'); }}
+            >
+              <MaterialCommunityIcons name="calendar-outline" size={20} color="#2196F3" />
+              <Text style={styles.dateText}>{form.endDate}</Text>
+              <MaterialCommunityIcons name="chevron-down" size={16} color="#666" />
+            </TouchableOpacity>
+          </InputRow>
 
           {form.type === 'vacation' && (
             <ModernSwitch
@@ -391,24 +447,24 @@ const VacationRequestForm = ({ route, navigation }) => {
           )}
 
           {form.type === 'permit' && (
-            <InputRow label="Ore permesso" required>
+            <InputRow label="Ore permesso (giornata singola)">
               <TextInput
                 style={styles.modernInput}
                 value={form.hours}
                 onChangeText={v => handleChange('hours', v)}
-                placeholder="es. 2, 4, 8"
+                placeholder="es. 2, 4, 8 (lascia vuoto per giornata intera)"
                 placeholderTextColor="#999"
                 keyboardType="numeric"
               />
             </InputRow>
           )}
 
-          {/* Calcolo giorni per ferie */}
-          {form.type === 'vacation' && calculatedDays > 0 && (
+          {/* Calcolo giorni lavorativi */}
+          {calculatedDays > 0 && (
             <View style={styles.calculationInfo}>
               <MaterialCommunityIcons name="calculator" size={16} color="#2196F3" />
               <Text style={styles.calculationText}>
-                Totale: {calculatedDays} giorni ({calculatedWorkingDays} giorni lavorativi)
+                {calculatedDays} {calculatedDays === 1 ? 'giorno lavorativo' : 'giorni lavorativi'}
               </Text>
             </View>
           )}

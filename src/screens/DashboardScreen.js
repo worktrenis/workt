@@ -25,9 +25,9 @@ import RealPayslipCalculator from '../services/RealPayslipCalculator';
 import DatabaseService from '../services/DatabaseService';
 import DataUpdateService from '../services/DataUpdateService';
 import FixedDaysService from '../services/FixedDaysService';
-import MonthlyPrintService from '../services/MonthlyPrintService';
 import { createWorkEntryFromData } from '../utils/earningsHelper';
 import { isItalianHoliday } from '../constants/holidays';
+import { captureAndShare } from '../utils/screenshotUtils';
 
 const { width } = Dimensions.get('window');
 
@@ -53,7 +53,7 @@ const debugLog = (...args) => {
 const DashboardScreen = ({ navigation, route }) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const styles = createStyles(theme);
+  const styles = useMemo(() => createStyles(theme), [theme]);
   const { settings, isLoading: settingsLoading, refreshSettings, updatePartialSettings } = useSettings();
   const calculationService = useCalculationService();
 
@@ -200,6 +200,7 @@ const DashboardScreen = ({ navigation, route }) => {
   const selectedDateRef = useRef(new Date());
   const lastKnownNowRef = useRef({ year: new Date().getFullYear(), month: new Date().getMonth() });
   const loadSeqRef = useRef(0);
+  const screenshotRef = useRef(null);
   const [dataMonthKey, setDataMonthKey] = useState(null); // YYYY-MM del dataset attualmente caricato
   const [workEntries, setWorkEntries] = useState([]);
   const [monthlyAggregated, setMonthlyAggregated] = useState({});
@@ -355,6 +356,12 @@ const DashboardScreen = ({ navigation, route }) => {
       debugLog('🔍 DASHBOARD DEBUG - Settings travelCompensationRate:', settings.travelCompensationRate);
     }
   }, [settingsLoading, settings]);
+
+  // 📊 Memoizza analytics per evitare ricalcoli inutili
+  const analytics = useMemo(() => monthlyAggregated?.analytics || {}, [monthlyAggregated?.analytics]);
+  const monthlyEarnings = useMemo(() => monthlyAggregated?.totalEarnings || 0, [monthlyAggregated?.totalEarnings]);
+  const monthlyHours = useMemo(() => monthlyAggregated?.totalHours || 0, [monthlyAggregated?.totalHours]);
+  const breakdown = useMemo(() => monthlyAggregated?.breakdown || {}, [monthlyAggregated?.breakdown]);
 
   // Carica dati dal database
   const loadData = useCallback(async (dateOverride = null) => {
@@ -1934,79 +1941,6 @@ const DashboardScreen = ({ navigation, route }) => {
     }
   }, [refreshSettings]);
 
-  // 📄 STAMPA PDF MENSILE COMPLETA
-  const generateMonthlyPDF = async () => {
-    try {
-      const year = selectedDate.getFullYear();
-      const month = selectedDate.getMonth() + 1;
-      
-      Alert.alert(
-        '📄 Genera PDF Mensile',
-        `Vuoi generare il PDF completo per ${formatMonthYear(selectedDate)}?\n\nIl PDF includerà tutti gli inserimenti dettagliati del mese.`,
-        [
-          { text: 'Annulla', style: 'cancel' },
-          {
-            text: 'Genera PDF',
-            onPress: async () => {
-              try {
-                setRefreshing(true);
-                
-                debugLog(`📄 DASHBOARD - Avvio generazione PDF per ${month}/${year}`);
-                
-                // 🎯 PASSA I DATI DASHBOARD AL PDF PER COERENZA (daily + monthly totals)
-                const dashboardData = {
-                  dailyBreakdowns: monthlyAggregated?.dailyBreakdownsObj || {},
-                  monthlyTotals: {
-                    totalEarnings: monthlyAggregated?.totalEarnings || 0,
-                    daysWorked: monthlyAggregated?.daysWorked || 0,
-                    totalHours: monthlyAggregated?.totalHours || 0,
-                    ordinary: monthlyAggregated?.ordinary || {},
-                    overtime: monthlyAggregated?.overtime || {},
-                    travel: monthlyAggregated?.travel || {},
-                    standby: monthlyAggregated?.standby || {},
-                    analytics: monthlyAggregated?.analytics || {},
-                    breakdown: monthlyAggregated?.breakdown || {}
-                  }
-                };
-                debugLog(`📄 DASHBOARD - Passando dati completi al PDF:`, {
-                  giorni: Object.keys(dashboardData.dailyBreakdowns).length,
-                  totaleEuro: dashboardData.monthlyTotals.totalEarnings?.toFixed(2),
-                  giorniLavorati: dashboardData.monthlyTotals.daysWorked
-                });
-                
-                const result = await MonthlyPrintService.generateAndSharePDF(year, month, dashboardData);
-                
-                if (result.success) {
-                  Alert.alert(
-                    '✅ PDF Generato',
-                    `PDF creato con successo!\n\nFile: ${result.fileName}\nInserimenti elaborati: ${result.dataCount}\n\nIl PDF è stato condiviso.`
-                  );
-                  debugLog(`📄 DASHBOARD - PDF generato con successo: ${result.fileName}`);
-                } else {
-                  throw new Error('Generazione PDF fallita');
-                }
-                
-              } catch (error) {
-                console.error('❌ DASHBOARD - Errore generazione PDF:', error);
-                Alert.alert(
-                  '❌ Errore',
-                  `Impossibile generare il PDF:\n\n${error.message}`
-                );
-              } finally {
-                setRefreshing(false);
-              }
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('❌ DASHBOARD - Errore preparazione PDF:', error);
-      Alert.alert(
-        '❌ Errore',
-        'Impossibile preparare la generazione del PDF. Riprova.'
-      );
-    }
-  };
 
   // Navigazione tra i mesi
   const goToPreviousMonth = () => {
@@ -4963,7 +4897,7 @@ const DashboardScreen = ({ navigation, route }) => {
                       </View>
                     </View>
                     <View style={styles.dailyListDetails}>
-                      {day?.workEntry?.isStandbyDay && (<Text style={styles.dailyListDetail}>🟡 Reperibilità</Text>)}
+                      {(day?.workEntry?.isStandbyDay === true || day?.workEntry?.isStandbyDay === 1 || day?.workEntry?.isStandbyDay === '1') && (<Text style={styles.dailyListDetail}>🟡 Reperibilità</Text>)}
                       {!(day?.dayType === 'vacation' || day?.dayType === 'compensatory' || day?.dayType === 'fixed') &&
                        day?.workEntry?.completamentoGiornata && String(day.workEntry.completamentoGiornata).toLowerCase() !== 'nessuno' && String(day.workEntry.completamentoGiornata).trim() !== '' && (() => {
                         const c = String(day.workEntry.completamentoGiornata || '').toLowerCase();
@@ -5253,19 +5187,30 @@ const DashboardScreen = ({ navigation, route }) => {
                 <Text style={styles.headerBadgeText}>Mensile</Text>
               </View>
             </View>
-            <TouchableOpacity 
-              style={styles.pdfButton} 
-              onPress={generateMonthlyPDF}
-              disabled={loading || refreshing}
-            >
-              <View>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TouchableOpacity 
+                style={styles.pdfButton} 
+                onPress={() => navigation.navigate('YearlyReport')}
+                disabled={loading || refreshing}
+              >
                 <MaterialCommunityIcons 
-                  name="file-pdf-box" 
+                  name="chart-box" 
                   size={24} 
                   color={loading || refreshing ? theme.colors.textSecondary : theme.colors.primary} 
                 />
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.pdfButton}
+                onPress={() => captureAndShare(screenshotRef)}
+                disabled={loading || refreshing}
+              >
+                <MaterialCommunityIcons
+                  name="camera"
+                  size={24}
+                  color={loading || refreshing ? theme.colors.textSecondary : theme.colors.primary}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
         
@@ -5307,6 +5252,7 @@ const DashboardScreen = ({ navigation, route }) => {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         automaticallyAdjustKeyboardInsets={false}
       >
+        <View ref={screenshotRef} collapsable={false}>
         {hasAnyMonthData ? (
           <>
             {renderSummaryStats()}
@@ -5330,6 +5276,7 @@ const DashboardScreen = ({ navigation, route }) => {
             </Text>
           </View>
         )}
+        </View>
       </ScrollView>
 
       {/* Pulsante flottante per aggiungere nuovo orario */}

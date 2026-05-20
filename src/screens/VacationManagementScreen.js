@@ -225,20 +225,20 @@ const VacationManagementScreen = ({ navigation, route }) => {
             
             <View style={styles.summaryGrid}>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{summary.availableVacationDays}</Text>
-                <Text style={styles.summaryLabel}>Ferie disponibili</Text>
+                <Text style={styles.summaryValue}>{typeof summary.availableVacationDays === 'number' ? summary.availableVacationDays.toFixed(1) : summary.availableVacationDays}</Text>
+                <Text style={styles.summaryLabel}>Ore ferie disponibili</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{summary.usedVacationDays}</Text>
-                <Text style={styles.summaryLabel}>Ferie utilizzate</Text>
+                <Text style={styles.summaryValue}>{typeof summary.usedVacationDays === 'number' ? summary.usedVacationDays.toFixed(1) : summary.usedVacationDays}</Text>
+                <Text style={styles.summaryLabel}>Ore ferie utilizzate</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{summary.availablePersonalDays}</Text>
-                <Text style={styles.summaryLabel}>Permessi disponibili</Text>
+                <Text style={styles.summaryValue}>{typeof summary.availablePersonalDays === 'number' ? summary.availablePersonalDays.toFixed(1) : summary.availablePersonalDays}</Text>
+                <Text style={styles.summaryLabel}>Ore permessi disponibili</Text>
               </View>
               <View style={styles.summaryItem}>
-                <Text style={styles.summaryValue}>{summary.usedPersonalDays}</Text>
-                <Text style={styles.summaryLabel}>Permessi utilizzati</Text>
+                <Text style={styles.summaryValue}>{typeof summary.usedPersonalDays === 'number' ? summary.usedPersonalDays.toFixed(1) : summary.usedPersonalDays}</Text>
+                <Text style={styles.summaryLabel}>Ore permessi utilizzate</Text>
               </View>
             </View>
           </ModernCard>

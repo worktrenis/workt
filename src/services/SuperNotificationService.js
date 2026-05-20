@@ -125,6 +125,13 @@ class SuperNotificationService {
         
         // Verifica permessi
         this.hasPermission = await this.hasPermissions();
+
+        // Se i permessi non sono ancora concessi, prova a richiederli automaticamente.
+        // Questo evita il blocco silenzioso della programmazione nelle installazioni aggiornate.
+        if (!this.hasPermission) {
+          console.log('🔐 Permessi notifiche non concessi, richiesta automatica...');
+          this.hasPermission = await this.requestPermissions();
+        }
         
         // ✅ LISTENER PER RIPROGRAMMAZIONE AUTOMATICA QUANDO APP TORNA IN FOREGROUND
         this.setupAppStateListener();
@@ -378,6 +385,51 @@ class SuperNotificationService {
         const merged = { ...this.getDefaultSettings(), ...(parsed || {}) };
         return this.normalizeSettings(merged);
       }
+
+      // Migrazione automatica dalle chiavi legacy usate nelle versioni precedenti.
+      const legacyCandidates = ['notificationSettings', 'NOTIFICATION_SETTINGS'];
+      for (const legacyKey of legacyCandidates) {
+        const legacyRaw = await AsyncStorage.getItem(legacyKey);
+        if (!legacyRaw) continue;
+
+        try {
+          const legacyParsed = JSON.parse(legacyRaw) || {};
+          const legacyEnabled =
+            typeof legacyParsed.enabled === 'boolean'
+              ? legacyParsed.enabled
+              : !!(
+                  legacyParsed.workReminder?.enabled || legacyParsed.workReminders?.enabled ||
+                  legacyParsed.timeEntryReminder?.enabled || legacyParsed.timeEntryReminders?.enabled ||
+                  legacyParsed.standbyReminder?.enabled || legacyParsed.standbyReminders?.enabled ||
+                  legacyParsed.backupReminder?.enabled
+                );
+
+          const defaults = this.getDefaultSettings();
+          const migrated = this.normalizeSettings({
+            ...defaults,
+            ...legacyParsed,
+            enabled: legacyEnabled,
+            workReminder: legacyParsed.workReminder || legacyParsed.workReminders || defaults.workReminder,
+            timeEntryReminder: {
+              ...(legacyParsed.timeEntryReminder || legacyParsed.timeEntryReminders || defaults.timeEntryReminder),
+              // Compatibilità con vecchi campi eveningTime usati in alcune schermate
+              time:
+                (legacyParsed.timeEntryReminder && (legacyParsed.timeEntryReminder.time || legacyParsed.timeEntryReminder.eveningTime)) ||
+                (legacyParsed.timeEntryReminders && (legacyParsed.timeEntryReminders.time || legacyParsed.timeEntryReminders.eveningTime)) ||
+                defaults.timeEntryReminder.time,
+            },
+            standbyReminder: legacyParsed.standbyReminder || legacyParsed.standbyReminders || defaults.standbyReminder,
+            backupReminder: legacyParsed.backupReminder || defaults.backupReminder,
+          });
+
+          await AsyncStorage.setItem('superNotificationSettings', JSON.stringify(migrated));
+          console.log(`✅ Migrazione impostazioni notifiche completata da chiave legacy: ${legacyKey}`);
+          return migrated;
+        } catch (legacyError) {
+          console.warn(`⚠️ Errore migrazione impostazioni da ${legacyKey}:`, legacyError.message);
+        }
+      }
+
       return this.getDefaultSettings();
     } catch (error) {
       console.error('❌ Errore caricamento impostazioni:', error);
@@ -850,15 +902,15 @@ class SuperNotificationService {
       if (timeSettings?.enabled) expectedMin += timeSettings.weekendsEnabled ? 7 : 5;
       if (settings.backupReminder?.enabled) expectedMin += 1;
 
-      // Verifica exact alarm su Android 12+
+      // Verifica exact alarm su Android 12+ (API 31) con PermissionsAndroid reale
       let canScheduleExactAlarms = true;
       if (Platform.OS === 'android' && Platform.Version >= 31) {
         try {
-          // Su Android 12+, verifichiamo se gli allarmi esatti sono disponibili
-          // controllando la risposta del sistema alle notifiche programmate
-          canScheduleExactAlarms = scheduledNotifications.length > 0 || !settings.enabled;
+          const { PermissionsAndroid } = require('react-native');
+          canScheduleExactAlarms = await PermissionsAndroid.check('android.permission.SCHEDULE_EXACT_ALARM');
         } catch (e) {
-          canScheduleExactAlarms = false;
+          // Se PermissionsAndroid non è disponibile, assumiamo che il permesso sia ok
+          canScheduleExactAlarms = true;
         }
       }
       

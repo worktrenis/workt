@@ -27,6 +27,92 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.90',
+      date: '20 maggio 2026',
+      changes: [
+        'Aggiornamento OTA 1.0.89'
+      ]
+    },
+    {
+      version: '1.0.89',
+      date: '20 maggio 2026',
+      changes: [
+        'Aggiornamento OTA: bump di versione patch e pubblicazione dell’ultima release di stabilità.'
+      ]
+    },
+    {
+      version: '1.0.88',
+      date: '18 maggio 2026',
+      changes: [
+        'Fix PDF riepilogo annuale (dettaglio mensile): ore notturne e serali ora mostrate correttamente giorno per giorno per contratti con calcolo a tariffa giornaliera (CCNL/diaria).'
+      ]
+    },
+    {
+      version: '1.0.87',
+      date: '17 maggio 2026',
+      changes: [
+        'Form richiesta: data fine ora disponibile (opzionale) anche per Permesso, Malattia e Congedo — permette di creare inserimenti su più giorni, saltando Sab/Dom/Festivi come configurato.',
+        'Inserimento automatico da richiesta: fix Sabato/Domenica/Festivi non inseriti in DB se le opzioni corrispondenti non sono attivate nelle impostazioni ferie.',
+        'Lista inserimenti: nuovo badge "da richiesta" sugli inserimenti generati automaticamente da una richiesta ferie/permesso/malattia/congedo.'
+      ]
+    },
+    {
+      version: '1.0.85',
+      date: '16 maggio 2026',
+      changes: [
+        'Fix conteggio ferie: Sabato/Domenica/Festivi non vengono più sottratti dal saldo ferie se le opzioni corrispondenti non sono attivate (sia nel form richiesta che nel calcolo residuo da inserimenti DB).'
+      ]
+    },
+    {
+      version: '1.0.84',
+      date: '16 maggio 2026',
+      changes: [
+        'Ferie e Permessi: nuova impostazione per configurare se Sabato, Domenica e Festivi vengono sottratti dal saldo ferie. Default: esclusi (solo giorni lavorativi consumano ferie).'
+      ]
+    },
+    {
+      version: '1.0.83',
+      date: '12 maggio 2026',
+      changes: [
+        'Tabella riepilogo annuale: fix percentuali straordinari feriali, colonne Sabato/Domenica/Festivo con giorni+ore, footer con percentuali e totali, colore arancione percentuali, guadagni footer visibili, colonne rinominate in Viaggio come lav./Viaggio comp., larghezza Ore Tot ridotta.'
+      ]
+    },
+    {
+      version: '1.0.82',
+      date: '11 maggio 2026',
+      changes: [
+        'Schermata notifiche riscritta da zero: toggle globale, promemoria inserimento orari con orario personalizzabile e opzione weekend, promemoria reperibilita con 2 slot configurabili (stesso giorno / giorno prima). Fix Android per allarmi esatti e ottimizzazione batteria. Layout allineato al menu principale, rimosso doppio header, fix encoding caratteri accentati.'
+      ]
+    },
+    {
+      version: '1.0.81',
+      date: '09 maggio 2026',
+      changes: [
+        'Fix dashboard monthly standby date shift and text render crash'
+      ]
+    },
+    {
+      version: '1.0.80',
+      date: '07 maggio 2026',
+      changes: [
+        'PDF mensile 2 pagine landscape con dettagli giornalieri, fix timezone, Condividi riepilogo annuale'
+      ]
+    },
+    {
+      version: '1.0.80',
+      date: '07 maggio 2026',
+      changes: [
+        'Riepilogo Annuale: tendina Totale/Lordo Maturato/Netto Stimato allineata alla Dashboard'
+      ]
+    },
+    {
+      version: '1.0.79',
+      date: '04 maggio 2026',
+      changes: [
+        'Fix sistema notifiche: migrazione impostazioni legacy, richiesta permessi automatica, riprogrammazione notifiche all\'avvio'
+      ]
+    },
+    {
       version: '1.0.78',
       date: '23 aprile 2026',
       changes: [

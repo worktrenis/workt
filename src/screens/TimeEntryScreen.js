@@ -579,6 +579,7 @@ const TimeEntryScreen = () => {
 
   // Refresh automatico solo quando cambiano le impostazioni o all'avvio
   const initializedRef = useRef(false);
+
   useEffect(() => {
     if (
       settings &&
@@ -1221,9 +1222,17 @@ const TimeEntryScreen = () => {
             )}
             
             {isSpecialDay && (
-              <View style={[styles.dayTypeBadge, { backgroundColor: dayTypeInfo.color }]}>
-                <MaterialCommunityIcons name={dayTypeInfo.icon} size={14} color="white" />
-                <Text style={styles.dayTypeBadgeText}>{dayTypeInfo.label}</Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                <View style={[styles.dayTypeBadge, { backgroundColor: dayTypeInfo.color }]}>
+                  <MaterialCommunityIcons name={dayTypeInfo.icon} size={14} color="white" />
+                  <Text style={styles.dayTypeBadgeText}>{dayTypeInfo.label}</Text>
+                </View>
+                {item.is_fixed_day === 1 && ['ferie', 'permesso', 'malattia', 'riposo'].includes(item.day_type) && (
+                  <View style={styles.autoRequestBadge}>
+                    <MaterialCommunityIcons name="calendar-check" size={11} color="#777" />
+                    <Text style={styles.autoRequestBadgeText}>da richiesta</Text>
+                  </View>
+                )}
               </View>
             )}
             <Text style={styles.totalEarnings}>{formatCurrencyWithEuro(breakdown.totalEarnings)}</Text>
@@ -3098,6 +3107,22 @@ const createStyles = (theme) => StyleSheet.create({
     fontSize: 10,
     fontWeight: 'bold',
     marginLeft: 4,
+  },
+  autoRequestBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+    borderWidth: 1,
+    borderColor: '#DDD',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 2,
+  },
+  autoRequestBadgeText: {
+    color: '#777',
+    fontSize: 10,
+    marginLeft: 3,
   },
   completamentoContainer: {
     flexDirection: 'row',

@@ -57,20 +57,26 @@ const VacationSettingsScreen = ({ navigation }) => {
   const theme = themeContext?.theme || lightTheme; // Fallback di sicurezza
   const styles = createStyles(theme);
   const [settings, setSettings] = useState({
-    annualVacationDays: 26,
-    carryOverDays: 0,
+    ferieResAnniPrec: 0,
+    ferieMaturatiMensili: 0,
+    permROAResAnniPrec: 0,
+    permROAMaturatiMensili: 0,
+    permFestResAnniPrec: 0,
+    permFestMaturatiMensili: 0,
     currentYear: new Date().getFullYear(),
     startDate: `${new Date().getFullYear()}-01-01`,
-    permitsPerMonth: 8,
-    maxCarryOverDays: 5, // Massimo giorni di ferie trasferibili
-    permitBankEnabled: false, // Permessi a banca ore
-    sickLeaveEnabled: false, // Gestione malattie
-    autoApprovalEnabled: false, // Auto-approvazione richieste (uso personale)
-    autoCompileTimeEntry: false, // Auto-compilazione nel TimeEntryForm
+    permitBankEnabled: false,
+    sickLeaveEnabled: false,
+    autoApprovalEnabled: false,
+    autoCompileTimeEntry: false,
+    countSaturdayAsWorkday: false,
+    countSundayAsWorkday: false,
+    countHolidaysAsWorkday: false,
   });
   
   const [isLoading, setIsLoading] = useState(true);
   const [hasChanges, setHasChanges] = useState(false);
+  const [remaining, setRemaining] = useState(null);
 
   useEffect(() => {
     loadSettings();
@@ -80,21 +86,30 @@ const VacationSettingsScreen = ({ navigation }) => {
     try {
       setIsLoading(true);
       // Usa il nuovo metodo che verifica e corregge le impostazioni
-      const currentSettings = await VacationService.getVacationSettings();
+      const [currentSettings, remainingData] = await Promise.all([
+        VacationService.getVacationSettings(),
+        VacationService.calculateRemainingDays(),
+      ]);
       if (currentSettings) {
         setSettings({
-          annualVacationDays: currentSettings.annualVacationDays || 26,
-          carryOverDays: currentSettings.carryOverDays || 0,
+          ferieResAnniPrec: parseFloat(currentSettings.ferieResAnniPrec) || 0,
+          ferieMaturatiMensili: parseFloat(currentSettings.ferieMaturatiMensili ?? currentSettings.ferieMaturateAdOggi) || 0,
+          permROAResAnniPrec: parseFloat(currentSettings.permROAResAnniPrec) || 0,
+          permROAMaturatiMensili: parseFloat(currentSettings.permROAMaturatiMensili ?? currentSettings.permROAMaturateAdOggi) || 0,
+          permFestResAnniPrec: parseFloat(currentSettings.permFestResAnniPrec) || 0,
+          permFestMaturatiMensili: parseFloat(currentSettings.permFestMaturatiMensili ?? currentSettings.permFestMaturateAdOggi) || 0,
           currentYear: currentSettings.currentYear || new Date().getFullYear(),
           startDate: currentSettings.startDate || `${new Date().getFullYear()}-01-01`,
-          permitsPerMonth: currentSettings.permitsPerMonth || 8,
-          maxCarryOverDays: currentSettings.maxCarryOverDays || 5,
           permitBankEnabled: currentSettings.permitBankEnabled === true,
           sickLeaveEnabled: currentSettings.sickLeaveEnabled === true,
           autoApprovalEnabled: currentSettings.autoApprovalEnabled === true,
           autoCompileTimeEntry: currentSettings.autoCompileTimeEntry === true,
+          countSaturdayAsWorkday: currentSettings.countSaturdayAsWorkday === true,
+          countSundayAsWorkday: currentSettings.countSundayAsWorkday === true,
+          countHolidaysAsWorkday: currentSettings.countHolidaysAsWorkday === true,
         });
       }
+      if (remainingData) setRemaining(remainingData);
     } catch (error) {
       console.error('Errore caricamento impostazioni ferie:', error);
       Alert.alert('Errore', 'Impossibile caricare le impostazioni');
@@ -104,9 +119,15 @@ const VacationSettingsScreen = ({ navigation }) => {
   };
 
   const handleInputChange = (field, value) => {
-    // Converte stringa in numero per i campi numerici
-    const numericFields = ['annualVacationDays', 'carryOverDays', 'currentYear', 'permitsPerMonth', 'maxCarryOverDays'];
-    const processedValue = numericFields.includes(field) ? parseInt(value) || 0 : value;
+    const floatFields = ['ferieResAnniPrec', 'ferieMaturatiMensili', 'permROAResAnniPrec', 'permROAMaturatiMensili', 'permFestResAnniPrec', 'permFestMaturatiMensili'];
+    const intFields = ['currentYear'];
+    let processedValue = value;
+    if (floatFields.includes(field)) {
+      // Accetta sia virgola che punto come separatore decimale; mantieni stringa durante digitazione
+      processedValue = value.replace(',', '.');
+    } else if (intFields.includes(field)) {
+      processedValue = parseInt(value) || 0;
+    }
     
     setSettings(prev => ({
       ...prev,
@@ -117,24 +138,25 @@ const VacationSettingsScreen = ({ navigation }) => {
 
   const handleSave = async () => {
     try {
-      // Validazione
-      if (settings.annualVacationDays < 0 || settings.annualVacationDays > 50) {
-        Alert.alert('Errore', 'I giorni di ferie annuali devono essere tra 0 e 50');
-        return;
-      }
-      
-      if (settings.permitsPerMonth < 0 || settings.permitsPerMonth > 40) {
-        Alert.alert('Errore', 'Le ore permesso mensili devono essere tra 0 e 40');
-        return;
-      }
-      
-      if (settings.carryOverDays < 0 || settings.carryOverDays > settings.maxCarryOverDays) {
-        Alert.alert('Errore', `I giorni residui non possono superare ${settings.maxCarryOverDays}`);
-        return;
+      // Converte i campi stringa in float prima del salvataggio
+      const floatFields = ['ferieResAnniPrec', 'ferieMaturatiMensili', 'permROAResAnniPrec', 'permROAMaturatiMensili', 'permFestResAnniPrec', 'permFestMaturatiMensili'];
+      const converted = { ...settings };
+      for (const f of floatFields) {
+        converted[f] = parseFloat(String(converted[f]).replace(',', '.')) || 0;
       }
 
-      const success = await VacationService.setSettings(settings);
+      // Validazione: nessun campo ore può essere negativo
+      const oreFields = floatFields;
+      for (const f of oreFields) {
+        if ((converted[f] || 0) < 0) {
+          Alert.alert('Errore', 'I valori delle ore non possono essere negativi');
+          return;
+        }
+      }
+
+      const success = await VacationService.setSettings(converted);
       if (success) {
+        setSettings(converted);
         setHasChanges(false);
         Alert.alert('Successo', 'Impostazioni salvate correttamente', [
           { text: 'OK', onPress: () => navigation.goBack() }
@@ -159,12 +181,14 @@ const VacationSettingsScreen = ({ navigation }) => {
           style: 'destructive',
           onPress: () => {
             setSettings({
-              annualVacationDays: 26, // CCNL Metalmeccanico standard
-              carryOverDays: 0,
+              ferieResAnniPrec: 0,
+              ferieMaturatiMensili: 0,
+              permROAResAnniPrec: 0,
+              permROAMaturatiMensili: 0,
+              permFestResAnniPrec: 0,
+              permFestMaturatiMensili: 0,
               currentYear: new Date().getFullYear(),
               startDate: `${new Date().getFullYear()}-01-01`,
-              permitsPerMonth: 8,
-              maxCarryOverDays: 5,
               permitBankEnabled: false,
               sickLeaveEnabled: false,
               autoApprovalEnabled: false,
@@ -282,107 +306,199 @@ const VacationSettingsScreen = ({ navigation }) => {
       >
         {/* Ferie Card */}
         <ModernCard style={styles.cardSpacing} theme={theme}>
-          <SectionHeader 
-            title="Configurazione Ferie" 
-            icon="beach" 
-            iconColor="#4CAF50" 
+          <SectionHeader
+            title="Ferie (Ore)"
+            icon="beach"
+            iconColor="#4CAF50"
             theme={theme}
           />
           <Text style={styles.sectionDescription}>
-            Configura i giorni di ferie disponibili secondo il tuo contratto di lavoro
+            Inserisci i valori dalla tua busta paga. Il residuo si aggiorna automaticamente.
           </Text>
 
-          <InputRow label="Giorni ferie annuali" icon="calendar-clock" required theme={theme}>
+          <InputRow label="Res. anni precedenti (ore)" icon="calendar-import" theme={theme}>
             <TextInput
               style={styles.modernInput}
-              value={settings.annualVacationDays.toString()}
-              onChangeText={v => handleInputChange('annualVacationDays', v)}
-              placeholder="26"
-              placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="numeric"
-            />
-          </InputRow>
-
-          <InputRow label="Giorni residui anno precedente" icon="calendar-import" theme={theme}>
-            <TextInput
-              style={styles.modernInput}
-              value={settings.carryOverDays.toString()}
-              onChangeText={v => handleInputChange('carryOverDays', v)}
+              value={settings.ferieResAnniPrec.toString()}
+              onChangeText={v => handleInputChange('ferieResAnniPrec', v)}
               placeholder="0"
               placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
             />
           </InputRow>
 
-          <InputRow label="Massimo giorni trasferibili" icon="calendar-export" theme={theme}>
+          <InputRow label="Ore per mese (da contratto)" icon="calendar-plus" theme={theme}>
             <TextInput
               style={styles.modernInput}
-              value={settings.maxCarryOverDays.toString()}
-              onChangeText={v => handleInputChange('maxCarryOverDays', v)}
-              placeholder="5"
+              value={settings.ferieMaturatiMensili.toString()}
+              onChangeText={v => handleInputChange('ferieMaturatiMensili', v)}
+              placeholder="0"
               placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="numeric"
-            />
-          </InputRow>
-
-          <InputRow label="Anno di competenza" icon="calendar-today" required theme={theme}>
-            <TextInput
-              style={styles.modernInput}
-              value={settings.currentYear.toString()}
-              onChangeText={v => handleInputChange('currentYear', v)}
-              placeholder={new Date().getFullYear().toString()}
-              placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="numeric"
-            />
-          </InputRow>
-        </ModernCard>
-
-        {/* Permessi Card */}
-        <ModernCard style={styles.cardSpacing} theme={theme}>
-          <SectionHeader 
-            title="Configurazione Permessi" 
-            icon="account-clock" 
-            iconColor="#2196F3" 
-            theme={theme}
-          />
-          <Text style={styles.sectionDescription}>
-            Configura le ore di permesso disponibili mensilmente
-          </Text>
-
-          <InputRow label="Ore permesso mensili" icon="clock-outline" required theme={theme}>
-            <TextInput
-              style={styles.modernInput}
-              value={settings.permitsPerMonth.toString()}
-              onChangeText={v => handleInputChange('permitsPerMonth', v)}
-              placeholder="8"
-              placeholderTextColor={theme.colors.textSecondary}
-              keyboardType="numeric"
+              keyboardType="decimal-pad"
             />
           </InputRow>
 
           <View style={styles.infoBox}>
-            <MaterialCommunityIcons name="information" size={16} color="#1976d2" />
+            <MaterialCommunityIcons name="calculator" size={16} color="#388e3c" />
             <Text style={styles.infoText}>
-              Totale annuale: {settings.permitsPerMonth * 12} ore ({Math.floor(settings.permitsPerMonth * 12 / 8)} giorni)
+              {`Maturate automaticamente (mese ${new Date().getMonth() + 1}): ${((parseFloat(settings.ferieMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore\nDisponibili ad oggi (res. + maturate): ${((parseFloat(settings.ferieResAnniPrec) || 0) + (parseFloat(settings.ferieMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore`}
             </Text>
+          </View>
+        </ModernCard>
+
+        {/* Permessi ROA Card */}
+        <ModernCard style={styles.cardSpacing} theme={theme}>
+          <SectionHeader
+            title="Permessi Riduzione Orario (Ore)"
+            icon="account-clock"
+            iconColor="#2196F3"
+            theme={theme}
+          />
+          <Text style={styles.sectionDescription}>
+            Inserisci i valori dalla tua busta paga. Il residuo si aggiorna automaticamente.
+          </Text>
+
+          <InputRow label="Res. anni precedenti (ore)" icon="calendar-import" theme={theme}>
+            <TextInput
+              style={styles.modernInput}
+              value={settings.permROAResAnniPrec.toString()}
+              onChangeText={v => handleInputChange('permROAResAnniPrec', v)}
+              placeholder="0"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="decimal-pad"
+            />
+          </InputRow>
+
+          <InputRow label="Ore per mese (da contratto)" icon="calendar-plus" theme={theme}>
+            <TextInput
+              style={styles.modernInput}
+              value={settings.permROAMaturatiMensili.toString()}
+              onChangeText={v => handleInputChange('permROAMaturatiMensili', v)}
+              placeholder="0"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="decimal-pad"
+            />
+          </InputRow>
+
+          <View style={styles.infoBox}>
+            <MaterialCommunityIcons name="calculator" size={16} color="#1976d2" />
+            <Text style={styles.infoText}>
+              {`Maturate automaticamente (mese ${new Date().getMonth() + 1}): ${((parseFloat(settings.permROAMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore\nDisponibili ad oggi (res. + maturate): ${((parseFloat(settings.permROAResAnniPrec) || 0) + (parseFloat(settings.permROAMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore`}
+            </Text>
+          </View>
+        </ModernCard>
+
+        {/* Permessi Ex Festività Card */}
+        <ModernCard style={styles.cardSpacing} theme={theme}>
+          <SectionHeader
+            title="Permessi Ex Festività (Ore)"
+            icon="star-circle-outline"
+            iconColor="#FF9800"
+            theme={theme}
+          />
+          <Text style={styles.sectionDescription}>
+            Inserisci i valori dalla tua busta paga. Il residuo si aggiorna automaticamente.
+          </Text>
+
+          <InputRow label="Res. anni precedenti (ore)" icon="calendar-import" theme={theme}>
+            <TextInput
+              style={styles.modernInput}
+              value={settings.permFestResAnniPrec.toString()}
+              onChangeText={v => handleInputChange('permFestResAnniPrec', v)}
+              placeholder="0"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="decimal-pad"
+            />
+          </InputRow>
+
+          <InputRow label="Ore per mese (da contratto)" icon="calendar-plus" theme={theme}>
+            <TextInput
+              style={styles.modernInput}
+              value={settings.permFestMaturatiMensili.toString()}
+              onChangeText={v => handleInputChange('permFestMaturatiMensili', v)}
+              placeholder="0"
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="decimal-pad"
+            />
+          </InputRow>
+
+          <View style={styles.infoBox}>
+            <MaterialCommunityIcons name="calculator" size={16} color="#f57c00" />
+            <Text style={styles.infoText}>
+              {`Maturate automaticamente (mese ${new Date().getMonth() + 1}): ${((parseFloat(settings.permFestMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore\nDisponibili ad oggi (res. + maturate): ${((parseFloat(settings.permFestResAnniPrec) || 0) + (parseFloat(settings.permFestMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore`}
+            </Text>
+          </View>
+        </ModernCard>
+
+        {/* Conteggio Giorni Ferie Card */}
+        <ModernCard style={styles.cardSpacing} theme={theme}>
+          <SectionHeader
+            title="Conteggio Giorni Ferie"
+            icon="calendar-week"
+            iconColor="#2196F3"
+            theme={theme}
+          />
+          <Text style={styles.sectionDescription}>
+            Configura quali giorni vengono sottratti dal saldo ferie quando inserisci una richiesta
+          </Text>
+
+          <View style={styles.switchContainer}>
+            <View style={styles.switchRow}>
+              <View style={styles.switchInfo}>
+                <MaterialCommunityIcons name="calendar-weekend" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.switchLabel}>Sabato è lavorativo</Text>
+                <Text style={styles.switchDescription}>Il sabato consuma un giorno di ferie</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.switch, settings.countSaturdayAsWorkday && styles.switchActive]}
+                onPress={() => handleInputChange('countSaturdayAsWorkday', !settings.countSaturdayAsWorkday)}
+              >
+                <View style={[styles.switchThumb, settings.countSaturdayAsWorkday && styles.switchThumbActive]} />
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.switchContainer}>
             <View style={styles.switchRow}>
               <View style={styles.switchInfo}>
-                <MaterialCommunityIcons name="bank" size={20} color={theme.colors.textSecondary} />
-                <Text style={styles.switchLabel}>Permessi a banca ore</Text>
-                <Text style={styles.switchDescription}>Accumula permessi non utilizzati</Text>
+                <MaterialCommunityIcons name="calendar-weekend-outline" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.switchLabel}>Domenica è lavorativa</Text>
+                <Text style={styles.switchDescription}>La domenica consuma un giorno di ferie</Text>
               </View>
               <TouchableOpacity
-                style={[styles.switch, settings.permitBankEnabled && styles.switchActive]}
-                onPress={() => {
-                  handleInputChange('permitBankEnabled', !settings.permitBankEnabled);
-                }}
+                style={[styles.switch, settings.countSundayAsWorkday && styles.switchActive]}
+                onPress={() => handleInputChange('countSundayAsWorkday', !settings.countSundayAsWorkday)}
               >
-                <View style={[styles.switchThumb, settings.permitBankEnabled && styles.switchThumbActive]} />
+                <View style={[styles.switchThumb, settings.countSundayAsWorkday && styles.switchThumbActive]} />
               </TouchableOpacity>
             </View>
+          </View>
+
+          <View style={styles.switchContainer}>
+            <View style={styles.switchRow}>
+              <View style={styles.switchInfo}>
+                <MaterialCommunityIcons name="star-circle-outline" size={20} color={theme.colors.textSecondary} />
+                <Text style={styles.switchLabel}>Festivi sono lavorativi</Text>
+                <Text style={styles.switchDescription}>I giorni festivi nazionali consumano ferie</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.switch, settings.countHolidaysAsWorkday && styles.switchActive]}
+                onPress={() => handleInputChange('countHolidaysAsWorkday', !settings.countHolidaysAsWorkday)}
+              >
+                <View style={[styles.switchThumb, settings.countHolidaysAsWorkday && styles.switchThumbActive]} />
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.infoBox}>
+            <MaterialCommunityIcons name="information" size={16} color="#1976d2" />
+            <Text style={styles.infoText}>
+              {`Impostazione attuale: ${[
+                !settings.countSaturdayAsWorkday && 'sabato',
+                !settings.countSundayAsWorkday && 'domenica',
+                !settings.countHolidaysAsWorkday && 'festivi'
+              ].filter(Boolean).join(', ') || 'nessuna esclusione'} non conteggiati come giorni di ferie`}
+            </Text>
           </View>
         </ModernCard>
 
@@ -487,29 +603,77 @@ const VacationSettingsScreen = ({ navigation }) => {
 
         {/* Riepilogo Card */}
         <ModernCard style={styles.cardSpacing} theme={theme}>
-          <SectionHeader 
-            title="Riepilogo Configurazione" 
-            icon="file-document-outline" 
-            iconColor="#607D8B" 
+          <SectionHeader
+            title="Riepilogo Configurazione"
+            icon="file-document-outline"
+            iconColor="#607D8B"
             theme={theme}
           />
-          
+
+          <InputRow label="Anno di competenza" icon="calendar-today" required theme={theme}>
+            <TextInput
+              style={styles.modernInput}
+              value={settings.currentYear.toString()}
+              onChangeText={v => handleInputChange('currentYear', v)}
+              placeholder={new Date().getFullYear().toString()}
+              placeholderTextColor={theme.colors.textSecondary}
+              keyboardType="numeric"
+            />
+          </InputRow>
+
           <View style={styles.summaryContainer}>
             <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Ferie totali disponibili:</Text>
-              <Text style={styles.summaryValue}>
-                {settings.annualVacationDays + settings.carryOverDays} giorni
+              <Text style={styles.summaryLabel}>Mese attuale:</Text>
+              <Text style={styles.summaryValue}>{new Date().getMonth() + 1} / 12</Text>
+            </View>
+            {/* Ferie */}
+            <View style={[styles.summaryRow, { marginTop: 6 }]}>
+              <Text style={[styles.summaryLabel, { color: '#4CAF50' }]}>Ferie maturate ad oggi:</Text>
+              <Text style={[styles.summaryValue, { color: '#4CAF50' }]}>
+                {((parseFloat(settings.ferieResAnniPrec) || 0) + (parseFloat(settings.ferieMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore
               </Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Permessi totali annuali:</Text>
-              <Text style={styles.summaryValue}>
-                {settings.permitsPerMonth * 12} ore
+            {remaining && (
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: '#888' }]}>  Godute:</Text>
+                <Text style={[styles.summaryValue, { color: '#888' }]}>−{(remaining.usedVacation || 0).toFixed(2)} ore</Text>
+              </View>
+            )}
+            <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: '#4CAF5033', marginTop: 2, paddingTop: 3 }]}>
+              <Text style={[styles.summaryLabel, { color: '#4CAF50', fontWeight: '700' }]}>Ferie residue:</Text>
+              <Text style={[styles.summaryValue, { color: remaining ? (remaining.vacation >= 0 ? '#4CAF50' : '#FF5252') : '#4CAF50', fontWeight: '700' }]}>
+                {remaining
+                  ? `${(remaining.vacation || 0).toFixed(2)} ore`
+                  : `${((parseFloat(settings.ferieResAnniPrec) || 0) + (parseFloat(settings.ferieMaturatiMensili) || 0) * (new Date().getMonth() + 1)).toFixed(2)} ore`}
               </Text>
             </View>
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Anno di competenza:</Text>
-              <Text style={styles.summaryValue}>{settings.currentYear}</Text>
+
+            {/* Permessi */}
+            <View style={[styles.summaryRow, { marginTop: 10 }]}>
+              <Text style={[styles.summaryLabel, { color: '#2196F3' }]}>Permessi maturati ad oggi:</Text>
+              <Text style={[styles.summaryValue, { color: '#2196F3' }]}>
+                {(
+                  (parseFloat(settings.permROAResAnniPrec) || 0) + (parseFloat(settings.permROAMaturatiMensili) || 0) * (new Date().getMonth() + 1) +
+                  (parseFloat(settings.permFestResAnniPrec) || 0) + (parseFloat(settings.permFestMaturatiMensili) || 0) * (new Date().getMonth() + 1)
+                ).toFixed(2)} ore
+              </Text>
+            </View>
+            {remaining && (
+              <View style={styles.summaryRow}>
+                <Text style={[styles.summaryLabel, { color: '#888' }]}>  Goduti:</Text>
+                <Text style={[styles.summaryValue, { color: '#888' }]}>−{(remaining.usedPermits || 0).toFixed(2)} ore</Text>
+              </View>
+            )}
+            <View style={[styles.summaryRow, { borderTopWidth: 1, borderTopColor: '#2196F333', marginTop: 2, paddingTop: 3 }]}>
+              <Text style={[styles.summaryLabel, { color: '#2196F3', fontWeight: '700' }]}>Permessi residui:</Text>
+              <Text style={[styles.summaryValue, { color: remaining ? (remaining.permits >= 0 ? '#2196F3' : '#FF5252') : '#2196F3', fontWeight: '700' }]}>
+                {remaining
+                  ? `${(remaining.permits || 0).toFixed(2)} ore`
+                  : `${(
+                      (parseFloat(settings.permROAResAnniPrec) || 0) + (parseFloat(settings.permROAMaturatiMensili) || 0) * (new Date().getMonth() + 1) +
+                      (parseFloat(settings.permFestResAnniPrec) || 0) + (parseFloat(settings.permFestMaturatiMensili) || 0) * (new Date().getMonth() + 1)
+                    ).toFixed(2)} ore`}
+              </Text>
             </View>
           </View>
         </ModernCard>

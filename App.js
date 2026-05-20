@@ -1,12 +1,13 @@
 import './src/utils/logControl'; // 🔇 Filtro log centralizzato
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator } from '@react-navigation/stack';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, Animated } from 'react-native';
+import { PinchGestureHandler, State, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 import * as Updates from 'expo-updates';
@@ -37,167 +38,6 @@ try {
   console.log('🚀 Comandi: checkManualUpdates(), checkStartupUpdates(), getPendingUpdates(), getUpdateHistory(), clearUpdateNotifications()');
 } catch (manualUpdateError) {
   console.log('⚠️ Sistema aggiornamenti manuali non caricato:', manualUpdateError.message);
-}
-
-// 🎉 TEST WELCOME MODAL - Carica i comandi globali per il tutorial di benvenuto
-try {
-  global.testWelcome = () => {
-    console.log('🎉 Comando testWelcome() non ancora disponibile');
-    console.log('🎉 Usa resetWelcome() dopo il caricamento dell\'app per testare il tutorial');
-  };
-  console.log('🎉 Test welcome modal preparato!');
-  console.log('🎉 Comando: testWelcome() (disponibile dopo caricamento app)');
-  
-  // Carica comandi debug welcome modal
-  require('./welcome-debug.js');
-} catch (welcomeError) {
-  console.log('⚠️ Test welcome modal non caricato:', welcomeError.message);
-}
-
-// 🧪 CARICA DEBUG WELCOME CONTRACT SYNC
-try {
-  console.log('🧪 Caricamento debug welcome contract sync...');
-  const { testWelcomeContractSync, resetToDefault } = require('./debug-welcome-contract-sync');
-  global.testWelcomeContractSync = testWelcomeContractSync;
-  global.resetContractToDefault = resetToDefault;
-  console.log('🧪 Debug welcome contract sync caricato!');
-  console.log('🧪 Comandi: testWelcomeContractSync(), resetContractToDefault()');
-} catch (debugError) {
-  console.log('⚠️ Debug welcome contract sync non caricato:', debugError.message);
-}
-
-// 🎭 CARICA TESTER COMPONENTI DEVELOPMENT
-if (__DEV__) {
-  require('./test-development-components.js');
-}
-
-// 🚨 CARICA PULIZIA EMERGENZA POPUP
-if (__DEV__) {
-  require('./emergency-popup-cleanup.js');
-}
-
-// 🧹 CARICA SISTEMA PULIZIA AGGIORNAMENTI
-if (__DEV__) {
-  require('./clean-update-system.js');
-}
-
-//  DEBUG VERSIONI - Comando per verificare stato versioni
-try {
-  const simpleVersionDebug = require('./simple-version-debug').default;
-  global.simpleVersionDebug = simpleVersionDebug;
-  console.log('🔍 Debug versioni semplificato caricato!');
-  console.log('🔍 Comando: simpleVersionDebug()');
-} catch (debugError) {
-  console.log('⚠️ Debug versioni non caricato:', debugError.message);
-}
-
-// 🔧 RESET VERSION SYSTEM - Comandi per reset sistema versioni
-try {
-  const { resetVersionSystem, checkVersionState, clearAllVersionData } = require('./reset-version-system');
-  global.resetVersionSystem = resetVersionSystem;
-  global.checkVersionState = checkVersionState;
-  global.clearAllVersionData = clearAllVersionData;
-  console.log('🔧 Reset version system caricato!');
-  console.log('🔧 Comandi: resetVersionSystem(), checkVersionState(), clearAllVersionData()');
-} catch (resetError) {
-  console.log('⚠️ Reset version system non caricato:', resetError.message);
-}
-
-// 🚀 QUICK FIX - Comandi rapidi per popup aggiornamento
-try {
-  const { quickFixUpdatePopup, showPopupNow, checkStorageState } = require('./quick-fix-popup');
-  global.quickFixUpdatePopup = quickFixUpdatePopup;
-  global.showPopupNow = showPopupNow;
-  global.checkStorageState = checkStorageState;
-  console.log('🚀 Quick fix popup caricato!');
-  console.log('🚀 Comandi: quickFixUpdatePopup(), showPopupNow(), checkStorageState()');
-} catch (quickFixError) {
-  console.log('⚠️ Quick fix popup non caricato:', quickFixError.message);
-}
-
-// 🔍 VERIFICA VERSIONI - Comandi per verifica sincronizzazione
-try {
-  const { verifyVersionSync, syncAllVersions } = require('./verify-version-sync');
-  global.verifyVersionSync = verifyVersionSync;
-  global.syncAllVersions = syncAllVersions;
-  console.log('🔍 Verifica versioni caricato!');
-  console.log('🔍 Comandi: verifyVersionSync(), syncAllVersions()');
-} catch (verifyError) {
-  console.log('⚠️ Verifica versioni non caricato:', verifyError.message);
-}
-
-// 📱 ENHANCED UPDATE INFO - Info aggiornamenti avanzate
-try {
-  const showEnhancedUpdateInfo = require('./enhanced-update-info').default;
-  global.showEnhancedUpdateInfo = showEnhancedUpdateInfo;
-  console.log('📱 Enhanced update info caricato!');
-  console.log('📱 Comando: showEnhancedUpdateInfo()');
-} catch (enhancedError) {
-  console.log('⚠️ Enhanced update info non caricato:', enhancedError.message);
-}
-
-// 🔧 FORCE UPDATE POPUP - Test diretto popup aggiornamento
-try {
-  const { forceUpdatePopup, checkCurrentVersionState } = require('./force-update-popup');
-  global.forceUpdatePopup = forceUpdatePopup;
-  global.checkCurrentVersionState = checkCurrentVersionState;
-  console.log('🔧 Force update popup caricato!');
-  console.log('🔧 Comandi: forceUpdatePopup(), checkCurrentVersionState()');
-} catch (forceError) {
-  console.log('⚠️ Force update popup non caricato:', forceError.message);
-}
-
-// 📱 RILEVAMENTO BUILD NATIVA - Distingue aggiornamenti nativi da OTA
-try {
-  const { checkNativeBuildUpdate, forceNativeBuildPopup, getBuildInfo, resetNativeBuildSystem } = require('./native-build-update-detector');
-  global.checkNativeBuildUpdate = checkNativeBuildUpdate;
-  global.forceNativeBuildPopup = forceNativeBuildPopup;
-  global.getBuildInfo = getBuildInfo;
-  global.resetNativeBuildSystem = resetNativeBuildSystem;
-  console.log('📱 Rilevamento build nativa caricato!');
-  console.log('📱 Comandi: checkNativeBuildUpdate(), forceNativeBuildPopup(), getBuildInfo(), resetNativeBuildSystem()');
-} catch (nativeError) {
-  console.log('⚠️ Rilevamento build nativa non caricato:', nativeError.message);
-}
-
-// 🧪 TEST BUILD NATIVA - Sistema completo di test per aggiornamenti nativi
-try {
-  const { testNativeBuildDetection, resetForNewTest, testAllUpdateScenarios, testOTAvsNativeComparison } = require('./test-native-build-system');
-  global.testNativeBuildDetection = testNativeBuildDetection;
-  global.resetForNewTest = resetForNewTest;
-  global.testAllUpdateScenarios = testAllUpdateScenarios;
-  global.testOTAvsNativeComparison = testOTAvsNativeComparison;
-  console.log('🧪 Test build nativa caricato!');
-  console.log('🧪 Comandi: testNativeBuildDetection(), resetForNewTest(), testAllUpdateScenarios(), testOTAvsNativeComparison()');
-} catch (testNativeError) {
-  console.log('⚠️ Test build nativa non caricato:', testNativeError.message);
-}
-
-// 🔔 TEST NOTIFICHE BACKUP - Sistema di test per controllo notifiche backup
-try {
-  const { testBackupNotificationControl, testBackupWithDifferentNotificationStates, checkBackupNotificationStatus, resetNotificationTestState } = require('./test-backup-notifications');
-  global.testBackupNotificationControl = testBackupNotificationControl;
-  global.testBackupWithDifferentNotificationStates = testBackupWithDifferentNotificationStates;
-  global.checkBackupNotificationStatus = checkBackupNotificationStatus;
-  global.resetNotificationTestState = resetNotificationTestState;
-  console.log('🔔 Test notifiche backup caricato!');
-  console.log('🔔 Comandi: testBackupNotificationControl(), testBackupWithDifferentNotificationStates(), checkBackupNotificationStatus(), resetNotificationTestState()');
-} catch (testNotificationError) {
-  console.log('⚠️ Test notifiche backup non caricato:', testNotificationError.message);
-}
-
-// 📍 BACKUP PATH INSPECTOR - Visualizza percorsi e dettagli backup completi
-try {
-  const { inspectAllBackups, findBackupByName, verifyBackupPaths, showLatestBackup, copyBackupPath } = require('./backup-path-inspector');
-  global.inspectAllBackups = inspectAllBackups;
-  global.findBackupByName = findBackupByName;
-  global.verifyBackupPaths = verifyBackupPaths;
-  global.showLatestBackup = showLatestBackup;
-  global.copyBackupPath = copyBackupPath;
-  console.log('📍 Backup path inspector caricato!');
-  console.log('📍 Comandi: inspectAllBackups(), findBackupByName("nome"), verifyBackupPaths(), showLatestBackup(), copyBackupPath("nome")');
-} catch (inspectorError) {
-  console.log('⚠️ Backup path inspector non caricato:', inspectorError.message);
 }
 
 // ✅ HANDLER NOTIFICHE CORRETTO - Mostra solo notifiche legittime
@@ -258,6 +98,7 @@ async function setupAndroidNotificationChannels() {
 }
 
 import DashboardScreen from './src/screens/DashboardScreen';
+import YearlyReportScreen from './src/screens/YearlyReportScreen';
 import TimeEntryScreen from './src/screens/TimeEntryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import LoadingScreen from './src/screens/LoadingScreen';
@@ -295,6 +136,39 @@ import { SystemNotificationProvider } from './src/contexts/SystemNotificationCon
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
+
+// Zoom temporaneo: pinch per ingrandire, rilascia per tornare a 1:1
+function PinchZoomWrapper({ children }) {
+  const animScale = useRef(new Animated.Value(1)).current;
+
+  const onGestureEvent = Animated.event(
+    [{ nativeEvent: { scale: animScale } }],
+    { useNativeDriver: true }
+  );
+
+  const onHandlerStateChange = (event) => {
+    const { state } = event.nativeEvent;
+    if (state === State.END || state === State.CANCELLED || state === State.FAILED) {
+      Animated.spring(animScale, {
+        toValue: 1,
+        useNativeDriver: true,
+        tension: 200,
+        friction: 20,
+      }).start();
+    }
+  };
+
+  return (
+    <PinchGestureHandler
+      onGestureEvent={onGestureEvent}
+      onHandlerStateChange={onHandlerStateChange}
+    >
+      <Animated.View style={{ flex: 1, transform: [{ scale: animScale }] }}>
+        {children}
+      </Animated.View>
+    </PinchGestureHandler>
+  );
+}
 
 function SettingsStack() {
   const themeContext = useTheme();
@@ -447,7 +321,7 @@ function MainTabs() {
     >
       <Tab.Screen 
         name="Dashboard" 
-        component={DashboardScreen} 
+        component={DashboardStack} 
         options={{ title: 'Dashboard' }}
       />
       <Tab.Screen 
@@ -463,6 +337,28 @@ function MainTabs() {
     </Tab.Navigator>
   );
 }
+
+const DashboardStack = () => {
+  const themeContext = useTheme();
+  const theme = themeContext?.theme || lightTheme; // Fallback di sicurezza
+  
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: {
+          backgroundColor: theme.colors.card,
+        },
+        headerTintColor: theme.colors.text,
+        headerTitleStyle: {
+          color: theme.colors.text,
+        },
+      }}
+    >
+      <Stack.Screen name="DashboardMain" component={DashboardScreen} options={{ title: 'Dashboard', headerShown: false }} />
+      <Stack.Screen name="YearlyReport" component={YearlyReportScreen} options={{ title: 'Riepilogo Annuale' }} />
+    </Stack.Navigator>
+  );
+};
 
 const TimeEntryStack = () => {
   const themeContext = useTheme();
@@ -696,11 +592,15 @@ export default function App() {
             // Motivo: era un secondo scheduler aggressivo che causava duplicati e riprogrammazioni in parallelo.
             console.log('ℹ️ App: PersistentNotificationService disattivato (uso solo SuperNotificationService)');
             
-            // DISATTIVATA PROGRAMMAZIONE AUTOMATICA ALL'AVVIO (evita notifiche immediate)
+            // Auto-programmazione all'avvio se il servizio non trova notifiche attive
             if (stats.activeNotifications === 0) {
-              console.log('ℹ️ App: Nessuna notifica programmata. Usa le Impostazioni → Notifiche per attivarle manualmente.');
-              // const scheduledCount = await SuperNotificationService.scheduleNotifications();
-              // console.log(`✅ App: Programmate ${scheduledCount} nuove notifiche`);
+              const startupSettings = await SuperNotificationService.getSettings();
+              if (startupSettings?.enabled) {
+                const scheduleResult = await SuperNotificationService.scheduleNotifications(startupSettings, true);
+                console.log(`✅ App: Auto-programmazione all'avvio completata (${scheduleResult?.totalScheduled || 0} notifiche)`);
+              } else {
+                console.log('ℹ️ App: Notifiche globali disabilitate nelle impostazioni, auto-programmazione non eseguita.');
+              }
             }
           }
           
@@ -847,9 +747,11 @@ export default function App() {
   const showWelcomeModal = shouldShowWelcome || forceShowWelcomeModal;
 
   return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
     <ThemeProvider>
       <SystemNotificationProvider>
         <SafeAreaProvider>
+          <PinchZoomWrapper>
           <NavigationContainer>
             <MainTabs />
             <StatusBar style="auto" />
@@ -867,9 +769,11 @@ export default function App() {
             onNavigateToTimeEntry={handleNavigateToTimeEntry}
             onContractSettingsChanged={handleContractSettingsChanged}
           />
+          </PinchZoomWrapper>
         </SafeAreaProvider>
       </SystemNotificationProvider>
     </ThemeProvider>
+    </GestureHandlerRootView>
   );
 }
 

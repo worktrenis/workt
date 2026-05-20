@@ -28,6 +28,7 @@ import DatabaseService from '../services/DatabaseService';
 import { useCalculationService } from '../hooks';
 import { createWorkEntryFromData } from '../utils/earningsHelper';
 import HolidayService from '../services/HolidayService';
+import { captureAndShare } from '../utils/screenshotUtils';
 import NotificationService from '../services/FixedNotificationService';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
@@ -2706,7 +2707,7 @@ const TimeEntryForm = ({ route, navigation }) => {
   // 2. Se viene passata initialDate (nuovo inserimento con data selezionata), usala
   // 3. Altrimenti usa oggi
   let initialDate;
-  if (route?.params?.isEditing && route?.params?.entry?.date) {
+  if (route?.params?.isEdit && route?.params?.entry?.date) {
     // Modalità modifica: usa la data dell'entry esistente
     const { parseISODateLocal } = (() => {
       try {
@@ -2744,7 +2745,7 @@ const TimeEntryForm = ({ route, navigation }) => {
     today: today.toISOString(),
     initialDateParam: route?.params?.initialDate,
     entryDate: route?.params?.entry?.date,
-    isEditing: route?.params?.isEditing,
+    isEditing: route?.params?.isEdit,
     finalInitialDate: initialDate.toISOString(),
     formatDateResult: formatDate(initialDate)
   });
@@ -3111,8 +3112,16 @@ const TimeEntryForm = ({ route, navigation }) => {
         reperibilita: entryToEdit.is_standby_day === 1 || entryToEdit.isStandbyDay === 1,
         reperibilityManualOverride: entryToEdit.reperibilityManualOverride === true || false,
         standbyAllowance: entryToEdit.standby_allowance === 1 || entryToEdit.standbyAllowance === 1,
-        // Carica l'array di interventi direttamente dal DB
-        interventi: entryToEdit.interventi && Array.isArray(entryToEdit.interventi) ? entryToEdit.interventi : [],
+        // Carica l'array di interventi direttamente dal DB (può essere stringa JSON o array)
+        interventi: (() => {
+          const raw = entryToEdit.interventi;
+          if (!raw) return [];
+          if (Array.isArray(raw)) return raw;
+          if (typeof raw === 'string') {
+            try { return JSON.parse(raw) || []; } catch { return []; }
+          }
+          return [];
+        })(),
         pasti: {
           pranzo: (entryToEdit.mealLunchVoucher || entryToEdit.meal_lunch_voucher) === 1,
           cena: (entryToEdit.mealDinnerVoucher || entryToEdit.meal_dinner_voucher) === 1,
@@ -3588,6 +3597,7 @@ const TimeEntryForm = ({ route, navigation }) => {
   // Aggiungi intervento reperibilità
   const addIntervento = () => {
     setForm({ ...form, interventi: [...form.interventi, {
+      site_name: '',
       departure_company: '',
       arrival_site: '',
       work_start_1: '',
@@ -4259,6 +4269,9 @@ const TimeEntryForm = ({ route, navigation }) => {
 
   // Auto-regole basate sugli orari inseriti dall'utente
   useEffect(() => {
+    // In modalità modifica, NON ricalcolare automaticamente: rispetta esattamente i valori salvati
+    if (isEdit) return;
+
     // Verifica se ci sono orari effettivamente inseriti nei turni o negli interventi
     const hasTimeInputs = form.viaggi.some(v => 
       v.departure_company || v.arrival_site || v.work_start_1 || v.work_end_1 || 
@@ -5734,6 +5747,16 @@ const TimeEntryForm = ({ route, navigation }) => {
               color={theme.colors.primary} 
             />
           </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.printButton}
+            onPress={() => captureAndShare(scrollContentRef)}
+          >
+            <MaterialCommunityIcons
+              name="camera"
+              size={24}
+              color={theme.colors.primary}
+            />
+          </TouchableOpacity>
         </View>
       </View>
       <ScrollView 
@@ -6277,7 +6300,23 @@ const TimeEntryForm = ({ route, navigation }) => {
                       <MaterialCommunityIcons name="close" size={16} color="#f44336" />
                     </TouchableOpacity>
                   </View>
-                  
+
+                  {/* Nome cantiere intervento */}
+                  <View style={{ marginBottom: 10 }}>
+                    <Text style={[styles.shiftSiteLabel, { marginBottom: 4 }]}>Nome cantiere</Text>
+                    <TextInput
+                      style={styles.shiftSiteInput}
+                      placeholder="Es. Officina, Casa cliente..."
+                      placeholderTextColor={isDark ? '#666666' : 'rgba(0,0,0,0.25)'}
+                      value={v.site_name || ''}
+                      onChangeText={(text) => {
+                        const interventi = [...form.interventi];
+                        interventi[idx] = { ...interventi[idx], site_name: text };
+                        setForm({ ...form, interventi });
+                      }}
+                    />
+                  </View>
+
                   <View style={styles.timeFieldsGrid}>
                     <TimeFieldModern 
                       label="Partenza azienda" 

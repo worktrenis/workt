@@ -1,0 +1,26 @@
+# Aggiornamento OTA WorkT
+
+- Data: 07/05/2026
+- Versione: 1.0.80
+- Modifiche principali:
+  - Nuovo PDF mensile Dashboard su 2 pagine in orizzontale con dettaglio giorno per giorno
+  - Pagina 1 PDF: presenze, cantieri, veicolo, targa, turni, viaggi, ore lavoro e ore viaggio
+  - Pagina 2 PDF: guadagni, ore ordinarie, straordinari, notturne, serali, trasferte, reperibilita e pasti
+  - Interventi di reperibilita mostrati come righe dedicate nel PDF mensile
+  - Corretto il bug timezone che mostrava l'ultimo giorno del mese precedente
+  - Aggiunto pulsante Condividi nel riepilogo annuale con esportazione PDF landscape
+  - Corretta la riga TOT del riepilogo annuale per renderla sempre visibile
+  - Rimossa la card Ore Viaggio e Straordinari dal riepilogo annuale
+
+## Istruzioni OTA
+1. Esegui backup automatico prima del rilascio
+2. Pubblica l'aggiornamento OTA con messaggio descrittivo
+3. Verifica PDF mensile Dashboard e condivisione PDF del riepilogo annuale
+
+---
+Changelog:
+- PDF mensile completamente rivisto con layout tabellare giornaliero su 2 pagine
+- Aggiunti tutti i dettagli del TimeEntryScreen nel PDF mensile
+- Fix del problema data dovuto a parsing UTC
+- Aggiunto export PDF condivisibile nel riepilogo annuale
+- Migliorata visibilita dei totali annuali

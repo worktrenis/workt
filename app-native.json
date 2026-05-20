@@ -2,7 +2,7 @@
   "expo": {
     "name": "WorkT Nativa",
     "slug": "workt",
-    "version": "1.0.50",
+    "version": "1.0.89",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

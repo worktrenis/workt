@@ -139,10 +139,10 @@ export const createWorkEntryFromData = (entry, calculationServiceInstance = null
       }
       return workEntryData.viaggi || [];
     })(),
-    // Convert all boolean fields to 0/1
-    mealLunchVoucher: workEntryData.mealLunchVoucher ?? workEntryData.meal_lunch_voucher === 1 ? 1 : 0,
+    // I campi pasti sono importi REAL (non flag booleani)
+    mealLunchVoucher: parseFloat(workEntryData.mealLunchVoucher ?? workEntryData.meal_lunch_voucher ?? 0),
     mealLunchCash: parseFloat(workEntryData.mealLunchCash ?? workEntryData.meal_lunch_cash ?? 0),
-    mealDinnerVoucher: workEntryData.mealDinnerVoucher ?? workEntryData.meal_dinner_voucher === 1 ? 1 : 0,
+    mealDinnerVoucher: parseFloat(workEntryData.mealDinnerVoucher ?? workEntryData.meal_dinner_voucher ?? 0),
     mealDinnerCash: parseFloat(workEntryData.mealDinnerCash ?? workEntryData.meal_dinner_cash ?? 0),
     travelAllowance: workEntryData.travelAllowance ?? workEntryData.travel_allowance === 1 ? 1 : 0,
     travelAllowancePercent: parseFloat(workEntryData.travelAllowancePercent ?? workEntryData.travel_allowance_percent ?? 1.0),

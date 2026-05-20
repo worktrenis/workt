@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DatabaseService from './DatabaseService';
 
 class VacationService {
   constructor() {
@@ -12,11 +13,16 @@ class VacationService {
       const settings = await this.getSettings();
       if (!settings) {
         await this.setSettings({
-          annualVacationDays: 26, // Giorni ferie annuali secondo CCNL
-          carryOverDays: 0, // Giorni residui anno precedente
+          ferieResAnniPrec: 0,
+          ferieMaturatiMensili: 0,
+          permROAResAnniPrec: 0,
+          permROAMaturatiMensili: 0,
+          permFestResAnniPrec: 0,
+          permFestMaturatiMensili: 0,
           currentYear: new Date().getFullYear(),
           startDate: `${new Date().getFullYear()}-01-01`,
-          permitsPerMonth: 8, // Ore permessi mensili
+          autoApprovalEnabled: false,
+          autoCompileTimeEntry: false,
         });
       }
     } catch (error) {
@@ -65,12 +71,15 @@ class VacationService {
       if (!settings) {
         // console.log('⚠️ Impostazioni ferie non trovate, creo impostazioni di default');
         settings = {
-          annualVacationDays: 26,
-          carryOverDays: 0,
+          ferieResAnniPrec: 0,
+          ferieMaturatiMensili: 0,
+          permROAResAnniPrec: 0,
+          permROAMaturatiMensili: 0,
+          permFestResAnniPrec: 0,
+          permFestMaturatiMensili: 0,
           currentYear: new Date().getFullYear(),
           startDate: `${new Date().getFullYear()}-01-01`,
-          permitsPerMonth: 8,
-          autoApprovalEnabled: false, // Default: disattivato per sicurezza
+          autoApprovalEnabled: false,
           autoCompileEnabled: false
         };
         await this.setSettings(settings);
@@ -109,26 +118,52 @@ class VacationService {
     try {
       let settings = await this.getSettings();
       
-      // Se le impostazioni non esistono o sono incomplete, creale/aggiornale
-      if (!settings || settings.autoApprovalEnabled === undefined) {
-        // console.log('🔧 Aggiorno impostazioni ferie con campi mancanti');
-        
+      // Se le impostazioni non esistono, crea con valori a zero (l'utente deve inserire manualmente)
+      if (!settings) {
         const defaultSettings = {
-          annualVacationDays: 26,
-          carryOverDays: 0,
+          ferieResAnniPrec: 0,
+          ferieMaturatiMensili: 0,
+          permROAResAnniPrec: 0,
+          permROAMaturatiMensili: 0,
+          permFestResAnniPrec: 0,
+          permFestMaturatiMensili: 0,
           currentYear: new Date().getFullYear(),
           startDate: `${new Date().getFullYear()}-01-01`,
-          permitsPerMonth: 8,
           autoApprovalEnabled: false,
           autoCompileEnabled: false,
-          // Mantieni le impostazioni esistenti se presenti
-          ...(settings || {})
+          permitBankEnabled: false,
+          sickLeaveEnabled: false,
+          autoCompileTimeEntry: false,
+          countSaturdayAsWorkday: false,
+          countSundayAsWorkday: false,
+          countHolidaysAsWorkday: false,
         };
-        
         await this.setSettings(defaultSettings);
         settings = defaultSettings;
       }
-      
+
+      // Migrazione da vecchi formati (giorni o ore annuali) al nuovo formato ad accumulo mensile
+      if (settings.ferieMaturatiMensili === undefined) {
+        const migrated = {
+          ...settings,
+          ferieResAnniPrec: parseFloat(settings.carryOverHours ?? (settings.carryOverDays || 0) * 8) || 0,
+          ferieMaturatiMensili: parseFloat(settings.ferieMaturateAdOggi) || 0,
+          permROAResAnniPrec: 0,
+          permROAMaturatiMensili: parseFloat(settings.permROAMaturateAdOggi) || 0,
+          permFestResAnniPrec: 0,
+          permFestMaturatiMensili: parseFloat(settings.permFestMaturateAdOggi) || 0,
+        };
+        delete migrated.annualVacationDays;
+        delete migrated.annualVacationHours;
+        delete migrated.carryOverDays;
+        delete migrated.carryOverHours;
+        delete migrated.maxCarryOverDays;
+        delete migrated.maxCarryOverHours;
+        delete migrated.permitsPerMonth;
+        await this.setSettings(migrated);
+        settings = migrated;
+      }
+
       return settings;
     } catch (error) {
       console.error('Errore verifica impostazioni ferie:', error);
@@ -230,10 +265,10 @@ class VacationService {
       return {
         availableVacationDays: remaining.vacation || 0,
         usedVacationDays: remaining.usedVacation || 0,
-        availablePersonalDays: Math.floor((remaining.permits || 0) / 8), // Converti ore in giorni
-        usedPersonalDays: Math.floor((remaining.usedPermits || 0) / 8),
+        availablePersonalDays: remaining.permits || 0,
+        usedPersonalDays: remaining.usedPermits || 0,
         totalVacationDays: remaining.totalVacation || 0,
-        totalPersonalDays: Math.floor((remaining.totalPermits || 0) / 8)
+        totalPersonalDays: remaining.totalPermits || 0
       };
     } catch (error) {
       console.error('Errore calcolo riepilogo ferie:', error);
@@ -271,38 +306,104 @@ class VacationService {
     }
   }
 
-  // Calcoli giorni residui
+  // Calcoli giorni residui — legge dal database SQLite (inserimenti reali)
   async calculateRemainingDays() {
     try {
       const settings = await this.getSettings();
-      const requests = await this.getVacationRequests();
-      
       if (!settings) return { vacation: 0, permits: 0 };
 
-      const currentYear = new Date().getFullYear();
-      const approvedRequests = requests.filter(
-        req => req.status === 'approved' && 
-               new Date(req.startDate).getFullYear() === currentYear
-      );
+      const today = new Date();
+      const currentYear = today.getFullYear();
+      const monthsElapsed = today.getMonth() + 1;
+      const dailyHours = 8; // ore giornaliere standard
 
-      const usedVacationDays = approvedRequests
-        .filter(req => req.type === 'vacation')
-        .reduce((total, req) => total + this.calculateDaysBetween(req.startDate, req.endDate), 0);
+      // Leggi tutti gli inserimenti dell'anno corrente dal DB
+      const startDate = `${currentYear}-01-01`;
+      const endDate = `${currentYear}-12-31`;
+      let entries = [];
+      try {
+        entries = await DatabaseService.getWorkEntriesByDateRange(startDate, endDate);
+      } catch (e) {
+        console.warn('VacationService: impossibile leggere DB, uso richieste formali', e);
+      }
 
-      const usedPermitHours = approvedRequests
-        .filter(req => req.type === 'permit')
-        .reduce((total, req) => total + (req.hours || 0), 0);
+      // Helper: calcola ore lavorate (lavoro + viaggio) dalle fasce orarie salvate nel DB
+      const computeWorkedHours = (entry) => {
+        const parseMin = (t) => {
+          if (!t) return null;
+          const parts = String(t).split(':');
+          if (parts.length < 2) return null;
+          return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+        };
+        let total = 0;
+        // Ore lavoro
+        const s1 = parseMin(entry.work_start_1), e1 = parseMin(entry.work_end_1);
+        if (s1 !== null && e1 !== null && e1 > s1) total += (e1 - s1) / 60;
+        const s2 = parseMin(entry.work_start_2), e2 = parseMin(entry.work_end_2);
+        if (s2 !== null && e2 !== null && e2 > s2) total += (e2 - s2) / 60;
+        // Ore viaggio (andata + ritorno)
+        const dc = parseMin(entry.departure_company), as_ = parseMin(entry.arrival_site);
+        if (dc !== null && as_ !== null && as_ > dc) total += (as_ - dc) / 60;
+        const dr = parseMin(entry.departure_return), ac = parseMin(entry.arrival_company);
+        if (dr !== null && ac !== null && ac > dr) total += (ac - dr) / 60;
+        return total;
+      };
 
-      const totalVacationDays = settings.annualVacationDays + (settings.carryOverDays || 0);
-      const totalPermitHours = settings.permitsPerMonth * 12;
+      // Conta le ore ferie e permesso dagli inserimenti del DB
+      // - day_type = 'ferie'/'permesso' → giornata intera (dailyHours)
+      // - day_type = 'lavorativa' + completamento_giornata = 'ferie'/'permesso' → ore mancanti a completare la giornata
+      // - Rispetta le impostazioni countSaturdayAsWorkday / countSundayAsWorkday / countHolidaysAsWorkday
+      const countSat = settings.countSaturdayAsWorkday === true;
+      const countSun = settings.countSundayAsWorkday === true;
+      const countHol = settings.countHolidaysAsWorkday === true;
+
+      const shouldCountDay = (dateStr) => {
+        const d = new Date(dateStr);
+        if (isNaN(d)) return true; // se la data non è valida, conta comunque
+        const dow = d.getDay(); // 0=Dom, 6=Sab
+        if (dow === 6 && !countSat) return false;
+        if (dow === 0 && !countSun) return false;
+        if (this.isHoliday(d) && !countHol) return false;
+        return true;
+      };
+
+      let usedVacationHours = 0;
+      let usedPermitHours = 0;
+      for (const entry of entries) {
+        const dayType = entry.day_type || entry.dayType || '';
+        const completamento = entry.completamento_giornata || entry.completamentoGiornata || '';
+        const isCountable = shouldCountDay(entry.date);
+        if (dayType === 'ferie') {
+          if (isCountable) usedVacationHours += dailyHours;
+        } else if (dayType === 'permesso') {
+          if (isCountable) usedPermitHours += dailyHours;
+        } else if (dayType === 'lavorativa' || dayType === '') {
+          const workedH = computeWorkedHours(entry);
+          const missingH = Math.max(0, dailyHours - workedH);
+          if (completamento === 'ferie' && missingH > 0 && isCountable) {
+            usedVacationHours += missingH;
+          } else if (completamento === 'permesso' && missingH > 0 && isCountable) {
+            usedPermitHours += missingH;
+          }
+        }
+      }
+
+      // Ore maturate automaticamente in base ai mesi trascorsi
+      const ferieMaturateAdOggi = (settings.ferieMaturatiMensili || 0) * monthsElapsed;
+      const permROAMaturateAdOggi = (settings.permROAMaturatiMensili || 0) * monthsElapsed;
+      const permFestMaturateAdOggi = (settings.permFestMaturatiMensili || 0) * monthsElapsed;
+
+      const totalFerieOre = (settings.ferieResAnniPrec || 0) + ferieMaturateAdOggi;
+      const totalPermOre = (settings.permROAResAnniPrec || 0) + permROAMaturateAdOggi
+                         + (settings.permFestResAnniPrec || 0) + permFestMaturateAdOggi;
 
       return {
-        vacation: Math.max(0, totalVacationDays - usedVacationDays),
-        permits: Math.max(0, totalPermitHours - usedPermitHours),
-        usedVacation: usedVacationDays,
+        vacation: totalFerieOre - usedVacationHours,
+        permits: totalPermOre - usedPermitHours,
+        usedVacation: usedVacationHours,
         usedPermits: usedPermitHours,
-        totalVacation: totalVacationDays,
-        totalPermits: totalPermitHours
+        totalVacation: totalFerieOre,
+        totalPermits: totalPermOre,
       };
     } catch (error) {
       console.error('Errore calcolo giorni residui:', error);
@@ -342,6 +443,23 @@ class VacationService {
     }
     
     return workingDays;
+  }
+
+  // Calcola giorni ferie tra due date rispettando le impostazioni (Sab/Dom/Festivi includibili)
+  calculateVacationDays(startDate, endDate, settings = {}) {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    let count = 0;
+
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+      const dow = d.getDay(); // 0=Dom, 6=Sab
+      if (dow === 6 && !settings.countSaturdayAsWorkday) continue;
+      if (dow === 0 && !settings.countSundayAsWorkday) continue;
+      if (this.isHoliday(d) && !settings.countHolidaysAsWorkday) continue;
+      count++;
+    }
+
+    return count;
   }
 
   // Valida una richiesta di ferie/permesso

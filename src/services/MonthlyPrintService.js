@@ -330,39 +330,359 @@ class MonthlyPrintService {
     return (endMinutes - startMinutes) / 60;
   }
   
-  // 🎨 GENERA HTML COMPLETO PER STAMPA
+  // 🎨 GENERA HTML COMPLETO PER STAMPA - 2 pagine landscape con tutto il dettaglio per giorno
   static async generateCompletePrintHTML(data) {
-    const { workEntries, settings, standbyData, monthlyCalculations, year, month } = data;
-    
-    console.log(`🎨 PRINT SERVICE - Generazione HTML per ${workEntries.length} inserimenti`);
-    
-    const monthNames = [
-      'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
-      'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
-    ];
-    
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="UTF-8">
-        <title>Registro Mensile - ${monthNames[month - 1]} ${year}</title>
-        ${this.generatePrintStyles()}
-      </head>
-      <body>
-        ${this.generateHeader(monthNames[month - 1], year)}
-        ${this.generateContractInfo(settings)}
-        ${this.generateMonthlySummary(monthlyCalculations)}
-  ${this.generateExtraEarningsSection(monthlyCalculations, settings, workEntries)}
-        ${await this.generateDailyEntries(workEntries, settings, standbyData)}
-        ${this.generateStandbyCalendar(standbyData)}
-        ${this.generateDetailedBreakdown(monthlyCalculations)}
-        ${this.generateFooter()}
-      </body>
-      </html>
-    `;
+    const { workEntries, settings, standbyData, monthlyCalculations, year, month, dailyBreakdowns = {} } = data;
+
+    const monthNames = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+    const dayNamesShort = ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'];
+    const dayTypeLabelMap = {
+      lavorativa: 'Lav', ferie: 'Fer', permesso: 'Perm', malattia: 'Mal', riposo: 'Rip', festivo: 'Fes'
+    };
+    const completamentoLabelMap = {
+      nessuno: '-', ferie: 'Fer', permesso: 'Perm', malattia: 'Mal', riposo: 'Rip', festivo: 'Fes'
+    };
+    const vehicleLabelMap = {
+      andata_ritorno: 'A/R', solo_andata: 'Andata', solo_ritorno: 'Ritorno', non_guidato: 'No'
+    };
+
+    // Parsing locale della data (evita bug UTC → giorno precedente)
+    const parseLocalDate = (dateStr) => {
+      const [y, m, d] = dateStr.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    };
+    const fmtH = (h) => { if (!h || h <= 0) return '-'; const w = Math.floor(h); const mins = Math.round((h - w) * 60); return `${w}:${mins.toString().padStart(2,'0')}`; };
+    const fmtE = (e) => (e && e > 0) ? `${e.toFixed(2).replace('.', ',')} €` : '-';
+    const fmtTime = (t) => t || '-';
+    const calcDur = (s, e) => { if (!s || !e) return null; const sd = new Date(`2000-01-01T${s}`); let ed = new Date(`2000-01-01T${e}`); if (ed <= sd) ed.setDate(2); return (ed - sd) / 3600000; };
+    const showTime = (s, e) => { if (!s || !e) return '-'; const dur = calcDur(s,e); return dur !== null ? `${s}→${e} (${fmtH(dur)})` : `${s}→${e}`; };
+
+    // Combina inserimenti + giorni di sola reperibilità
+    const allEntries = [...workEntries];
+    const workDates = new Set(workEntries.map(e => e.date));
+    for (const s of (standbyData || [])) {
+      if (!workDates.has(s.date) && s.allowance > 0) {
+        allEntries.push({
+          date: s.date, site_name: 'Reperibilità', is_standby_day: true,
+          standby_allowance: s.allowance, total_earnings: s.allowance, day_type: 'lavorativa', notes: ''
+        });
+      }
+    }
+    allEntries.sort((a, b) => parseLocalDate(a.date) - parseLocalDate(b.date));
+
+    // Estrai ore notturne/serali da breakdown
+    const getNightEvening = (breakdown) => {
+      let nightH = 0, eveningH = 0;
+      if (!breakdown) return { nightH, eveningH };
+      nightH += (breakdown.standby?.workHours?.night || 0) + (breakdown.standby?.workHours?.night_holiday || 0)
+              + (breakdown.standby?.workHours?.saturday_night || 0) + (breakdown.standby?.travelHours?.night || 0)
+              + (breakdown.standby?.travelHours?.saturday_night || 0) + (breakdown.standby?.travelHours?.night_holiday || 0);
+      eveningH += (breakdown.standby?.workHours?.evening || 0) + (breakdown.standby?.travelHours?.evening || 0);
+      for (const f of (breakdown.details?.hourlyRatesBreakdown || [])) {
+        const k = (f.name || f.timeRange || '').toLowerCase();
+        if (k.includes('serale') || k.includes('20:00')) eveningH += f.hours || 0;
+        else if (k.includes('notturno') || k.includes('22:00')) nightH += f.hours || 0;
+      }
+      for (const period of (breakdown.details?.dailyRateBreakdown?.regularBreakdown || [])) {
+        for (const f of (period.breakdown || [])) {
+          if (f.type === 'Serale') eveningH += f.hours || 0;
+          else if (f.type === 'Notturno') nightH += f.hours || 0;
+        }
+      }
+      return { nightH, eveningH };
+    };
+
+    // Accumulatori totali
+    let totWorkH=0, totTravH=0, totEarn=0, totReg=0, totStr=0;
+    let totNot=0, totSer=0, totTrasferta=0, totRep=0, totVouchers=0, totCash=0, totInterventi=0;
+
+    // Righe per pagina 1 (presenze/orari) e pagina 2 (guadagni)
+    const rows1 = [], rows2 = [];
+    let idx = 0;
+
+    for (const entry of allEntries) {
+      const d = parseLocalDate(entry.date);
+      const dow = d.getDay();
+      const dateFormatted = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
+      const dayShort = dayNamesShort[dow];
+      const isWeekend = dow === 0 || dow === 6;
+      const isHoliday = entry.day_type === 'festivo';
+      const tipoLabel = dayTypeLabelMap[entry.day_type] || 'Lav';
+
+      const breakdown = dailyBreakdowns[entry.date]?.breakdown || null;
+
+      // Ore lavoro/viaggio
+      const workH = breakdown
+        ? (breakdown.ordinary?.hours?.lavoro_giornaliera || 0) + (breakdown.ordinary?.hours?.lavoro_extra || 0)
+        : this.calculateWorkHours(entry);
+      const travH = breakdown
+        ? (breakdown.ordinary?.hours?.viaggio_giornaliera || 0) + (breakdown.ordinary?.hours?.viaggio_extra || 0)
+          + Object.values(breakdown.standby?.travelHours || {}).reduce((a, b) => a + b, 0)
+        : this.calculateTravelHours(entry);
+      const earnings = breakdown ? (breakdown.totalEarnings || 0) : parseFloat(entry.total_earnings || 0);
+      const regH    = breakdown ? (breakdown.ordinary?.hours?.lavoro_giornaliera || 0) : 0;
+      const strH    = breakdown ? (breakdown.ordinary?.hours?.lavoro_extra || 0) : 0;
+      // Breakdown straordinari per percentuale (DAILY_RATE o orario puro)
+      const overtimePctLines = (() => {
+        if (strH <= 0) return '-';
+        const pctMap = new Map();
+        let found = false;
+        // DEBUG: logga struttura breakdown per diagnosi
+        console.log(`📄 PDF_OVERTIME [${entry.date}] strH=${strH}, details keys=`, Object.keys(breakdown?.details || {}));
+        console.log(`📄 PDF_OVERTIME [${entry.date}] dailyRateBreakdown=`, breakdown?.details?.dailyRateBreakdown);
+        console.log(`📄 PDF_OVERTIME [${entry.date}] overtimeBreakdown=`, breakdown?.details?.dailyRateBreakdown?.overtimeBreakdown);
+        // Percorso 1: DAILY_RATE_WITH_SUPPLEMENTS → details.dailyRateBreakdown.overtimeBreakdown
+        for (const ob of (breakdown?.details?.dailyRateBreakdown?.overtimeBreakdown || [])) {
+          for (const ot of (ob.breakdown || [])) {
+            if ((ot.hours || 0) <= 0) continue;
+            const r = ot.rate || 1;
+            const key = '+' + Math.round((r - 1) * 100) + '%';
+            pctMap.set(key, { hours: (pctMap.get(key)?.hours || 0) + ot.hours });
+            found = true;
+          }
+        }
+        // Percorso 2: PURE_HOURLY / giorni speciali → details.hourlyRatesBreakdown
+        if (!found) {
+          for (const f of (breakdown?.details?.hourlyRatesBreakdown || [])) {
+            if ((f.hours || 0) <= 0) continue;
+            const r = Number.isFinite(f.rate) && f.rate > 0 ? f.rate : 1;
+            if (r <= 1) continue;
+            const key = '+' + Math.round((r - 1) * 100) + '%';
+            pctMap.set(key, { hours: (pctMap.get(key)?.hours || 0) + f.hours });
+            found = true;
+          }
+        }
+        console.log(`📄 PDF_OVERTIME [${entry.date}] found=${found}, pctMap=`, [...pctMap.entries()]);
+        if (!found || pctMap.size === 0) return fmtH(strH);
+        const lines = Array.from(pctMap.entries())
+          .sort((a, b) => parseFloat(a[0]) - parseFloat(b[0]))
+          .map(([pct, { hours }]) => `<span style="font-size:7px;color:#9a3412;display:block">${fmtH(hours)} ${pct}</span>`)
+          .join('');
+        return `${fmtH(strH)}${lines}`;
+      })();
+      const { nightH, eveningH } = getNightEvening(breakdown);
+      const travelAllowance  = breakdown ? (breakdown.travel?.totalAllowance || 0)   : parseFloat(entry.travel_allowance || 0);
+      const standbyAllowance = breakdown ? (breakdown.standby?.totalEarnings || 0)   : parseFloat(entry.standby_allowance || 0);
+
+      // Pasti
+      const lunchV  = entry.meal_lunch_voucher  || 0;
+      const dinnerV = entry.meal_dinner_voucher || 0;
+      const lunchC  = entry.meal_lunch_cash     || 0;
+      const dinnerC = entry.meal_dinner_cash    || 0;
+
+      // Interventi reperibilità
+      let interventi = [];
+      try { interventi = entry.interventi ? JSON.parse(entry.interventi) : []; } catch(_) {}
+      const nInterventi = interventi.length;
+
+      // Cantiere e veicolo (primo cantiere principale + eventuali aggiuntivi da viaggi)
+      const cantiereMain = entry.site_name || '-';
+      const veicoloMain  = vehicleLabelMap[entry.vehicle_driven] || entry.vehicle_driven || '-';
+      const targa        = entry.targa_veicolo || '-';
+
+      // Viaggi aggiuntivi da campo `viaggi` JSON
+      let viaggiExtra = [];
+      try { viaggiExtra = entry.viaggi ? JSON.parse(entry.viaggi) : []; } catch(_) { viaggiExtra = []; }
+      if (!Array.isArray(viaggiExtra)) viaggiExtra = [];
+
+      // Turni (T1, T2 principali + eventuali turni aggiuntivi dai viaggi)
+      const turni = [];
+      if (entry.work_start_1 && entry.work_end_1) turni.push(`${entry.work_start_1}→${entry.work_end_1} (${fmtH(calcDur(entry.work_start_1, entry.work_end_1))})`);
+      if (entry.work_start_2 && entry.work_end_2) turni.push(`${entry.work_start_2}→${entry.work_end_2} (${fmtH(calcDur(entry.work_start_2, entry.work_end_2))})`);
+      let tNum = 3;
+      for (const v of viaggiExtra) {
+        if (v.work_start_1 && v.work_end_1) { turni.push(`T${tNum++}: ${v.work_start_1}→${v.work_end_1} (${fmtH(calcDur(v.work_start_1, v.work_end_1))})`); }
+        if (v.work_start_2 && v.work_end_2) { turni.push(`T${tNum++}: ${v.work_start_2}→${v.work_end_2} (${fmtH(calcDur(v.work_start_2, v.work_end_2))})`); }
+      }
+      const turniStr = turni.length > 0 ? turni.join('<br>') : '-';
+
+      // Viaggi (andata/ritorno principali + aggiuntivi)
+      const viaggiList = [];
+      if (entry.departure_company && entry.arrival_site)   viaggiList.push(`A: ${entry.departure_company}→${entry.arrival_site} (${fmtH(calcDur(entry.departure_company, entry.arrival_site))})`);
+      if (entry.departure_return  && entry.arrival_company) viaggiList.push(`R: ${entry.departure_return}→${entry.arrival_company} (${fmtH(calcDur(entry.departure_return, entry.arrival_company))})`);
+      let vNum = 2;
+      for (const v of viaggiExtra) {
+        if (v.departure_company && v.arrival_site)   viaggiList.push(`V${vNum}A: ${v.departure_company}→${v.arrival_site} (${fmtH(calcDur(v.departure_company, v.arrival_site))})`);
+        if (v.departure_return  && v.arrival_company) viaggiList.push(`V${vNum}R: ${v.departure_return}→${v.arrival_company} (${fmtH(calcDur(v.departure_return, v.arrival_company))})`);
+        vNum++;
+      }
+      const viaggiStr = viaggiList.length > 0 ? viaggiList.join('<br>') : '-';
+
+      // Cantieri aggiuntivi dai viaggi
+      const cantieriExtra = viaggiExtra.filter(v => v.site_name).map((v, i) => `${i+2}: ${v.site_name}`);
+      const cantiereStr = [cantiereMain, ...cantieriExtra].filter(c => c && c !== '-').join('<br>') || '-';
+
+      // Completamento
+      const completamento = completamentoLabelMap[entry.completamento] || completamentoLabelMap[entry.day_completion] || '-';
+
+      // Accumulatori
+      totWorkH += workH; totTravH += travH; totEarn += earnings;
+      totReg += regH; totStr += strH; totNot += nightH; totSer += eveningH;
+      totTrasferta += travelAllowance; totRep += standbyAllowance;
+      totVouchers += lunchV + dinnerV; totCash += lunchC + dinnerC;
+      totInterventi += nInterventi;
+
+      let bg = idx % 2 === 0 ? '#f8fafc' : '#ffffff';
+      if (isHoliday) bg = '#fce4ec';
+      else if (isWeekend) bg = '#fff8e1';
+      idx++;
+
+      // Riga pagina 1: Presenze & Orari
+      rows1.push(`<tr style="background:${bg}">
+        <td class="d-bold">${dateFormatted}</td>
+        <td class="d-day">${dayShort}</td>
+        <td class="d-tipo">${tipoLabel}</td>
+        <td class="d-site">${cantiereStr}</td>
+        <td>${veicoloMain !== '-' ? veicoloMain : ''}</td>
+        <td>${targa !== '-' ? targa : ''}</td>
+        <td class="d-time">${turniStr}</td>
+        <td class="d-time">${viaggiStr}</td>
+        <td class="d-h">${fmtH(workH)}</td>
+        <td class="d-h">${fmtH(travH)}</td>
+        <td class="d-h d-bold">${fmtH(workH + travH)}</td>
+        <td>${completamento}</td>
+        <td class="d-notes">${entry.notes || ''}</td>
+      </tr>`);
+
+      // Righe interventi reperibilità (pagina 1)
+      if (nInterventi > 0) {
+        for (let i = 0; i < interventi.length; i++) {
+          const iv = interventi[i];
+          const ivParts = [];
+          if (iv.departure_company && iv.arrival_site)   ivParts.push(`ViaA: ${iv.departure_company}→${iv.arrival_site} (${fmtH(calcDur(iv.departure_company, iv.arrival_site))})`);
+          if (iv.work_start_1 && iv.work_end_1)           ivParts.push(`Lav: ${iv.work_start_1}→${iv.work_end_1} (${fmtH(calcDur(iv.work_start_1, iv.work_end_1))})`);
+          if (iv.work_start_2 && iv.work_end_2)           ivParts.push(`Lav2: ${iv.work_start_2}→${iv.work_end_2} (${fmtH(calcDur(iv.work_start_2, iv.work_end_2))})`);
+          if (iv.departure_return && iv.arrival_company)  ivParts.push(`ViaR: ${iv.departure_return}→${iv.arrival_company} (${fmtH(calcDur(iv.departure_return, iv.arrival_company))})`);
+          if (ivParts.length === 0) continue;
+          rows1.push(`<tr style="background:#f0fdf4">
+            <td class="d-bold" style="color:#16a34a">${dateFormatted}</td>
+            <td class="d-day">${dayShort}</td>
+            <td colspan="2" class="d-site" style="color:#16a34a">↳ Intervento ${i+1}</td>
+            <td colspan="8" class="d-time" style="text-align:left">${ivParts.join(' | ')}</td>
+            <td></td>
+          </tr>`);
+        }
+      }
+
+      // Riga pagina 2: Guadagni & Indennità
+      const pastaStr = [lunchV+dinnerV > 0 ? `B×${lunchV+dinnerV}` : '', lunchC+dinnerC > 0 ? `€${(lunchC+dinnerC).toFixed(2)}` : ''].filter(Boolean).join(' ') || '-';
+      rows2.push(`<tr style="background:${bg}">
+        <td class="d-bold">${dateFormatted}</td>
+        <td class="d-day">${dayShort}</td>
+        <td class="d-tipo">${tipoLabel}</td>
+        <td class="d-earn">${fmtE(earnings)}</td>
+        <td class="d-green">${fmtH(regH)}</td>
+        <td class="d-orange">${overtimePctLines}</td>
+        <td class="d-indigo">${fmtH(nightH)}</td>
+        <td class="d-purple">${fmtH(eveningH)}</td>
+        <td>${fmtE(travelAllowance)}</td>
+        <td class="d-standby">${fmtE(standbyAllowance)}</td>
+        <td>${nInterventi > 0 ? nInterventi : '-'}</td>
+        <td>${pastaStr}</td>
+        <td class="d-notes">${entry.notes || ''}</td>
+      </tr>`);
+    }
+
+    const totMealStr = [totVouchers > 0 ? `B×${totVouchers}` : '', totCash > 0 ? `€${totCash.toFixed(2)}` : ''].filter(Boolean).join(' ') || '-';
+    const contract = settings?.contract || {};
+    const currentDate = new Date().toLocaleDateString('it-IT');
+
+    const commonCss = `
+@page { size: A4 landscape; margin: 8mm 8mm; }
+body { font-family: Arial, sans-serif; font-size: 7.5px; color: #111; margin: 0; }
+h2 { font-size: 12px; margin: 0 0 2px; color: #1e40af; }
+h3 { font-size: 10px; margin: 8px 0 4px; color: #1e40af; }
+.sub { font-size: 7px; color: #555; margin: 0 0 5px; }
+table { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 0; }
+th { background: #1e40af; color: #fff; padding: 4px 2px; text-align: center; font-size: 7px; border: 1px solid #1e40af; line-height: 1.2; }
+td { padding: 3px 2px; text-align: center; font-size: 7px; border: 1px solid #dde1e7; vertical-align: top; word-break: break-word; line-height: 1.3; }
+tfoot td { background: #1e40af !important; color: #fff !important; font-weight: 700; border: 1px solid #1e3a8a; }
+.d-bold { font-weight: 700; }
+.d-day  { color: #666; }
+.d-tipo { font-size: 6.5px; color: #374151; }
+.d-site { text-align: left; padding-left: 3px; font-size: 6.5px; }
+.d-time { text-align: left; padding-left: 3px; font-size: 6.5px; line-height: 1.4; }
+.d-h    { font-size: 7px; }
+.d-earn { font-weight: 700; color: #1e40af; }
+.d-green  { color: #16a34a; }
+.d-orange { color: #d97706; }
+.d-indigo { color: #4f46e5; }
+.d-purple { color: #7c3aed; }
+.d-standby { color: #0891b2; }
+.d-notes { text-align: left; font-size: 6px; padding-left: 2px; }
+.page-break { page-break-before: always; }`;
+
+    return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"/><style>${commonCss}</style></head><body>
+
+<h2>Registro Mensile — ${monthNames[month - 1]} ${year}</h2>
+<p class="sub">Contratto: ${contract.name || 'CCNL Metalmeccanico'} &nbsp;|&nbsp; Stipendio: ${formatCurrency(contract.monthlySalary || 0)} &nbsp;|&nbsp; Tariffa oraria: ${formatCurrency(contract.hourlyRate || 0)} &nbsp;|&nbsp; Generato il ${currentDate}</p>
+
+<h3>Pagina 1 — Presenze &amp; Orari</h3>
+<table>
+  <colgroup>
+    <col style="width:4%"/><col style="width:2.5%"/><col style="width:2.5%"/>
+    <col style="width:8%"/><col style="width:5%"/><col style="width:5%"/>
+    <col style="width:22%"/><col style="width:22%"/>
+    <col style="width:4%"/><col style="width:4%"/><col style="width:4%"/>
+    <col style="width:3%"/><col style="width:13%"/>
+  </colgroup>
+  <thead><tr>
+    <th>Data</th><th>G</th><th>Tipo</th>
+    <th>Cantiere</th><th>Veicolo</th><th>Targa</th>
+    <th>Turni (inizio→fine, durata)</th>
+    <th>Viaggi (A=andata R=ritorno)</th>
+    <th>Ore<br>Lav</th><th>Ore<br>Viag</th><th>Ore<br>Tot</th>
+    <th>Compl.</th><th>Note</th>
+  </tr></thead>
+  <tbody>${rows1.join('')}</tbody>
+  <tfoot><tr>
+    <td colspan="8" style="text-align:left;padding-left:4px;">TOTALI</td>
+    <td>${fmtH(totWorkH)}</td><td>${fmtH(totTravH)}</td><td>${fmtH(totWorkH+totTravH)}</td>
+    <td></td><td></td>
+  </tr></tfoot>
+</table>
+
+<div class="page-break">
+<h3>Pagina 2 — Guadagni &amp; Indennità</h3>
+<table>
+  <colgroup>
+    <col style="width:4%"/><col style="width:2.5%"/><col style="width:2.5%"/>
+    <col style="width:8%"/>
+    <col style="width:7%"/><col style="width:7%"/>
+    <col style="width:6%"/><col style="width:6%"/>
+    <col style="width:7%"/><col style="width:7%"/>
+    <col style="width:4%"/><col style="width:7%"/>
+    <col style="width:32%"/>
+  </colgroup>
+  <thead><tr>
+    <th>Data</th><th>G</th><th>Tipo</th>
+    <th>Totale €</th>
+    <th>Reg.<br>(h)</th><th>Straord.<br>(h)</th>
+    <th>Notturne<br>(h)</th><th>Serali<br>(h)</th>
+    <th>Trasferta</th><th>Reperibilità</th>
+    <th>N.<br>Int.</th><th>Pasto</th>
+    <th>Note</th>
+  </tr></thead>
+  <tbody>${rows2.join('')}</tbody>
+  <tfoot><tr>
+    <td colspan="3" style="text-align:left;padding-left:4px;">TOTALI</td>
+    <td>${fmtE(totEarn)}</td>
+    <td>${fmtH(totReg)}</td><td>${fmtH(totStr)}</td>
+    <td>${fmtH(totNot)}</td><td>${fmtH(totSer)}</td>
+    <td>${fmtE(totTrasferta)}</td><td>${fmtE(totRep)}</td>
+    <td>${totInterventi || '-'}</td><td>${totMealStr}</td>
+    <td></td>
+  </tr></tfoot>
+</table>
+</div>
+
+</body></html>`;
   }
-  
+
+
+
+
   // 🎨 STILI CSS PER STAMPA
   static generatePrintStyles() {
     return `
@@ -1895,6 +2215,9 @@ class MonthlyPrintService {
         console.log('🔍 PDF DEBUG - StandbyInfo calcolati per PDF:', data.standbyInfo);
       }
 
+      // Passa i dailyBreakdowns alla funzione HTML per il breakdown per-giorno
+      data.dailyBreakdowns = dashboardData?.dailyBreakdowns || {};
+
       // 2. Genera HTML (METODO DASHBOARD)
       const html = await this.generateCompletePrintHTML(data);
       console.log(`📄 PRINT SERVICE - HTML generato con metodo dashboard (${html.length} caratteri)`);
@@ -1902,7 +2225,7 @@ class MonthlyPrintService {
       // 3. Log di cosa verrà stampato
       this.logPrintContent(data);
       
-      // 4. Genera PDF
+      // 4. Genera PDF e mostra dialog di condivisione (come YearlyReportScreen)
       const monthNames = [
         'Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno',
         'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'
@@ -1912,29 +2235,29 @@ class MonthlyPrintService {
       
       const { uri } = await Print.printToFileAsync({
         html,
-        base64: false
+        base64: false,
+        orientation: Print.Orientation.landscape
       });
       
       console.log(`📄 PRINT SERVICE - PDF generato temporaneo: ${uri}`);
       
-      // Copia il file con il nome corretto
+      // Sposta il file con il nome corretto
       const finalUri = `${FileSystem.documentDirectory}${fileName}`;
-      await FileSystem.copyAsync({
+      await FileSystem.moveAsync({
         from: uri,
         to: finalUri
       });
       
-      console.log(`📄 PRINT SERVICE - PDF rinominato: ${finalUri}`);
+      console.log(`📄 PRINT SERVICE - PDF spostato: ${finalUri}`);
       
-      // 5. Condividi PDF
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(finalUri, {
-          mimeType: 'application/pdf',
-          dialogTitle: `Condividi Registro ${monthNames[month - 1]} ${year}`,
-          UTI: 'com.adobe.pdf'
-        });
-        console.log(`📄 PRINT SERVICE - PDF condiviso con successo`);
-      }
+      // Apri il dialog di condivisione nativo (come YearlyReportScreen)
+      await Sharing.shareAsync(finalUri, {
+        mimeType: 'application/pdf',
+        dialogTitle: `Condividi Registro ${monthNames[month - 1]} ${year}`,
+        UTI: 'com.adobe.pdf'
+      });
+      
+      console.log(`📄 PRINT SERVICE - Dialog di condivisione mostrato`);
       
       return {
         success: true,

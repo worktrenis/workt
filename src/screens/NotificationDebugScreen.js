@@ -8,7 +8,9 @@ import {
   Alert,
   RefreshControl,
   Switch,
-  Platform
+  Platform,
+  Linking,
+  PermissionsAndroid,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -171,6 +173,68 @@ const NotificationDebugScreen = ({ navigation }) => {
         }
       ]
     );
+  };
+
+  const handleOpenExactAlarmSettings = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      if (Platform.Version >= 31) {
+        await Linking.sendIntent('android.settings.REQUEST_SCHEDULE_EXACT_ALARM');
+      } else {
+        await Linking.openSettings();
+      }
+    } catch (e) {
+      Alert.alert('Errore', 'Impossibile aprire le impostazioni. Vai manualmente in Impostazioni > App > WorkT > Allarmi e promemoria.');
+    }
+  };
+
+  const handleOpenBatterySettings = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      await Linking.sendIntent(
+        'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
+        [{ key: 'android.provider.extra.APP_PACKAGE', value: 'com.workt.production' }]
+      );
+    } catch (e) {
+      // Fallback: apri impostazioni batteria generali
+      try {
+        await Linking.sendIntent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS');
+      } catch (e2) {
+        await Linking.openSettings();
+      }
+    }
+  };
+
+  const handleOpenNotificationSystemSettings = async () => {
+    try {
+      await Linking.openSettings();
+    } catch (e) {
+      Alert.alert('Errore', 'Impossibile aprire le impostazioni.');
+    }
+  };
+
+  const handleCheckExactAlarm = async () => {
+    if (Platform.OS !== 'android' || Platform.Version < 31) {
+      Alert.alert('Info', 'Il permesso allarmi esatti è richiesto solo su Android 12 e superiori.');
+      return;
+    }
+    try {
+      const granted = await PermissionsAndroid.check('android.permission.SCHEDULE_EXACT_ALARM');
+      if (granted) {
+        Alert.alert('✅ OK', 'Il permesso "Allarmi esatti" è già attivo. Le notifiche possono arrivare in orario.');
+      } else {
+        Alert.alert(
+          '⚠️ Permesso mancante',
+          'Il permesso "Allarmi e promemoria" non è attivo. Questo è probabilmente il motivo per cui le notifiche arrivano in ritardo.\n\nPremi "Vai alle impostazioni" per attivarlo.',
+          [
+            { text: 'Annulla', style: 'cancel' },
+            { text: 'Vai alle impostazioni', onPress: handleOpenExactAlarmSettings },
+          ]
+        );
+      }
+    } catch (e) {
+      Alert.alert('Errore', `Impossibile verificare il permesso: ${e.message}`);
+    }
   };
 
   const handleTestNotification = async () => {
@@ -386,6 +450,82 @@ const NotificationDebugScreen = ({ navigation }) => {
             <Text style={styles.actionButtonText}>Cancella Solo Reperibilità</Text>
           </TouchableOpacity>
         </View>
+
+        {/* ⚙️ FIX ANDROID - sezione critica per produzione */}
+        {Platform.OS === 'android' && (
+          <View style={[styles.section, { backgroundColor: theme.colors.card, borderWidth: 2, borderColor: '#FF9800' }]}>
+            <View style={styles.sectionHeader}>
+              <MaterialCommunityIcons name="android" size={24} color="#FF9800" />
+              <Text style={[styles.sectionTitle, { color: '#FF9800' }]}>
+                Fix Android — Notifiche Puntuali
+              </Text>
+            </View>
+
+            <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+              Se le notifiche arrivano solo quando apri l'app, sono necessarie queste due impostazioni di sistema:
+            </Text>
+
+            {/* Step 1: Exact Alarm */}
+            <View style={{ marginBottom: 10, padding: 10, backgroundColor: 'rgba(255,152,0,0.08)', borderRadius: 8 }}>
+              <Text style={{ color: theme.colors.text, fontWeight: '700', fontSize: 13, marginBottom: 4 }}>
+                1. Allarmi e promemoria (Android 12+)
+              </Text>
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+                Senza questo permesso Android usa allarmi imprecisi che possono ritardare di ore.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#FF9800', borderRadius: 8, padding: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                  onPress={handleCheckExactAlarm}
+                >
+                  <MaterialCommunityIcons name="alarm-check" size={16} color="white" />
+                  <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Verifica</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={{ flex: 1, backgroundColor: '#E65100', borderRadius: 8, padding: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                  onPress={handleOpenExactAlarmSettings}
+                >
+                  <MaterialCommunityIcons name="cog" size={16} color="white" />
+                  <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Attiva ora</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Step 2: Battery Optimization */}
+            <View style={{ marginBottom: 10, padding: 10, backgroundColor: 'rgba(255,152,0,0.08)', borderRadius: 8 }}>
+              <Text style={{ color: theme.colors.text, fontWeight: '700', fontSize: 13, marginBottom: 4 }}>
+                2. Ottimizzazione batteria (Doze mode)
+              </Text>
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+                Android mette l'app in sleep e annulla gli allarmi. Devi scegliere "Non ottimizzare" per WorkT.
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: '#F57C00', borderRadius: 8, padding: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                onPress={handleOpenBatterySettings}
+              >
+                <MaterialCommunityIcons name="battery-off" size={16} color="white" />
+                <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Apri impostazioni batteria</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Step 3: Manufacturer specific */}
+            <View style={{ padding: 10, backgroundColor: 'rgba(255,152,0,0.08)', borderRadius: 8 }}>
+              <Text style={{ color: theme.colors.text, fontWeight: '700', fontSize: 13, marginBottom: 4 }}>
+                3. Impostazioni app di sistema
+              </Text>
+              <Text style={{ color: theme.colors.textSecondary, fontSize: 12, marginBottom: 8 }}>
+                Su alcuni telefoni (Xiaomi, Samsung, Huawei) esistono impostazioni aggiuntive nelle impostazioni app.
+              </Text>
+              <TouchableOpacity
+                style={{ backgroundColor: '#5D4037', borderRadius: 8, padding: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}
+                onPress={handleOpenNotificationSystemSettings}
+              >
+                <MaterialCommunityIcons name="tune" size={16} color="white" />
+                <Text style={{ color: 'white', fontWeight: '600', fontSize: 13 }}>Impostazioni app WorkT</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Diagnostica Impostazioni Salvate */}
         {stats?.savedSettings && (
