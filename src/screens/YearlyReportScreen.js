@@ -674,7 +674,10 @@ const YearlyReportScreen = ({ navigation, route }) => {
           const grossAmount = daysWorked > 0 ? (baseSalary + realExtraEarnings) : monthData.grossEarnings;
 
           const useActualAmount = settings?.netCalculation?.useActualAmount ?? false;
-          const calcBase = (!useActualAmount && baseSalary) ? baseSalary : grossAmount;
+          // Preferiamo usare il lordo reale del mese se è disponibile (evita discrepanze con la Dashboard)
+          const calcBase = (monthData.grossEarnings && monthData.grossEarnings > 0)
+            ? grossAmount
+            : ((!useActualAmount && baseSalary) ? baseSalary : grossAmount);
           const cashMeals = monthData._cashMeals || 0;
           if (calcBase > 0) {
             const netCalc = RealPayslipCalculator.calculateNetFromGross(calcBase, payslipSettings);
