@@ -9,6 +9,7 @@ import { useWelcome } from './useWelcome';
 import { DEFAULT_SETTINGS, CCNL_CONTRACTS } from '../constants';
 import { applyScheduledCCNLIncrements } from '../services/CCNLUpdateService';
 import { CCNL_2025_2026_INCREMENTS } from '../constants';
+import { invalidateAIContextCache } from '../services/AIContextManager';
 
 export { useCalculationService, useVacationAutoCompile, useWelcome };
 
@@ -459,6 +460,10 @@ export const useSettings = () => {
       // Salva anche in AsyncStorage per le notifiche
       await AsyncStorage.setItem('settings', JSON.stringify(newSettings));
       console.log('✅ HOOK - Settings salvate anche in AsyncStorage per notifiche');
+      
+      // 🔄 CRITICO: Invalida il cache del AI Assistant affinché ricarichi i valori reali
+      invalidateAIContextCache();
+      console.log('🔄 HOOK - AI Context cache invalidato');
       
       setSettings(newSettings);
       setRetryCount(0);

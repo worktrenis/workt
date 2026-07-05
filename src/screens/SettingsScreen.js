@@ -158,6 +158,13 @@ const SettingsScreen = ({ navigation }) => {
       color: '#795548'
     },
     {
+      title: 'Assistente AI',
+      subtitle: 'Domande su CCNL, tariffe e uso dell\'app',
+      icon: 'robot',
+      screen: 'AIAssistant',
+      color: '#3F51B5'
+    },
+    {
       title: 'Ore di Viaggio',
       subtitle: 'Modalità di calcolo ore viaggio',
       icon: 'car-clock',

@@ -3296,21 +3296,64 @@ const DashboardScreen = ({ navigation, route }) => {
 
       if (isCurrentMonth && daysWorked > 0) {
         // Mese corrente: usa il previsto fine mese (solo feriali lun-ven)
-        const dailyRate = baseSalary / workingDaysInMonth;
-        const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
-        const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
-        const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
-        const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
-        const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
-        const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
-        grossAmount = baseSalary + realExtraEarnings;
+          const dailyRate = baseSalary / workingDaysInMonth;
+          const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
+          const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
+          // Conta i festivi sui quali sono state effettivamente svolte ore di lavoro
+          const dailyBreakdowns = monthlyAggregated?.dailyBreakdowns;
+          let holidayWorkedWithHours = 0;
+          if (dailyBreakdowns) {
+            if (dailyBreakdowns instanceof Map) {
+              for (const [d, v] of dailyBreakdowns) {
+                const dh = v?.dailyHours || 0;
+                if (dh > 0 && isItalianHoliday(parseDateOnlyToLocalDate(d))) holidayWorkedWithHours++;
+              }
+            } else if (typeof dailyBreakdowns.forEach === 'function') {
+              dailyBreakdowns.forEach((v, k) => {
+                const dh = v?.dailyHours || 0;
+                if (dh > 0 && isItalianHoliday(parseDateOnlyToLocalDate(k))) holidayWorkedWithHours++;
+              });
+            } else {
+              Object.keys(dailyBreakdowns).forEach(k => {
+                const v = dailyBreakdowns[k];
+                const dh = v?.dailyHours || 0;
+                if (dh > 0 && isItalianHoliday(parseDateOnlyToLocalDate(k))) holidayWorkedWithHours++;
+              });
+            }
+          }
+          // I festivi con ore vengono considerati 'extra' e sottratti dal conteggio delle feriali
+          const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayWorkedWithHours));
+          const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
+          const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
+          grossAmount = baseSalary + realExtraEarnings;
       } else if (!isCurrentMonth && daysWorked > 0) {
         // Mese passato: calcola il totale teorico del mese (non maturato) usando solo feriali
         const dailyRate = baseSalary / workingDaysInMonth;
         const saturdayDays = monthlyAggregated?.analytics?.saturdayWorkDays || 0;
         const sundayDays = monthlyAggregated?.analytics?.sundayWorkDays || 0;
-        const holidayDays = monthlyAggregated?.analytics?.holidayWorkDays || 0;
-        const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayDays));
+        // Conta i festivi sui quali sono state effettivamente svolte ore di lavoro
+        const dailyBreakdowns2 = monthlyAggregated?.dailyBreakdowns;
+        let holidayWorkedWithHours2 = 0;
+        if (dailyBreakdowns2) {
+          if (dailyBreakdowns2 instanceof Map) {
+            for (const [d, v] of dailyBreakdowns2) {
+              const dh = v?.dailyHours || 0;
+              if (dh > 0 && isItalianHoliday(parseDateOnlyToLocalDate(d))) holidayWorkedWithHours2++;
+            }
+          } else if (typeof dailyBreakdowns2.forEach === 'function') {
+            dailyBreakdowns2.forEach((v, k) => {
+              const dh = v?.dailyHours || 0;
+              if (dh > 0 && isItalianHoliday(parseDateOnlyToLocalDate(k))) holidayWorkedWithHours2++;
+            });
+          } else {
+            Object.keys(dailyBreakdowns2).forEach(k => {
+              const v = dailyBreakdowns2[k];
+              const dh = v?.dailyHours || 0;
+              if (dh > 0 && isItalianHoliday(parseDateOnlyToLocalDate(k))) holidayWorkedWithHours2++;
+            });
+          }
+        }
+        const weekdaysWorked = Math.max(0, (daysWorked || 0) - (saturdayDays + sundayDays + holidayWorkedWithHours2));
         const baseEarningsForWorkedDays = dailyRate * weekdaysWorked;
         const realExtraEarnings = Math.max(0, currentTotal - baseEarningsForWorkedDays);
         grossAmount = baseSalary + realExtraEarnings;
@@ -3670,7 +3713,15 @@ const DashboardScreen = ({ navigation, route }) => {
 
             {/* Netto maturato fino ad ora */}
             {(() => {
-              const currentNet = monthlyAggregated?.netTotalEarnings || 0;
+              // Calcola il netto sulla stessa base del "Lordo maturato ad oggi" (adjustedTotalEarnings)
+              // per evitare che il netto risulti superiore al lordo quando ci sono pochi inserimenti
+              const payslipSettings = {
+                method: settings?.netCalculation?.method || 'irpef',
+                customDeductionRate: settings?.netCalculation?.customDeductionRate || 32
+              };
+              const currentNet = adjustedTotalEarnings > 0
+                ? (RealPayslipCalculator.calculateNetFromGross(adjustedTotalEarnings, payslipSettings).net || 0)
+                : 0;
               const cashMealsFromForm = (monthlyAggregated?.meals?.byType?.cashSpecific?.total || 0);
               const finalNetWithCash = currentNet + cashMealsFromForm;
               

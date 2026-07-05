@@ -27,6 +27,16 @@ const AppInfoScreen = ({ navigation }) => {
 
   const changelog = [
     {
+      version: '1.0.91',
+      date: '2 giugno 2026',
+      changes: [
+        'Dashboard: fix netto maturato ad oggi non può più essere superiore al lordo con poche inserzioni (calcolo netto ora coerente con la base lordo effettivo).',
+        'TimeEntryForm: auto-compilazione festivi ripristinata — il form ora rileva correttamente i festivi alla data iniziale anche se era presente un draft di un giorno diverso.',
+        'TimeEntryForm: auto-selezione "Ferie" quando la data ha una richiesta approvata e l\'impostazione auto-compilazione ferie è attiva.',
+        'Backup: aggiunte chiavi vacation_data e vacation_settings al backup/ripristino — impostazioni ferie, permessi e richieste ora incluse nel backup.',
+      ]
+    },
+    {
       version: '1.0.90',
       date: '20 maggio 2026',
       changes: [

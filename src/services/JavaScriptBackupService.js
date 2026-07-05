@@ -1,4 +1,4 @@
-// 🚀 SISTEMA BACKUP AUTOMATICO SOLO JAVASCRIPT
+﻿// ­ƒÜÇ SISTEMA BACKUP AUTOMATICO SOLO JAVASCRIPT
 // Sostituisce Expo Background Fetch con JavaScript Timer
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,10 +11,10 @@ class JavaScriptBackupService {
     this.isInitialized = false;
     this.backupInProgress = false;
     
-    console.log('🚀 JavaScriptBackupService inizializzato');
+    console.log('­ƒÜÇ JavaScriptBackupService inizializzato');
   }
 
-  // 🕐 Genera timestamp nel fuso orario locale italiano
+  // ­ƒòÉ Genera timestamp nel fuso orario locale italiano
   getLocalTimestamp() {
     const now = new Date();
     // Semplice: aggiungi 1 ora (UTC+1) o 2 ore (UTC+2) in base al DST
@@ -39,10 +39,10 @@ class JavaScriptBackupService {
     return date >= lastSundayMarch && date < lastSundayOctober;
   }
 
-  // ✅ INIZIALIZZA SISTEMA BACKUP JAVASCRIPT
+  // Ô£à INIZIALIZZA SISTEMA BACKUP JAVASCRIPT
   async initialize() {
     if (this.isInitialized) {
-      console.log('📱 Backup service già inizializzato');
+      console.log('­ƒô▒ Backup service gi├á inizializzato');
       return;
     }
 
@@ -51,14 +51,14 @@ class JavaScriptBackupService {
       
       if (settings.enabled) {
         await this.scheduleNextBackup(settings);
-        console.log('✅ Sistema backup automatico JavaScript attivato');
+        console.log('Ô£à Sistema backup automatico JavaScript attivato');
       } else {
-        console.log('📱 Backup automatico disabilitato nelle impostazioni');
+        console.log('­ƒô▒ Backup automatico disabilitato nelle impostazioni');
       }
       
       this.isInitialized = true;
     } catch (error) {
-      console.error('❌ Errore inizializzazione backup service:', error);
+      console.error('ÔØî Errore inizializzazione backup service:', error);
     }
   }
 
@@ -78,25 +78,25 @@ class JavaScriptBackupService {
     }
   }
 
-  // ✅ PROGRAMMA PROSSIMO BACKUP con JavaScript Timer
+  // Ô£à PROGRAMMA PROSSIMO BACKUP con JavaScript Timer
   async scheduleNextBackup(settings = null) {
     // In questa versione, il backup automatico viene eseguito solo tramite trigger esterno (es. background task, push notification, ecc.)
     // Nessun setTimeout, nessun backup automatico su salvataggio/cambio dati
     // Puoi integrare qui eventuali hook con librerie di background task se necessario
-    console.log('🕐 [JS] Backup automatico pianificato solo tramite trigger esterno/orario.');
+    console.log('­ƒòÉ [JS] Backup automatico pianificato solo tramite trigger esterno/orario.');
   }
 
-  // ✅ ESEGUI BACKUP AUTOMATICO
+  // Ô£à ESEGUI BACKUP AUTOMATICO
   async executeBackup() {
     if (this.backupInProgress) {
-      console.log('📱 Backup già in corso, saltando...');
+      console.log('­ƒô▒ Backup gi├á in corso, saltando...');
       return;
     }
 
     this.backupInProgress = true;
 
     try {
-      console.log('🔄 === INIZIO BACKUP AUTOMATICO JAVASCRIPT ===');
+      console.log('­ƒöä === INIZIO BACKUP AUTOMATICO JAVASCRIPT ===');
       
       const timestamp = this.getLocalTimestamp().replace(/[:.]/g, '-');
       const fileName = `auto-backup-${timestamp}.json`;
@@ -105,7 +105,7 @@ class JavaScriptBackupService {
       const data = await DatabaseService.getAllData();
       
       if (!data || Object.keys(data).length === 0) {
-        console.log('⚠️ Nessun dato trovato per il backup');
+        console.log('ÔÜá´©Å Nessun dato trovato per il backup');
         return false;
       }
 
@@ -131,7 +131,7 @@ class JavaScriptBackupService {
       // Pulizia backup vecchi
       await this.cleanupOldBackups();
 
-      console.log(`✅ Backup automatico JavaScript completato: ${fileName}`);
+      console.log(`Ô£à Backup automatico JavaScript completato: ${fileName}`);
       
       // Aggiorna timestamp ultimo backup
       await AsyncStorage.setItem('last_backup_date', new Date().toISOString());
@@ -139,7 +139,7 @@ class JavaScriptBackupService {
       return true;
 
     } catch (error) {
-      console.error('❌ Errore backup automatico:', error);
+      console.error('ÔØî Errore backup automatico:', error);
       return false;
     } finally {
       this.backupInProgress = false;
@@ -163,7 +163,7 @@ class JavaScriptBackupService {
       const updatedBackups = [newBackup, ...backups];
       await AsyncStorage.setItem('javascript_backups', JSON.stringify(updatedBackups));
       
-      console.log(`📝 Lista backup aggiornata: ${updatedBackups.length} backup totali`);
+      console.log(`­ƒôØ Lista backup aggiornata: ${updatedBackups.length} backup totali`);
     } catch (error) {
       console.error('Errore aggiornamento lista backup:', error);
     }
@@ -184,9 +184,9 @@ class JavaScriptBackupService {
         for (const backup of backupsToDelete) {
           try {
             await AsyncStorage.removeItem(backup.key);
-            console.log(`🗑️ Backup rimosso: ${backup.name}`);
+            console.log(`­ƒùæ´©Å Backup rimosso: ${backup.name}`);
           } catch (error) {
-            console.warn(`⚠️ Errore rimozione backup ${backup.name}:`, error);
+            console.warn(`ÔÜá´©Å Errore rimozione backup ${backup.name}:`, error);
           }
         }
 
@@ -197,21 +197,21 @@ class JavaScriptBackupService {
         
         await AsyncStorage.setItem('javascript_backups', JSON.stringify(remainingBackups));
         
-        console.log(`🧹 Pulizia completata: rimossi ${backupsToDelete.length} backup vecchi`);
+        console.log(`­ƒº╣ Pulizia completata: rimossi ${backupsToDelete.length} backup vecchi`);
       }
     } catch (error) {
-      console.error('❌ Errore pulizia backup:', error);
+      console.error('ÔØî Errore pulizia backup:', error);
     }
   }
 
-  // ✅ STOP BACKUP AUTOMATICO
+  // Ô£à STOP BACKUP AUTOMATICO
   async stopAutoBackup() {
-    console.log('🛑 [JS] Backup automatico fermato (nessun timer attivo)');
+    console.log('­ƒøæ [JS] Backup automatico fermato (nessun timer attivo)');
   }
 
-  // ✅ RIAVVIA BACKUP AUTOMATICO
+  // Ô£à RIAVVIA BACKUP AUTOMATICO
   async restartAutoBackup() {
-    console.log('🔄 [JS] Riavvio backup automatico (nessun timer, solo re-inizializzazione)');
+    console.log('­ƒöä [JS] Riavvio backup automatico (nessun timer, solo re-inizializzazione)');
     await this.initialize();
   }
 
@@ -252,29 +252,29 @@ class JavaScriptBackupService {
       // Ripristina nel database
       await DatabaseService.restoreFromBackup(backupData);
       
-      console.log('✅ Backup JavaScript importato con successo');
+      console.log('Ô£à Backup JavaScript importato con successo');
       return true;
     } catch (error) {
-      console.error('❌ Errore importazione backup:', error);
+      console.error('ÔØî Errore importazione backup:', error);
       throw error;
     }
   }
 
   // Test backup manuale
   async testBackup() {
-    console.log('🧪 Test backup manuale JavaScript...');
+    console.log('­ƒº¬ Test backup manuale JavaScript...');
     const result = await this.executeBackup();
     
     if (result) {
       Alert.alert(
-        '✅ Test Backup Riuscito',
+        'Ô£à Test Backup Riuscito',
         'Il backup automatico JavaScript funziona correttamente!',
         [{ text: 'OK' }]
       );
     } else {
       Alert.alert(
-        '❌ Test Backup Fallito',
-        'Si è verificato un errore durante il test del backup.',
+        'ÔØî Test Backup Fallito',
+        'Si ├¿ verificato un errore durante il test del backup.',
         [{ text: 'OK' }]
       );
     }
@@ -319,10 +319,10 @@ class JavaScriptBackupService {
     return nextBackup;
   }
 
-  // ⚙️ AGGIORNA IMPOSTAZIONI BACKUP JAVASCRIPT
+  // ÔÜÖ´©Å AGGIORNA IMPOSTAZIONI BACKUP JAVASCRIPT
   async updateBackupSettings(enabled, time) {
     try {
-      console.log(`📱 [JS] Aggiornamento impostazioni: enabled=${enabled}, time=${time}`);
+      console.log(`­ƒô▒ [JS] Aggiornamento impostazioni: enabled=${enabled}, time=${time}`);
       
       // Salva le nuove impostazioni
       await AsyncStorage.setItem('auto_backup_enabled', JSON.stringify(enabled));
@@ -332,29 +332,29 @@ class JavaScriptBackupService {
       if (this.backupTimer) {
         clearTimeout(this.backupTimer);
         this.backupTimer = null;
-        console.log('🗑️ [JS] Timer backup precedente cancellato');
+        console.log('­ƒùæ´©Å [JS] Timer backup precedente cancellato');
       }
       
-      // Se il backup è abilitato, programma nuovo timer
+      // Se il backup ├¿ abilitato, programma nuovo timer
       if (enabled) {
         const settings = { enabled, time };
         await this.scheduleNextBackup(settings);
-        console.log('✅ [JS] Nuovo timer backup programmato');
+        console.log('Ô£à [JS] Nuovo timer backup programmato');
       } else {
-        console.log('📱 [JS] Backup automatico disabilitato');
+        console.log('­ƒô▒ [JS] Backup automatico disabilitato');
       }
       
       return true;
     } catch (error) {
-      console.error('❌ [JS] Errore aggiornamento impostazioni backup:', error);
+      console.error('ÔØî [JS] Errore aggiornamento impostazioni backup:', error);
       return false;
     }
   }
 
-  // 📱 Stato del sistema JavaScript
+  // ­ƒô▒ Stato del sistema JavaScript
   getSystemStatus() {
     return {
-      isNativeReady: false, // JavaScript non è nativo
+      isNativeReady: false, // JavaScript non ├¿ nativo
       hasNotificationsModule: false,
       systemType: 'javascript',
       description: 'Backup JavaScript (solo app aperta)',

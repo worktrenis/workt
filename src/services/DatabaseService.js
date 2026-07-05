@@ -1175,6 +1175,8 @@ class DatabaseService {
         '@app_theme', '@app_theme_mode',
         'welcome_tutorial_completed', 'welcome_tutorial_skipped',
         'app_first_launch_detected',
+        // Ferie e permessi (VacationService)
+        'vacation_data', 'vacation_settings',
       ];
 
       const asyncStorageSettings = {};

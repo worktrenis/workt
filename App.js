@@ -116,6 +116,7 @@ import HourlyRatesSettingsScreen from './src/screens/HourlyRatesSettingsScreen';
 import CalculationMethodSettingsScreen from './src/screens/CalculationMethodSettingsScreen';
 import AppInfoScreen from './src/screens/AppInfoScreen';
 import AppUpdateScreen from './src/screens/AppUpdateScreen';
+import AIAssistantScreen from './src/screens/AIAssistantScreen';
 
 // 🏷️ COMPONENTI MODALITÀ DEVELOPMENT
 import DevelopmentWatermark from './src/components/DevelopmentWatermark';
@@ -275,6 +276,11 @@ function SettingsStack() {
         name="AppUpdate" 
         component={AppUpdateScreen} 
         options={{ title: 'Aggiornamenti App' }}
+      />
+      <Stack.Screen 
+        name="AIAssistant" 
+        component={AIAssistantScreen} 
+        options={{ title: 'Assistente AI' }}
       />
       <Stack.Screen 
         name="SystemNotificationMenu" 

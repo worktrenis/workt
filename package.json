@@ -1,6 +1,6 @@
 {
   "name": "workt",
-  "version": "1.0.90",
+  "version": "1.0.91",
   "main": "index.js",
   "scripts": {
     "prestart": "node scripts/bump-version.js",
@@ -18,7 +18,10 @@
     "publish-ota-quick": "node publish-ota-update.js \"Aggiornamento rapido - Correzioni e miglioramenti\"",
     "generate:icons": "node scripts/generate-icons.js",
     "ota:release": "node scripts/ota-release.js --channel production",
-    "ota:auto": "node scripts/ota-release.js --channel production --auto"
+    "ota:auto": "node scripts/ota-release.js --channel production --auto",
+    "lint": "eslint src/ App.js --fix",
+    "format": "prettier --write \"src/**/*.js\" \"App.js\"",
+    "format:check": "prettier --check \"src/**/*.js\" \"App.js\""
   },
   "dependencies": {
     "@expo/cli": "^0.24.20",
@@ -63,7 +66,10 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@babel/eslint-parser": "^7.25.0",
     "@types/react": "~19.1.10",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.0",
     "sharp": "^0.34.3",
     "typescript": "~5.9.2"
   },

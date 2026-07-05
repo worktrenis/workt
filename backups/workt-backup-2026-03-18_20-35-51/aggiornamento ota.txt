@@ -1,6 +1,0 @@
-Come usarlo (PowerShell)
-
-Rilascia OTA con messaggio:
-npm run ota:release -- --message "Fix calcolo; Migliorie UI"
-Rilascia OTA incrementando patch automaticamente:
-npm run ota:auto -- --message "Correzioni post-baseline"

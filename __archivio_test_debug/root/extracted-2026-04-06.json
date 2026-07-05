@@ -1,0 +1,30 @@
+[
+  {
+    "date": "2026-04-06",
+    "siteName": "",
+    "vehicleDriven": "non_guidato",
+    "departureCompany": "",
+    "arrivalSite": "",
+    "workStart1": "",
+    "workEnd1": "",
+    "workStart2": "",
+    "workEnd2": "",
+    "departureReturn": "",
+    "arrivalCompany": "",
+    "interventi": [],
+    "viaggi": [],
+    "mealLunchVoucher": 0,
+    "mealLunchCash": 0,
+    "mealDinnerVoucher": 0,
+    "mealDinnerCash": 0,
+    "travelAllowance": 0,
+    "travelAllowancePercent": 1,
+    "trasfertaManualOverride": false,
+    "isStandbyDay": 0,
+    "standbyAllowance": 0,
+    "completamentoGiornata": "nessuno",
+    "dayType": "festivo",
+    "isFixedDay": true,
+    "fixedEarnings": 111.11807692307693
+  }
+]

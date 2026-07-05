@@ -28,6 +28,7 @@ import DatabaseService from '../services/DatabaseService';
 import { useCalculationService } from '../hooks';
 import { createWorkEntryFromData } from '../utils/earningsHelper';
 import HolidayService from '../services/HolidayService';
+import VacationService from '../services/VacationService';
 import { captureAndShare } from '../utils/screenshotUtils';
 import NotificationService from '../services/FixedNotificationService';
 import * as Print from 'expo-print';
@@ -3166,6 +3167,50 @@ const TimeEntryForm = ({ route, navigation }) => {
             if (!draft.entryId) {
               if (draft.form) setForm(draft.form);
               if (draft.dayType) setDayType(draft.dayType);
+            }
+          }
+
+          // Dopo il ripristino del draft, ri-controlla la data INIZIALE (oggi o da params)
+          // per evitare che un draft di un giorno diverso nasconda festivi/ferie
+          if (!cancelled) {
+            const initialDateStr = formatDate(initialDate);
+            const holidayInfo = HolidayService.isWeekdayHoliday(initialDateStr);
+            if (holidayInfo) {
+              // La data iniziale è un festivo: auto-compila indipendentemente dal draft
+              const holidayPay = HolidayService.calculateHolidayPay(settings);
+              setForm(prev => ({
+                ...prev,
+                date: initialDateStr,
+                veicolo: 'non_guidato',
+                targa_veicolo: '',
+                viaggi: [{ site_name: prev.site_name || '', veicolo: 'non_guidato', targa_veicolo: '', departure_company: '', arrival_site: '', work_start_1: '', work_end_1: '', work_start_2: '', work_end_2: '', departure_return: '', arrival_company: '' }],
+                interventi: [],
+                pasti: { pranzo: false, cena: false },
+                pastipranzoManualOverride: false,
+                pasticenaManualOverride: false,
+                trasferta: false,
+                reperibilita: false,
+                completamentoGiornata: 'nessuno',
+                note: `${holidayInfo.name} - Giorno festivo retribuito secondo CCNL (€${holidayPay.toFixed(2)})`,
+                isFixedDay: true,
+                fixedEarnings: holidayPay,
+                dayType: 'festivo'
+              }));
+              setDayType('festivo');
+            } else {
+              // Non è un festivo: controlla se è un giorno di ferie approvato
+              try {
+                const vacSettings = await VacationService.getSettings();
+                if (vacSettings?.autoCompileTimeEntry && !cancelled) {
+                  const [d, m, y] = initialDateStr.split('/');
+                  const isoDate = `${y}-${m}-${d}`;
+                  const request = await VacationService.getApprovedRequestForDate(isoDate);
+                  if (request && !cancelled) {
+                    // Auto-seleziona 'ferie' come tipo giornata (il useEffect per dayType gestirà l'auto-compilazione)
+                    setDayType('ferie');
+                  }
+                }
+              } catch {}
             }
           }
         }
